@@ -260,14 +260,46 @@ mod tests {
         }
     }
 
+    /// Every flag at 1, so a test notices when an instruction leaves a flag
+    /// set that it should clear.
+    const ALL_FLAGS: Flags = Flags {
+        sign: true,
+        zero: true,
+        aux_carry: true,
+        parity: true,
+        carry: true,
+    };
+
+    /// Places `program` at the address in `registers.pc`, gives a new CPU
+    /// `registers` and executes one instruction. Returns the CPU and the
+    /// cycle count.
+    fn run(program: &[u8], registers: Registers) -> (Cpu, u32) {
+        let mut memory = [0u8; 0x10000];
+        run_with_memory(&mut memory, program, registers)
+    }
+
+    /// Same as [`run`], on memory the test fills before the step and checks
+    /// after it.
+    fn run_with_memory(
+        memory: &mut [u8; 0x10000],
+        program: &[u8],
+        registers: Registers,
+    ) -> (Cpu, u32) {
+        let start = usize::from(registers.pc);
+        memory[start..start + program.len()].copy_from_slice(program);
+        let mut cpu = Cpu::new();
+        cpu.registers = registers;
+
+        let cycles = cpu.step(memory);
+
+        (cpu, cycles)
+    }
+
     #[test]
     fn nop_changes_nothing_but_pc() {
-        let mut memory = [0u8; 0x10000]; // NOP
-        let mut cpu = Cpu::new();
-        cpu.registers = distinct_registers();
-        let before = cpu.registers;
+        let before = distinct_registers();
 
-        let cycles = cpu.step(&mut memory);
+        let (cpu, cycles) = run(&[0x00], before); // NOP
 
         assert_eq!(
             cpu.registers,
@@ -299,12 +331,7 @@ mod tests {
         ];
 
         for (opcode, expected) in cases {
-            let mut memory = [0u8; 0x10000];
-            memory[0x0100..0x0102].copy_from_slice(&[opcode, 0x42]);
-            let mut cpu = Cpu::new();
-            cpu.registers = before;
-
-            let cycles = cpu.step(&mut memory);
+            let (cpu, cycles) = run(&[opcode, 0x42], before);
 
             assert_eq!(cpu.registers, expected, "opcode {opcode:#04X}");
             assert_eq!(cycles, cycles::MVI, "opcode {opcode:#04X}");
@@ -314,16 +341,13 @@ mod tests {
     #[test]
     fn mvi_m_stores_next_byte_at_hl() {
         let mut memory = [0u8; 0x10000];
-        memory[0x0100..0x0102].copy_from_slice(&[0x36, 0x99]); // MVI M,99H
-        let mut cpu = Cpu::new();
-        cpu.registers = Registers {
+        let before = Registers {
             h: 0x20,
             l: 0x00,
             ..distinct_registers()
         };
-        let before = cpu.registers;
 
-        let cycles = cpu.step(&mut memory);
+        let (cpu, cycles) = run_with_memory(&mut memory, &[0x36, 0x99], before); // MVI M,99H
 
         assert_eq!(memory[0x2000], 0x99);
         assert_eq!(
@@ -393,12 +417,7 @@ mod tests {
         ];
 
         for (opcode, expected) in cases {
-            let mut memory = [0u8; 0x10000];
-            memory[0x0100] = opcode;
-            let mut cpu = Cpu::new();
-            cpu.registers = before;
-
-            let cycles = cpu.step(&mut memory);
+            let (cpu, cycles) = run(&[opcode], before);
 
             assert_eq!(cpu.registers, expected, "opcode {opcode:#04X}");
             assert_eq!(cycles, cycles::MOV, "opcode {opcode:#04X}");
@@ -408,17 +427,14 @@ mod tests {
     #[test]
     fn mov_from_m_reads_memory_at_hl() {
         let mut memory = [0u8; 0x10000];
-        memory[0x0100] = 0x7E; // MOV A,M
         memory[0x2000] = 0x99;
-        let mut cpu = Cpu::new();
-        cpu.registers = Registers {
+        let before = Registers {
             h: 0x20,
             l: 0x00,
             ..distinct_registers()
         };
-        let before = cpu.registers;
 
-        let cycles = cpu.step(&mut memory);
+        let (cpu, cycles) = run_with_memory(&mut memory, &[0x7E], before); // MOV A,M
 
         assert_eq!(
             cpu.registers,
@@ -434,16 +450,13 @@ mod tests {
     #[test]
     fn mov_to_m_writes_memory_at_hl() {
         let mut memory = [0u8; 0x10000];
-        memory[0x0100] = 0x77; // MOV M,A
-        let mut cpu = Cpu::new();
-        cpu.registers = Registers {
+        let before = Registers {
             h: 0x20,
             l: 0x00,
             ..distinct_registers()
         };
-        let before = cpu.registers;
 
-        let cycles = cpu.step(&mut memory);
+        let (cpu, cycles) = run_with_memory(&mut memory, &[0x77], before); // MOV M,A
 
         assert_eq!(memory[0x2000], before.a);
         assert_eq!(
@@ -458,24 +471,21 @@ mod tests {
 
     #[test]
     fn pc_wraps_from_ffff_to_0000() {
-        let mut memory = [0u8; 0x10000]; // NOP
-        let mut cpu = Cpu::new();
-        cpu.registers.pc = 0xFFFF;
+        let registers = Registers {
+            pc: 0xFFFF,
+            ..distinct_registers()
+        };
 
-        cpu.step(&mut memory);
+        let (cpu, _) = run(&[0x00], registers); // NOP
 
         assert_eq!(cpu.registers.pc, 0x0000);
     }
 
     #[test]
     fn hlt_halts_cpu() {
-        let mut memory = [0u8; 0x10000];
-        memory[0x0100] = 0x76; // HLT
-        let mut cpu = Cpu::new();
-        cpu.registers = distinct_registers();
-        let before = cpu.registers;
+        let before = distinct_registers();
 
-        let cycles = cpu.step(&mut memory);
+        let (cpu, cycles) = run(&[0x76], before); // HLT
 
         assert!(cpu.is_halted());
         assert_eq!(
@@ -519,36 +529,12 @@ mod tests {
         ];
 
         for (opcode, sum) in cases {
-            let mut memory = [0u8; 0x10000];
-            memory[0x0100] = opcode;
-            let mut cpu = Cpu::new();
-            cpu.registers = distinct_registers();
-
-            let cycles = cpu.step(&mut memory);
+            let (cpu, cycles) = run(&[opcode], distinct_registers());
 
             assert_eq!(cpu.registers.a, sum, "opcode {opcode:#04X}");
             assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
             assert_eq!(cycles, cycles::ADD, "opcode {opcode:#04X}");
         }
-    }
-
-    #[test]
-    fn add_m_adds_memory_at_hl() {
-        let mut memory = [0u8; 0x10000];
-        memory[0x0100] = 0x86; // ADD M
-        memory[0x2000] = 0x05;
-        let mut cpu = Cpu::new();
-        cpu.registers = Registers {
-            a: 0x10,
-            h: 0x20,
-            l: 0x00,
-            ..distinct_registers()
-        };
-
-        let cycles = cpu.step(&mut memory);
-
-        assert_eq!(cpu.registers.a, 0x15);
-        assert_eq!(cycles, cycles::ADD_M);
     }
 
     #[test]
@@ -603,23 +589,14 @@ mod tests {
         ];
 
         for (a, b, sum, flags) in cases {
-            let mut memory = [0u8; 0x10000];
-            memory[0x0100] = 0x80; // ADD B
-            let mut cpu = Cpu::new();
-            cpu.registers = Registers {
+            let registers = Registers {
                 a,
                 b,
-                flags: Flags {
-                    sign: true,
-                    zero: true,
-                    aux_carry: true,
-                    parity: true,
-                    carry: true,
-                },
+                flags: ALL_FLAGS,
                 ..distinct_registers()
             };
 
-            cpu.step(&mut memory);
+            let (cpu, _) = run(&[0x80], registers); // ADD B
 
             assert_eq!(cpu.registers.a, sum, "{a:#04X} + {b:#04X}");
             assert_eq!(cpu.registers.flags, flags, "{a:#04X} + {b:#04X}");
@@ -641,13 +618,10 @@ mod tests {
         ];
 
         for (opcode, carry, sum) in cases {
-            let mut memory = [0u8; 0x10000];
-            memory[0x0100] = opcode;
-            let mut cpu = Cpu::new();
-            cpu.registers = distinct_registers();
-            cpu.registers.flags.carry = carry;
+            let mut registers = distinct_registers();
+            registers.flags.carry = carry;
 
-            let cycles = cpu.step(&mut memory);
+            let (cpu, cycles) = run(&[opcode], registers);
 
             assert_eq!(cpu.registers.a, sum, "opcode {opcode:#04X}");
             assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
@@ -703,17 +677,14 @@ mod tests {
         ];
 
         for (a, b, carry, sum, flags) in cases {
-            let mut memory = [0u8; 0x10000];
-            memory[0x0100] = 0x88; // ADC B
-            let mut cpu = Cpu::new();
-            cpu.registers = Registers {
+            let registers = Registers {
                 a,
                 b,
                 flags: Flags { carry, ..none },
                 ..distinct_registers()
             };
 
-            cpu.step(&mut memory);
+            let (cpu, _) = run(&[0x88], registers); // ADC B
 
             assert_eq!(cpu.registers.a, sum, "{a:#04X} + {b:#04X} + {carry}");
             assert_eq!(cpu.registers.flags, flags, "{a:#04X} + {b:#04X} + {carry}");
@@ -735,12 +706,7 @@ mod tests {
         ];
 
         for (opcode, difference) in cases {
-            let mut memory = [0u8; 0x10000];
-            memory[0x0100] = opcode;
-            let mut cpu = Cpu::new();
-            cpu.registers = distinct_registers();
-
-            let cycles = cpu.step(&mut memory);
+            let (cpu, cycles) = run(&[opcode], distinct_registers());
 
             assert_eq!(cpu.registers.a, difference, "opcode {opcode:#04X}");
             assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
@@ -803,23 +769,14 @@ mod tests {
         ];
 
         for (a, b, difference, flags) in cases {
-            let mut memory = [0u8; 0x10000];
-            memory[0x0100] = 0x90; // SUB B
-            let mut cpu = Cpu::new();
-            cpu.registers = Registers {
+            let registers = Registers {
                 a,
                 b,
-                flags: Flags {
-                    sign: true,
-                    zero: true,
-                    aux_carry: true,
-                    parity: true,
-                    carry: true,
-                },
+                flags: ALL_FLAGS,
                 ..distinct_registers()
             };
 
-            cpu.step(&mut memory);
+            let (cpu, _) = run(&[0x90], registers); // SUB B
 
             assert_eq!(cpu.registers.a, difference, "{a:#04X} - {b:#04X}");
             assert_eq!(cpu.registers.flags, flags, "{a:#04X} - {b:#04X}");
@@ -841,13 +798,10 @@ mod tests {
         ];
 
         for (opcode, carry, difference) in cases {
-            let mut memory = [0u8; 0x10000];
-            memory[0x0100] = opcode;
-            let mut cpu = Cpu::new();
-            cpu.registers = distinct_registers();
-            cpu.registers.flags.carry = carry;
+            let mut registers = distinct_registers();
+            registers.flags.carry = carry;
 
-            let cycles = cpu.step(&mut memory);
+            let (cpu, cycles) = run(&[opcode], registers);
 
             assert_eq!(cpu.registers.a, difference, "opcode {opcode:#04X}");
             assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
@@ -888,17 +842,14 @@ mod tests {
         ];
 
         for (a, l, carry, difference, flags) in cases {
-            let mut memory = [0u8; 0x10000];
-            memory[0x0100] = 0x9D; // SBB L
-            let mut cpu = Cpu::new();
-            cpu.registers = Registers {
+            let registers = Registers {
                 a,
                 l,
                 flags: Flags { carry, ..none },
                 ..distinct_registers()
             };
 
-            cpu.step(&mut memory);
+            let (cpu, _) = run(&[0x9D], registers); // SBB L
 
             assert_eq!(cpu.registers.a, difference, "{a:#04X} - {l:#04X} - {carry}");
             assert_eq!(cpu.registers.flags, flags, "{a:#04X} - {l:#04X} - {carry}");
@@ -911,6 +862,7 @@ mod tests {
         // leave in A and its cycle count. A starts at 10H, memory at HL
         // holds 05H and the carry flag is 1.
         let cases = [
+            (0x86, 0x15, cycles::ADD_M), // ADD M: 10H + 05H
             (0x8E, 0x16, cycles::ADC_M), // ADC M: 10H + 05H + 1
             (0x96, 0x0B, cycles::SUB_M), // SUB M: 10H - 05H
             (0x9E, 0x0A, cycles::SBB_M), // SBB M: 10H - 05H - 1
@@ -922,18 +874,16 @@ mod tests {
 
         for (opcode, result, expected_cycles) in cases {
             let mut memory = [0u8; 0x10000];
-            memory[0x0100] = opcode;
             memory[0x2000] = 0x05;
-            let mut cpu = Cpu::new();
-            cpu.registers = Registers {
+            let mut registers = Registers {
                 a: 0x10,
                 h: 0x20,
                 l: 0x00,
                 ..distinct_registers()
             };
-            cpu.registers.flags.carry = true;
+            registers.flags.carry = true;
 
-            let cycles = cpu.step(&mut memory);
+            let (cpu, cycles) = run_with_memory(&mut memory, &[opcode], registers);
 
             assert_eq!(cpu.registers.a, result, "opcode {opcode:#04X}");
             assert_eq!(cycles, expected_cycles, "opcode {opcode:#04X}");
@@ -955,12 +905,7 @@ mod tests {
         ];
 
         for (opcode, result) in cases {
-            let mut memory = [0u8; 0x10000];
-            memory[0x0100] = opcode;
-            let mut cpu = Cpu::new();
-            cpu.registers = distinct_registers();
-
-            let cycles = cpu.step(&mut memory);
+            let (cpu, cycles) = run(&[opcode], distinct_registers());
 
             assert_eq!(cpu.registers.a, result, "opcode {opcode:#04X}");
             assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
@@ -1002,23 +947,14 @@ mod tests {
         ];
 
         for (a, b, result, flags) in cases {
-            let mut memory = [0u8; 0x10000];
-            memory[0x0100] = 0xA0; // ANA B
-            let mut cpu = Cpu::new();
-            cpu.registers = Registers {
+            let registers = Registers {
                 a,
                 b,
-                flags: Flags {
-                    sign: true,
-                    zero: true,
-                    aux_carry: true,
-                    parity: true,
-                    carry: true,
-                },
+                flags: ALL_FLAGS,
                 ..distinct_registers()
             };
 
-            cpu.step(&mut memory);
+            let (cpu, _) = run(&[0xA0], registers); // ANA B
 
             assert_eq!(cpu.registers.a, result, "{a:#04X} ANA {b:#04X}");
             assert_eq!(cpu.registers.flags, flags, "{a:#04X} ANA {b:#04X}");
@@ -1040,12 +976,7 @@ mod tests {
         ];
 
         for (opcode, result) in cases {
-            let mut memory = [0u8; 0x10000];
-            memory[0x0100] = opcode;
-            let mut cpu = Cpu::new();
-            cpu.registers = distinct_registers();
-
-            let cycles = cpu.step(&mut memory);
+            let (cpu, cycles) = run(&[opcode], distinct_registers());
 
             assert_eq!(cpu.registers.a, result, "opcode {opcode:#04X}");
             assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
@@ -1094,23 +1025,14 @@ mod tests {
         ];
 
         for (a, b, result, flags) in cases {
-            let mut memory = [0u8; 0x10000];
-            memory[0x0100] = 0xA8; // XRA B
-            let mut cpu = Cpu::new();
-            cpu.registers = Registers {
+            let registers = Registers {
                 a,
                 b,
-                flags: Flags {
-                    sign: true,
-                    zero: true,
-                    aux_carry: true,
-                    parity: true,
-                    carry: true,
-                },
+                flags: ALL_FLAGS,
                 ..distinct_registers()
             };
 
-            cpu.step(&mut memory);
+            let (cpu, _) = run(&[0xA8], registers); // XRA B
 
             assert_eq!(cpu.registers.a, result, "{a:#04X} XRA {b:#04X}");
             assert_eq!(cpu.registers.flags, flags, "{a:#04X} XRA {b:#04X}");
@@ -1132,12 +1054,7 @@ mod tests {
         ];
 
         for (opcode, result) in cases {
-            let mut memory = [0u8; 0x10000];
-            memory[0x0100] = opcode;
-            let mut cpu = Cpu::new();
-            cpu.registers = distinct_registers();
-
-            let cycles = cpu.step(&mut memory);
+            let (cpu, cycles) = run(&[opcode], distinct_registers());
 
             assert_eq!(cpu.registers.a, result, "opcode {opcode:#04X}");
             assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
@@ -1194,23 +1111,14 @@ mod tests {
         ];
 
         for (a, b, result, flags) in cases {
-            let mut memory = [0u8; 0x10000];
-            memory[0x0100] = 0xB0; // ORA B
-            let mut cpu = Cpu::new();
-            cpu.registers = Registers {
+            let registers = Registers {
                 a,
                 b,
-                flags: Flags {
-                    sign: true,
-                    zero: true,
-                    aux_carry: true,
-                    parity: true,
-                    carry: true,
-                },
+                flags: ALL_FLAGS,
                 ..distinct_registers()
             };
 
-            cpu.step(&mut memory);
+            let (cpu, _) = run(&[0xB0], registers); // ORA B
 
             assert_eq!(cpu.registers.a, result, "{a:#04X} ORA {b:#04X}");
             assert_eq!(cpu.registers.flags, flags, "{a:#04X} ORA {b:#04X}");
@@ -1233,12 +1141,7 @@ mod tests {
         ];
 
         for (opcode, zero, carry) in cases {
-            let mut memory = [0u8; 0x10000];
-            memory[0x0100] = opcode;
-            let mut cpu = Cpu::new();
-            cpu.registers = distinct_registers();
-
-            let cycles = cpu.step(&mut memory);
+            let (cpu, cycles) = run(&[opcode], distinct_registers());
 
             assert_eq!(cpu.registers.a, 0x0A, "opcode {opcode:#04X}");
             assert_eq!(cpu.registers.flags.zero, zero, "opcode {opcode:#04X}");
@@ -1284,16 +1187,13 @@ mod tests {
         ];
 
         for (a, e, flags) in cases {
-            let mut memory = [0u8; 0x10000];
-            memory[0x0100] = 0xBB; // CMP E
-            let mut cpu = Cpu::new();
-            cpu.registers = Registers {
+            let registers = Registers {
                 a,
                 e,
                 ..distinct_registers()
             };
 
-            cpu.step(&mut memory);
+            let (cpu, _) = run(&[0xBB], registers); // CMP E
 
             assert_eq!(cpu.registers.a, a, "{a:#04X} CMP {e:#04X}");
             assert_eq!(cpu.registers.flags, flags, "{a:#04X} CMP {e:#04X}");
@@ -1303,10 +1203,6 @@ mod tests {
     #[test]
     #[should_panic(expected = "opcode 0x01 is not supported yet")]
     fn unsupported_opcode_panics() {
-        let mut memory = [0u8; 0x10000];
-        memory[0] = 0x01; // LXI B,nn, not implemented yet
-        let mut cpu = Cpu::new();
-
-        cpu.step(&mut memory);
+        run(&[0x01], distinct_registers()); // LXI B,nn, not implemented yet
     }
 }
