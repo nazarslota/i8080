@@ -1,3 +1,4 @@
+use crate::cycles::{self, HALTED_STEP_CYCLES};
 use crate::instruction::{Instruction, Operand};
 use crate::{MemoryBus, Registers};
 
@@ -15,12 +16,13 @@ use crate::{MemoryBus, Registers};
 /// let cycles = cpu.step(&mut memory);
 ///
 /// assert_eq!(cpu.registers.pc, 1);
-/// assert_eq!(cycles, 4);
+/// assert_eq!(cycles, 4); // NOP takes 4 cycles
 /// ```
 #[derive(Clone, Debug, Default)]
 pub struct Cpu {
     /// The registers.
     pub registers: Registers,
+    halted: bool,
 }
 
 impl Cpu {
@@ -33,30 +35,51 @@ impl Cpu {
         Self::default()
     }
 
+    /// Returns `true` after a `HLT` instruction stopped the CPU.
+    pub const fn is_halted(&self) -> bool {
+        self.halted
+    }
+
     /// Executes one instruction and returns how many clock cycles it took.
+    ///
+    /// A halted CPU executes nothing and returns [`HALTED_STEP_CYCLES`], so
+    /// the machine's clock keeps running while the CPU waits.
     ///
     /// # Panics
     ///
     /// Panics on opcodes the emulator doesn't support yet.
     pub fn step(&mut self, memory: &mut impl MemoryBus) -> u32 {
+        if self.halted {
+            return HALTED_STEP_CYCLES;
+        }
+
         // Fetch and decode: read the instruction's bytes starting at PC.
         let instruction = Instruction::decode(|| self.fetch_byte(memory));
 
         // Execute: one line per instruction. Instructions with logic get their
-        // own method, which returns the cycle count. Cycle counts come from
-        // the Intel 8080 Microcomputer Systems User's Manual (September 1975):
-        // https://bitsavers.org/components/intel/MCS80/98-153B_Intel_8080_Microcomputer_Systems_Users_Manual_197509.pdf
+        // own method, which returns the cycle count from the `cycles` module.
         match instruction {
-            Instruction::Nop => 4,
+            Instruction::Nop => cycles::NOP,
             Instruction::Mvi { dst, value } => self.mvi(memory, dst, value),
             Instruction::Mov { dst, src } => self.mov(memory, dst, src),
+            Instruction::Hlt => self.hlt(),
         }
+    }
+
+    /// `HLT`: stops the CPU. Later steps execute nothing.
+    fn hlt(&mut self) -> u32 {
+        self.halted = true;
+        cycles::HLT
     }
 
     /// `MVI dst,value`: loads a constant byte into a register or `M`.
     fn mvi(&mut self, memory: &mut impl MemoryBus, dst: Operand, value: u8) -> u32 {
         self.write_operand(memory, dst, value);
-        if dst == Operand::M { 10 } else { 7 }
+        if dst == Operand::M {
+            cycles::MVI_M
+        } else {
+            cycles::MVI
+        }
     }
 
     /// `MOV dst,src`: copies a byte between registers and `M`.
@@ -64,9 +87,9 @@ impl Cpu {
         let value = self.read_operand(memory, src);
         self.write_operand(memory, dst, value);
         if dst == Operand::M || src == Operand::M {
-            7
+            cycles::MOV_M
         } else {
-            5
+            cycles::MOV
         }
     }
 
@@ -144,7 +167,7 @@ mod tests {
                 ..before
             }
         );
-        assert_eq!(cycles, 4);
+        assert_eq!(cycles, cycles::NOP);
     }
 
     #[test]
@@ -175,7 +198,7 @@ mod tests {
             let cycles = cpu.step(&mut memory);
 
             assert_eq!(cpu.registers, expected, "opcode {opcode:#04X}");
-            assert_eq!(cycles, 7, "opcode {opcode:#04X}");
+            assert_eq!(cycles, cycles::MVI, "opcode {opcode:#04X}");
         }
     }
 
@@ -201,7 +224,7 @@ mod tests {
                 ..before
             }
         );
-        assert_eq!(cycles, 10);
+        assert_eq!(cycles, cycles::MVI_M);
     }
 
     #[test]
@@ -269,7 +292,7 @@ mod tests {
             let cycles = cpu.step(&mut memory);
 
             assert_eq!(cpu.registers, expected, "opcode {opcode:#04X}");
-            assert_eq!(cycles, 5, "opcode {opcode:#04X}");
+            assert_eq!(cycles, cycles::MOV, "opcode {opcode:#04X}");
         }
     }
 
@@ -296,7 +319,7 @@ mod tests {
                 ..before
             }
         );
-        assert_eq!(cycles, 7);
+        assert_eq!(cycles, cycles::MOV_M);
     }
 
     #[test]
@@ -321,7 +344,7 @@ mod tests {
                 ..before
             }
         );
-        assert_eq!(cycles, 7);
+        assert_eq!(cycles, cycles::MOV_M);
     }
 
     #[test]
@@ -336,10 +359,47 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "opcode 0x76 is not supported yet")]
+    fn hlt_halts_cpu() {
+        let mut memory = [0u8; 0x10000];
+        memory[0x0100] = 0x76; // HLT
+        let mut cpu = Cpu::new();
+        cpu.registers = distinct_registers();
+        let before = cpu.registers;
+
+        let cycles = cpu.step(&mut memory);
+
+        assert!(cpu.is_halted());
+        assert_eq!(
+            cpu.registers,
+            Registers {
+                pc: 0x0101,
+                ..before
+            }
+        );
+        assert_eq!(cycles, cycles::HLT);
+    }
+
+    #[test]
+    fn halted_cpu_executes_nothing() {
+        let mut memory = [0u8; 0x10000];
+        memory[0x0100..0x0102].copy_from_slice(&[0x06, 0x42]); // MVI B,42H
+        let mut cpu = Cpu::new();
+        cpu.registers = distinct_registers();
+        cpu.halted = true;
+        let before = cpu.registers;
+
+        let cycles = cpu.step(&mut memory);
+
+        assert!(cpu.is_halted());
+        assert_eq!(cpu.registers, before);
+        assert_eq!(cycles, HALTED_STEP_CYCLES);
+    }
+
+    #[test]
+    #[should_panic(expected = "opcode 0x80 is not supported yet")]
     fn unsupported_opcode_panics() {
         let mut memory = [0u8; 0x10000];
-        memory[0] = 0x76; // HLT, not implemented yet
+        memory[0] = 0x80; // ADD B, not implemented yet
         let mut cpu = Cpu::new();
 
         cpu.step(&mut memory);

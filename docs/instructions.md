@@ -108,7 +108,7 @@ applies when the condition holds.
 | `OUT n`     | 2     | 10     | none               | Writes `A` to port `n`                         | ⬜     |
 | `EI`        | 1     | 4      | none               | Enables interrupts after the next instruction  | ⬜     |
 | `DI`        | 1     | 4      | none               | Disables interrupts                            | ⬜     |
-| `HLT`       | 1     | 7      | none               | Stops the CPU until an interrupt arrives       | ⬜     |
+| `HLT`       | 1     | 7      | none               | Stops the CPU until an interrupt arrives       | ✅     |
 | `NOP`       | 1     | 4      | none               | Does nothing                                   | ✅     |
 
 ## Details
@@ -216,3 +216,28 @@ more bus access, which is why `MOV` takes 7 cycles with `M` and 5 without.
 | `MVI L,00H` | `0107H` | `42H` | `42H` | `00H` | `2000H` | `00H`           |
 | `MOV M,A`   | `0108H` | `42H` | `42H` | `00H` | `2000H` | `42H`           |
 | `MOV C,M`   | `0109H` | `42H` | `42H` | `42H` | `2000H` | `42H`           |
+
+### HLT: stop the CPU
+
+`HLT` · opcode `76H` · 1 byte · 7 cycles · flags: none
+
+`HLT` stops the CPU. `PC` points past the `HLT`, and the CPU fetches nothing
+more until an interrupt or a reset arrives. After an interrupt, the CPU runs
+the interrupt handler and then continues with the instruction after `HLT`.
+On the Altair, the HLTA light on the front panel shows the halted state.
+
+Intel placed `HLT` in the slot where `MOV M,M` would sit, `01 110 110`.
+
+```asm
+0100H   MVI  A,07H   ; A = 07H                    bytes: 3E 07
+0102H   HLT          ; stop                       bytes: 76
+0103H   MVI  A,08H   ; never runs                 bytes: 3E 08
+```
+
+| After       | `PC`    | `A`   | Halted |
+|-------------|---------|-------|--------|
+| `MVI A,07H` | `0102H` | `07H` | no     |
+| `HLT`       | `0103H` | `07H` | yes    |
+| next step   | `0103H` | `07H` | yes    |
+
+**Emulator status:** nothing wakes the CPU yet. Interrupts come later.

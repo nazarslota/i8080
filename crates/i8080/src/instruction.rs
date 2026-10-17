@@ -7,6 +7,8 @@ pub(crate) enum Instruction {
     Mvi { dst: Operand, value: u8 },
     /// `MOV dst,src`: copies `src` into `dst`.
     Mov { dst: Operand, src: Operand },
+    /// `HLT`: stops the CPU until an interrupt or a reset.
+    Hlt,
 }
 
 impl Instruction {
@@ -44,9 +46,11 @@ impl Instruction {
                 dst: Operand::from_code(ddd),
                 value: next_byte(),
             },
-            // MOV ddd,sss: 01 ddd sss. The slot for MOV M,M, 01 110 110,
-            // belongs to HLT, which isn't supported yet.
-            (0b01, ddd, sss) if (ddd, sss) != (0b110, 0b110) => Self::Mov {
+            // HLT: 01 110 110, the slot where MOV M,M would be. It comes
+            // before the MOV pattern, so `match` picks it first.
+            (0b01, 0b110, 0b110) => Self::Hlt,
+            // MOV ddd,sss: 01 ddd sss
+            (0b01, ddd, sss) => Self::Mov {
                 dst: Operand::from_code(ddd),
                 src: Operand::from_code(sss),
             },
