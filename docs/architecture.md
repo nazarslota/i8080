@@ -93,8 +93,9 @@ port in a loop, sees the bit and reads the key with `IN 0x11`.
   covers ports, so code that needs only memory never sees ports. Machines and
   tests without devices pass `Unconnected`, whose ports read `0xFF` like
   unconnected ports on real hardware.
-- **The machine lends the buses to the CPU.** `step` borrows both buses for
-  one instruction and doesn't keep them. We need no shared ownership
+- **The machine lends the buses to the CPU.** `step` borrows the memory bus
+  for one instruction and doesn't keep it. It will borrow the I/O bus the
+  same way once `IN` and `OUT` exist. We need no shared ownership
   (`Rc<RefCell<…>>`), and Rust resolves every bus call at compile time. A
   machine that keeps memory and devices in separate fields can lend both at
   once.
