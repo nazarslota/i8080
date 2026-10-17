@@ -48,6 +48,9 @@ See [roms/README.md](roms/README.md) for what goes there.
 - [Intel 8080 Microcomputer Systems User's Manual](https://bitsavers.org/components/intel/MCS80/98-153B_Intel_8080_Microcomputer_Systems_Users_Manual_197509.pdf)
   (September 1975): the instruction set with cycle counts, plus the pinout
   and bus timing.
+- [8080 opcode table](https://pastraiser.com/cpu/i8080/i8080_opcodes.html):
+  all 256 opcodes, including the undocumented copies of `NOP`, `JMP`,
+  `CALL` and `RET` that the Intel manual leaves out.
 
 ## License
 

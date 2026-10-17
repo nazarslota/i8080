@@ -93,11 +93,16 @@ impl Cpu {
             Instruction::Xra { src } => self.xra(memory, src),
             Instruction::Ora { src } => self.ora(memory, src),
             Instruction::Cmp { src } => self.cmp(memory, src),
+            Instruction::Rcc { condition } => self.rcc(memory, condition),
             Instruction::Pop { dst } => self.pop(memory, dst),
             Instruction::Jcc { condition, address } => self.jcc(condition, address),
             Instruction::Jmp { address } => self.jmp(address),
+            Instruction::Ccc { condition, address } => self.ccc(memory, condition, address),
             Instruction::Push { src } => self.push(memory, src),
             Instruction::Adi { value } => self.adi(value),
+            Instruction::Rst { address } => self.rst(memory, address),
+            Instruction::Ret => self.ret(memory),
+            Instruction::Call { address } => self.call(memory, address),
             Instruction::Aci { value } => self.aci(value),
             Instruction::Sui { value } => self.sui(value),
             Instruction::Sbi { value } => self.sbi(value),
@@ -399,6 +404,16 @@ impl Cpu {
         }
     }
 
+    /// `Rcc`: returns from a subroutine if `condition` holds.
+    fn rcc(&mut self, memory: &mut impl MemoryBus, condition: Condition) -> u32 {
+        if condition.holds(self.registers.flags) {
+            self.registers.pc = self.pop_word(memory);
+            cycles::RCC_TAKEN
+        } else {
+            cycles::RCC
+        }
+    }
+
     /// `POP dst`: loads a register pair or `PSW` from the top of the stack.
     fn pop(&mut self, memory: &mut impl MemoryBus, dst: StackOperand) -> u32 {
         let value = self.pop_word(memory);
@@ -421,6 +436,17 @@ impl Cpu {
         cycles::JMP
     }
 
+    /// `Ccc address`: calls the subroutine at `address` if `condition`
+    /// holds.
+    fn ccc(&mut self, memory: &mut impl MemoryBus, condition: Condition, address: u16) -> u32 {
+        if condition.holds(self.registers.flags) {
+            self.call_subroutine(memory, address);
+            cycles::CCC_TAKEN
+        } else {
+            cycles::CCC
+        }
+    }
+
     /// `PUSH src`: stores a register pair or `PSW` on top of the stack.
     fn push(&mut self, memory: &mut impl MemoryBus, src: StackOperand) -> u32 {
         let value = self.read_stack_operand(src);
@@ -432,6 +458,25 @@ impl Cpu {
     fn adi(&mut self, value: u8) -> u32 {
         (self.registers.a, self.registers.flags) = alu::add(self.registers.a, value, false);
         cycles::ADI
+    }
+
+    /// `RST n`: calls the subroutine at `address`, `8 × n`.
+    fn rst(&mut self, memory: &mut impl MemoryBus, address: u16) -> u32 {
+        self.call_subroutine(memory, address);
+        cycles::RST
+    }
+
+    /// `RET`: returns from a subroutine. It pops the return address into
+    /// `PC`.
+    fn ret(&mut self, memory: &mut impl MemoryBus) -> u32 {
+        self.registers.pc = self.pop_word(memory);
+        cycles::RET
+    }
+
+    /// `CALL address`: calls the subroutine at `address`.
+    fn call(&mut self, memory: &mut impl MemoryBus, address: u16) -> u32 {
+        self.call_subroutine(memory, address);
+        cycles::CALL
     }
 
     /// `ACI value`: adds a constant and the carry flag to `A`.
@@ -591,6 +636,13 @@ impl Cpu {
         }
     }
 
+    /// Pushes the return address, the `PC` of the next instruction, and
+    /// jumps to `address`. `RET` pops the return address back.
+    fn call_subroutine(&mut self, memory: &mut impl MemoryBus, address: u16) {
+        self.push_word(memory, self.registers.pc);
+        self.registers.pc = address;
+    }
+
     /// Stores a 16-bit value on the stack. The stack grows down: `SP`
     /// drops by 2, the high byte goes to `SP + 1` and the low byte to `SP`.
     fn push_word(&mut self, memory: &mut impl MemoryBus, value: u16) {
@@ -673,6 +725,24 @@ mod tests {
         let cycles = cpu.step(memory);
 
         (cpu, cycles)
+    }
+
+    /// Runs one instruction from `program` with `before`, which keeps
+    /// `SP` at F000H. The two bytes at F000H hold `stack_top`, for a `POP`
+    /// or a return to load. Returns the CPU, the two bytes below F000H,
+    /// where a `PUSH` or a call stores, and the cycle count.
+    fn run_with_stack(
+        program: &[u8],
+        before: Registers,
+        stack_top: [u8; 2],
+    ) -> (Cpu, [u8; 2], u32) {
+        let mut memory = [0u8; 0x10000];
+        memory[0xF000..0xF002].copy_from_slice(&stack_top);
+
+        let (cpu, cycles) = run_with_memory(&mut memory, program, before);
+
+        let pushed = [memory[0xEFFE], memory[0xEFFF]];
+        (cpu, pushed, cycles)
     }
 
     /// Runs one instruction from `program` with `before`. Checks the
@@ -2241,6 +2311,39 @@ mod tests {
     }
 
     #[test]
+    fn rcc_returns_only_when_condition_holds() {
+        // Each case: an opcode, the flags before the step and whether the
+        // CPU should return. The stack at F000H holds the return address
+        // 1234H. Condition tests every condition against the flags, so this
+        // test checks only the return itself.
+        let none = Flags::default();
+        let cases = [
+            (0xC8, Flags { zero: true, ..none }, true), // RZ, Z = 1
+            (0xC8, none, false),                        // RZ, Z = 0
+            (0xF8, Flags { sign: true, ..none }, true), // RM, S = 1
+            (0xF8, none, false),                        // RM, S = 0
+        ];
+
+        for (opcode, flags, returns) in cases {
+            let before = Registers {
+                flags,
+                ..distinct_registers()
+            };
+
+            let (cpu, _, cycles) = run_with_stack(&[opcode], before, [0x34, 0x12]);
+
+            let (pc, sp, expected_cycles) = if returns {
+                (0x1234, 0xF002, cycles::RCC_TAKEN)
+            } else {
+                (0x0101, 0xF000, cycles::RCC)
+            };
+            let after = Registers { pc, sp, ..before };
+            assert_eq!(cpu.registers, after, "opcode {opcode:#04X}, {flags:?}");
+            assert_eq!(cycles, expected_cycles, "opcode {opcode:#04X}, {flags:?}");
+        }
+    }
+
+    #[test]
     fn pop_loads_pair_from_stack() {
         // Each case: an opcode and the registers it should leave behind.
         // The stack at F000H holds 3DH 93H, the bytes from the Intel
@@ -2293,10 +2396,7 @@ mod tests {
         ];
 
         for (opcode, expected) in cases {
-            let mut memory = [0u8; 0x10000];
-            memory[0xF000..0xF002].copy_from_slice(&[0x3D, 0x93]);
-
-            let (cpu, cycles) = run_with_memory(&mut memory, &[opcode], before);
+            let (cpu, _, cycles) = run_with_stack(&[opcode], before, [0x3D, 0x93]);
 
             assert_eq!(cpu.registers, expected, "opcode {opcode:#04X}");
             assert_eq!(cycles, cycles::POP, "opcode {opcode:#04X}");
@@ -2339,7 +2439,43 @@ mod tests {
             ..before
         };
 
-        assert_registers(&[0xC3, 0x00, 0x20], before, after, cycles::JMP); // JMP 2000H
+        // C3H is JMP, and CBH is its undocumented copy.
+        for opcode in [0xC3, 0xCB] {
+            assert_registers(&[opcode, 0x00, 0x20], before, after, cycles::JMP);
+        }
+    }
+
+    #[test]
+    fn ccc_calls_only_when_condition_holds() {
+        // Each case: an opcode followed by 2000H, the flags before the step
+        // and whether the CPU should call. A call pushes the return address
+        // 0103H below SP = F000H.
+        let none = Flags::default();
+        let cases = [
+            (0xCC, Flags { zero: true, ..none }, true), // CZ, Z = 1
+            (0xCC, none, false),                        // CZ, Z = 0
+            (0xFC, Flags { sign: true, ..none }, true), // CM, S = 1
+            (0xFC, none, false),                        // CM, S = 0
+        ];
+
+        for (opcode, flags, calls) in cases {
+            let before = Registers {
+                flags,
+                ..distinct_registers()
+            };
+
+            let (cpu, pushed, cycles) = run_with_stack(&[opcode, 0x00, 0x20], before, [0, 0]);
+
+            let (pc, sp, stack, expected_cycles) = if calls {
+                (0x2000, 0xEFFE, [0x03, 0x01], cycles::CCC_TAKEN)
+            } else {
+                (0x0103, 0xF000, [0x00, 0x00], cycles::CCC)
+            };
+            let after = Registers { pc, sp, ..before };
+            assert_eq!(cpu.registers, after, "opcode {opcode:#04X}, {flags:?}");
+            assert_eq!(pushed, stack, "opcode {opcode:#04X}, {flags:?}");
+            assert_eq!(cycles, expected_cycles, "opcode {opcode:#04X}, {flags:?}");
+        }
     }
 
     #[test]
@@ -2359,11 +2495,9 @@ mod tests {
         ];
 
         for (opcode, bytes) in cases {
-            let mut memory = [0u8; 0x10000];
+            let (cpu, pushed, cycles) = run_with_stack(&[opcode], before, [0, 0]);
 
-            let (cpu, cycles) = run_with_memory(&mut memory, &[opcode], before);
-
-            assert_eq!(memory[0xEFFE..0xF000], bytes, "opcode {opcode:#04X}");
+            assert_eq!(pushed, bytes, "opcode {opcode:#04X}");
             let after = Registers {
                 sp: 0xEFFE,
                 pc: 0x0101,
@@ -2392,6 +2526,77 @@ mod tests {
 
         for (opcode, result, cycles) in cases {
             assert_alu_result(&[opcode, 0x03], true, result, cycles);
+        }
+    }
+
+    #[test]
+    fn rst_calls_fixed_address() {
+        // Each case: an opcode and the address it calls, 8 × n. The return
+        // address 0101H lands below SP = F000H.
+        let cases = [
+            (0xC7, 0x0000), // RST 0
+            (0xCF, 0x0008), // RST 1
+            (0xD7, 0x0010), // RST 2
+            (0xDF, 0x0018), // RST 3
+            (0xE7, 0x0020), // RST 4
+            (0xEF, 0x0028), // RST 5
+            (0xF7, 0x0030), // RST 6
+            (0xFF, 0x0038), // RST 7
+        ];
+
+        for (opcode, address) in cases {
+            let before = distinct_registers();
+
+            let (cpu, pushed, cycles) = run_with_stack(&[opcode], before, [0, 0]);
+
+            let after = Registers {
+                pc: address,
+                sp: 0xEFFE,
+                ..before
+            };
+            assert_eq!(cpu.registers, after, "opcode {opcode:#04X}");
+            assert_eq!(pushed, [0x01, 0x01], "opcode {opcode:#04X}");
+            assert_eq!(cycles, cycles::RST, "opcode {opcode:#04X}");
+        }
+    }
+
+    #[test]
+    fn ret_pops_return_address() {
+        // C9H is RET, and D9H is its undocumented copy. The stack at F000H
+        // holds the return address 1234H.
+        for opcode in [0xC9, 0xD9] {
+            let before = distinct_registers();
+
+            let (cpu, _, cycles) = run_with_stack(&[opcode], before, [0x34, 0x12]);
+
+            let after = Registers {
+                pc: 0x1234,
+                sp: 0xF002,
+                ..before
+            };
+            assert_eq!(cpu.registers, after, "opcode {opcode:#04X}");
+            assert_eq!(cycles, cycles::RET, "opcode {opcode:#04X}");
+        }
+    }
+
+    #[test]
+    fn call_pushes_return_address_and_jumps() {
+        // CDH is CALL, and DDH, EDH and FDH are its undocumented copies.
+        // CALL 2000H at 0100H pushes the return address 0103H below
+        // SP = F000H.
+        for opcode in [0xCD, 0xDD, 0xED, 0xFD] {
+            let before = distinct_registers();
+
+            let (cpu, pushed, cycles) = run_with_stack(&[opcode, 0x00, 0x20], before, [0, 0]);
+
+            let after = Registers {
+                pc: 0x2000,
+                sp: 0xEFFE,
+                ..before
+            };
+            assert_eq!(cpu.registers, after, "opcode {opcode:#04X}");
+            assert_eq!(pushed, [0x03, 0x01], "opcode {opcode:#04X}");
+            assert_eq!(cycles, cycles::CALL, "opcode {opcode:#04X}");
         }
     }
 
@@ -2514,8 +2719,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "opcode 0xCD is not supported yet")]
+    #[should_panic(expected = "opcode 0xD3 is not supported yet")]
     fn unsupported_opcode_panics() {
-        run(&[0xCD, 0x00, 0x00], distinct_registers()); // CALL 0000H, not implemented yet
+        run(&[0xD3, 0x00], distinct_registers()); // OUT 00H, not implemented yet
     }
 }

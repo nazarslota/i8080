@@ -11,9 +11,12 @@
 //! # References
 //!
 //! The [Intel 8080 Microcomputer Systems User's Manual] (September 1975)
-//! describes every instruction with its cycle count, and we follow it.
+//! describes every instruction with its cycle count, and we follow it. The
+//! manual leaves out the undocumented copies of `NOP`, `JMP`, `CALL` and
+//! `RET`. The [8080 opcode table] lists them.
 //!
 //! [Intel 8080 Microcomputer Systems User's Manual]: https://bitsavers.org/components/intel/MCS80/98-153B_Intel_8080_Microcomputer_Systems_Users_Manual_197509.pdf
+//! [8080 opcode table]: https://pastraiser.com/cpu/i8080/i8080_opcodes.html
 //!
 //! # Status
 //!

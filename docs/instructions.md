@@ -89,11 +89,11 @@ applies when the condition holds.
 |-------------|-------|---------|-------|--------------------------------------------|--------|
 | `JMP nn`    | 3     | 10      | none  | Jumps to `nn`                              | ✅     |
 | `Jcc nn`    | 3     | 10      | none  | Jumps to `nn` if condition `cc` holds      | ✅     |
-| `CALL nn`   | 3     | 17      | none  | Pushes `PC` and jumps to `nn`              | ⬜     |
-| `Ccc nn`    | 3     | 17 / 11 | none  | Calls `nn` if condition `cc` holds         | ⬜     |
-| `RET`       | 1     | 10      | none  | Pops `PC`, returning from a call           | ⬜     |
-| `Rcc`       | 1     | 11 / 5  | none  | Returns if condition `cc` holds            | ⬜     |
-| `RST n`     | 1     | 11      | none  | Calls address `8 × n`, for `n` from 0 to 7 | ⬜     |
+| `CALL nn`   | 3     | 17      | none  | Pushes `PC` and jumps to `nn`              | ✅     |
+| `Ccc nn`    | 3     | 17 / 11 | none  | Calls `nn` if condition `cc` holds         | ✅     |
+| `RET`       | 1     | 10      | none  | Pops `PC`, returning from a call           | ✅     |
+| `Rcc`       | 1     | 11 / 5  | none  | Returns if condition `cc` holds            | ✅     |
+| `RST n`     | 1     | 11      | none  | Calls address `8 × n`, for `n` from 0 to 7 | ✅     |
 | `PCHL`      | 1     | 5       | none  | Jumps to the address in `HL`               | ✅     |
 
 ### Stack, I/O and machine control
@@ -1085,7 +1085,7 @@ or `ORA A`, which clears `CY` and sets the other flags from `A`.
 
 `DAA` · opcode `27H` · 1 byte · 4 cycles · flags: S Z AC P CY
 
-`DAA` turns the binary sum of two BCD bytes into a BCD byte. In BCD
+`DAA` turns the binary sum of two BCD bytes into a BCD byte. In BCD 
 (binary-coded decimal) each 4-bit half of a byte holds one decimal digit,
 0 to 9: `42H` means 42. Programs that show numbers on 7-segment displays,
 such as calculators and clocks, kept them in BCD.
@@ -1143,6 +1143,8 @@ assembles to `C3 10 01`.
 |-------------|---------|-------|
 | `JMP 0110H` | `0110H` | `00H` |
 | `MVI A,02H` | `0112H` | `02H` |
+
+The 8080 also runs `CBH` as `JMP`. Intel never documented it.
 
 ### Jcc: jump if a condition holds
 
@@ -1220,19 +1222,19 @@ the high byte at `SP + 1` and the low byte at `SP`. Programs set `SP` once
 with `LXI SP` and then save registers with `PUSH` and restore them with
 `POP`.
 
-| Instruction | Opcode | Stores                     |
-|-------------|--------|----------------------------|
-| `PUSH B`    | `C5H`  | `B`, then `C`              |
-| `PUSH D`    | `D5H`  | `D`, then `E`              |
-| `PUSH H`    | `E5H`  | `H`, then `L`              |
-| `PUSH PSW`  | `F5H`  | `A`, then the flags byte   |
+| Instruction | Opcode | Stores                   |
+|-------------|--------|--------------------------|
+| `PUSH B`    | `C5H`  | `B`, then `C`            |
+| `PUSH D`    | `D5H`  | `D`, then `E`            |
+| `PUSH H`    | `E5H`  | `H`, then `L`            |
+| `PUSH PSW`  | `F5H`  | `A`, then the flags byte |
 
 Code `11` means `PSW` here, the program status word: `A` and the flags.
 `PUSH SP` doesn't exist. The flags byte packs the five flags like this:
 
-| Bit  | 7   | 6   | 5   | 4    | 3   | 2   | 1   | 0    |
-|------|-----|-----|-----|------|-----|-----|-----|------|
-| Flag | `S` | `Z` | 0   | `AC` | 0   | `P` | 1   | `CY` |
+| Bit  | 7   | 6   | 5 | 4    | 3 | 2   | 1 | 0    |
+|------|-----|-----|---|------|---|-----|---|------|
+| Flag | `S` | `Z` | 0 | `AC` | 0 | `P` | 1 | `CY` |
 
 Bits 5 and 3 are always 0 and bit 1 is always 1. With `Z`, `AC`, `P` and
 `CY` at 1, the flags byte is `57H`.
@@ -1266,12 +1268,12 @@ into another pair.
 `SP` and the high byte from `SP + 1`, and raises `SP` by 2. It undoes a
 `PUSH`.
 
-| Instruction | Opcode | Loads                      |
-|-------------|--------|----------------------------|
-| `POP B`     | `C1H`  | `C`, then `B`              |
-| `POP D`     | `D1H`  | `E`, then `D`              |
-| `POP H`     | `E1H`  | `L`, then `H`              |
-| `POP PSW`   | `F1H`  | the flags byte, then `A`   |
+| Instruction | Opcode | Loads                    |
+|-------------|--------|--------------------------|
+| `POP B`     | `C1H`  | `C`, then `B`            |
+| `POP D`     | `D1H`  | `E`, then `D`            |
+| `POP H`     | `E1H`  | `L`, then `H`            |
+| `POP PSW`   | `F1H`  | the flags byte, then `A` |
 
 `POP PSW` sets all five flags from the flags byte and ignores bits 5, 3
 and 1.
@@ -1333,3 +1335,162 @@ The example repeats the one from the Intel manual.
 |---------------|---------|---------|---------|
 | `LXI H,506CH` | `0103H` | `0000H` | `506CH` |
 | `SPHL`        | `0104H` | `506CH` | `506CH` |
+
+### CALL: call a subroutine
+
+`CALL nn` · opcode `CDH` · 3 bytes · 17 cycles · flags: none
+
+`CALL` pushes the return address, the address of the instruction after the
+`CALL`, onto the stack and jumps to `nn`. The subroutine at `nn` ends with
+`RET`, which pops the return address back into `PC`. Since the return
+address sits on the stack, a subroutine can call another one.
+
+The 8080 also runs `DDH`, `EDH` and `FDH` as `CALL`. Intel never documented
+them.
+
+```asm
+0100H   LXI  SP,0F000H ; SP = F000H                   bytes: 31 00 F0
+0103H   CALL 0110H    ; push 0106H, PC = 0110H        bytes: CD 10 01
+0106H   HLT           ; runs after the RET            bytes: 76
+        ...
+0110H   MVI  A,42H    ; A = 42H                       bytes: 3E 42
+0112H   RET           ; pop PC = 0106H                bytes: C9
+```
+
+| After           | `PC`    | `SP`    | `A`   | `memory[EFFEH]` | `memory[EFFFH]` |
+|-----------------|---------|---------|-------|-----------------|-----------------|
+| `LXI SP,0F000H` | `0103H` | `F000H` | `00H` | `00H`           | `00H`           |
+| `CALL 0110H`    | `0110H` | `EFFEH` | `00H` | `06H`           | `01H`           |
+| `MVI A,42H`     | `0112H` | `EFFEH` | `42H` | `06H`           | `01H`           |
+| `RET`           | `0106H` | `F000H` | `42H` | `06H`           | `01H`           |
+| `HLT`           | `0107H` | `F000H` | `42H` | `06H`           | `01H`           |
+
+### Ccc: call if a condition holds
+
+`Ccc nn` · opcode `11 ccc 100` · 3 bytes · 17 cycles if it calls, 11 if not
+· flags: none
+
+`Ccc` calls `nn` if condition `cc` holds, the way `CALL` does. Otherwise
+the CPU goes on to the next instruction. The conditions and their codes
+match `Jcc`. A call that doesn't happen skips the two stack writes, so it
+takes 11 cycles instead of 17.
+
+| Instruction | Opcode | Calls when | Instruction | Opcode | Calls when |
+|-------------|--------|------------|-------------|--------|------------|
+| `CNZ nn`    | `C4H`  | `Z = 0`    | `CPO nn`    | `E4H`  | `P = 0`    |
+| `CZ nn`     | `CCH`  | `Z = 1`    | `CPE nn`    | `ECH`  | `P = 1`    |
+| `CNC nn`    | `D4H`  | `CY = 0`   | `CP nn`     | `F4H`  | `S = 0`    |
+| `CC nn`     | `DCH`  | `CY = 1`   | `CM nn`     | `FCH`  | `S = 1`    |
+
+```asm
+0100H   LXI  SP,0F000H ; SP = F000H                   bytes: 31 00 F0
+0103H   MVI  A,0F0H   ; A = F0H                       bytes: 3E F0
+0105H   ADI  20H      ; A = F0H + 20H = 10H, CY = 1   bytes: C6 20
+0107H   CC   0110H    ; CY = 1, so call 0110H         bytes: DC 10 01
+010AH   HLT           ; runs after the RET            bytes: 76
+        ...
+0110H   INR  B        ; B = B + 1                     bytes: 04
+0111H   RET           ; pop PC = 010AH                bytes: C9
+```
+
+| After           | `PC`    | `SP`    | `A`   | `B`   | `CY` |
+|-----------------|---------|---------|-------|-------|------|
+| `LXI SP,0F000H` | `0103H` | `F000H` | `00H` | `00H` | 0    |
+| `MVI A,0F0H`    | `0105H` | `F000H` | `F0H` | `00H` | 0    |
+| `ADI 20H`       | `0107H` | `F000H` | `10H` | `00H` | 1    |
+| `CC 0110H`      | `0110H` | `EFFEH` | `10H` | `00H` | 1    |
+| `INR B`         | `0111H` | `EFFEH` | `10H` | `01H` | 1    |
+| `RET`           | `010AH` | `F000H` | `10H` | `01H` | 1    |
+| `HLT`           | `010BH` | `F000H` | `10H` | `01H` | 1    |
+
+### RET: return from a subroutine
+
+`RET` · opcode `C9H` · 1 byte · 10 cycles · flags: none
+
+`RET` pops the two bytes at `SP` into `PC`, so the CPU continues after the
+`CALL` that pushed them. The section on [`CALL`](#call-call-a-subroutine)
+shows a full call and return.
+
+The 8080 also runs `D9H` as `RET`. Intel never documented it.
+
+Memory at `EFFEH` holds `06H` and at `EFFFH` holds `01H` before the
+program runs, as a `CALL` at `0103H` would leave them.
+
+```asm
+0100H   LXI  SP,0EFFEH ; SP = EFFEH                   bytes: 31 FE EF
+0103H   RET           ; pop PC = 0106H                bytes: C9
+```
+
+| After           | `PC`    | `SP`    |
+|-----------------|---------|---------|
+| `LXI SP,0EFFEH` | `0103H` | `EFFEH` |
+| `RET`           | `0106H` | `F000H` |
+
+### Rcc: return if a condition holds
+
+`Rcc` · opcode `11 ccc 000` · 1 byte · 11 cycles if it returns, 5 if not ·
+flags: none
+
+`Rcc` returns if condition `cc` holds, the way `RET` does. Otherwise the CPU
+goes on to the next instruction. A subroutine uses it to leave early. The
+conditions and their codes match `Jcc`.
+
+| Instruction | Opcode | Returns when | Instruction | Opcode | Returns when |
+|-------------|--------|--------------|-------------|--------|--------------|
+| `RNZ`       | `C0H`  | `Z = 0`      | `RPO`       | `E0H`  | `P = 0`      |
+| `RZ`        | `C8H`  | `Z = 1`      | `RPE`       | `E8H`  | `P = 1`      |
+| `RNC`       | `D0H`  | `CY = 0`     | `RP`        | `F0H`  | `S = 0`      |
+| `RC`        | `D8H`  | `CY = 1`     | `RM`        | `F8H`  | `S = 1`      |
+
+The subroutine below returns early when `A` is 0, so `MVI B,01H` never
+runs.
+
+```asm
+0100H   LXI  SP,0F000H ; SP = F000H                   bytes: 31 00 F0
+0103H   MVI  A,00H    ; A = 00H                       bytes: 3E 00
+0105H   CALL 0110H    ; push 0108H, PC = 0110H        bytes: CD 10 01
+0108H   HLT           ; runs after the RZ             bytes: 76
+        ...
+0110H   ORA  A        ; Z = 1, since A = 0            bytes: B7
+0111H   RZ            ; Z = 1, so pop PC = 0108H      bytes: C8
+0112H   MVI  B,01H    ; skipped                       bytes: 06 01
+0114H   RET                                           bytes: C9
+```
+
+| After           | `PC`    | `SP`    | `B`   | `Z` |
+|-----------------|---------|---------|-------|-----|
+| `LXI SP,0F000H` | `0103H` | `F000H` | `00H` | 0   |
+| `MVI A,00H`     | `0105H` | `F000H` | `00H` | 0   |
+| `CALL 0110H`    | `0110H` | `EFFEH` | `00H` | 0   |
+| `ORA A`         | `0111H` | `EFFEH` | `00H` | 1   |
+| `RZ`            | `0108H` | `F000H` | `00H` | 1   |
+| `HLT`           | `0109H` | `F000H` | `00H` | 1   |
+
+### RST: restart
+
+`RST n` · opcode `11 nnn 111` · 1 byte · 11 cycles · flags: none
+
+`RST n` calls the subroutine at address `8 × n`, for `n` from 0 to 7. It
+works like a one-byte `CALL` to one of eight fixed addresses.
+
+| Instruction | Opcode | Calls   | Instruction | Opcode | Calls   |
+|-------------|--------|---------|-------------|--------|---------|
+| `RST 0`     | `C7H`  | `0000H` | `RST 4`     | `E7H`  | `0020H` |
+| `RST 1`     | `CFH`  | `0008H` | `RST 5`     | `EFH`  | `0028H` |
+| `RST 2`     | `D7H`  | `0010H` | `RST 6`     | `F7H`  | `0030H` |
+| `RST 3`     | `DFH`  | `0018H` | `RST 7`     | `FFH`  | `0038H` |
+
+Interrupts use `RST`: a device that wants the CPU's attention puts an `RST`
+opcode on the data bus, and the CPU runs it in place of the next
+instruction. Each device gets its own handler at one of the eight
+addresses. `RST 0` jumps to `0000H`, where the CPU starts after a reset.
+
+```asm
+0100H   LXI  SP,0F000H ; SP = F000H                   bytes: 31 00 F0
+0103H   RST  3        ; push 0104H, PC = 0018H        bytes: DF
+```
+
+| After           | `PC`    | `SP`    | `memory[EFFEH]` | `memory[EFFFH]` |
+|-----------------|---------|---------|-----------------|-----------------|
+| `LXI SP,0F000H` | `0103H` | `F000H` | `00H`           | `00H`           |
+| `RST 3`         | `0018H` | `EFFEH` | `04H`           | `01H`           |

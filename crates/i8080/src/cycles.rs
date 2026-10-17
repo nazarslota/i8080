@@ -129,6 +129,11 @@ pub(crate) const CMP: u32 = 4;
 /// `CMP M`: `CMP` plus a memory read.
 pub(crate) const CMP_M: u32 = 7;
 
+/// `Rcc` when the condition fails.
+pub(crate) const RCC: u32 = 5;
+/// `Rcc` when the condition holds: `RCC` plus two reads from the stack.
+pub(crate) const RCC_TAKEN: u32 = 11;
+
 /// `POP rp`: opcode fetch plus two reads from the stack.
 pub(crate) const POP: u32 = 10;
 
@@ -138,11 +143,27 @@ pub(crate) const JCC: u32 = 10;
 /// `JMP nn`: opcode fetch plus two reads for the address.
 pub(crate) const JMP: u32 = 10;
 
+/// `Ccc nn` when the condition fails: opcode fetch plus two reads for the
+/// address.
+pub(crate) const CCC: u32 = 11;
+/// `Ccc nn` when the condition holds: `CCC` plus two writes to the stack.
+pub(crate) const CCC_TAKEN: u32 = 17;
+
 /// `PUSH rp`: opcode fetch plus two writes to the stack.
 pub(crate) const PUSH: u32 = 11;
 
 /// `ADI n`: opcode fetch plus one read for the constant.
 pub(crate) const ADI: u32 = 7;
+
+/// `RST n`: opcode fetch plus two writes to the stack.
+pub(crate) const RST: u32 = 11;
+
+/// `RET`: opcode fetch plus two reads from the stack.
+pub(crate) const RET: u32 = 10;
+
+/// `CALL nn`: opcode fetch, two reads for the address, two writes to the
+/// stack.
+pub(crate) const CALL: u32 = 17;
 
 /// `ACI n`: opcode fetch plus one read for the constant.
 pub(crate) const ACI: u32 = 7;

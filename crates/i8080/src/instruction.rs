@@ -68,16 +68,27 @@ pub(crate) enum Instruction {
     Ora { src: Operand8 },
     /// `CMP src`: sets the flags from `A - src` and leaves `A` as it was.
     Cmp { src: Operand8 },
+    /// `Rcc`: returns from a subroutine if `condition` holds.
+    Rcc { condition: Condition },
     /// `POP dst`: loads `dst` from the top of the stack.
     Pop { dst: StackOperand },
     /// `Jcc address`: jumps to `address` if `condition` holds.
     Jcc { condition: Condition, address: u16 },
     /// `JMP address`: jumps to `address`.
     Jmp { address: u16 },
+    /// `Ccc address`: calls the subroutine at `address` if `condition`
+    /// holds.
+    Ccc { condition: Condition, address: u16 },
     /// `PUSH src`: stores `src` on top of the stack.
     Push { src: StackOperand },
     /// `ADI value`: adds a constant to `A`.
     Adi { value: u8 },
+    /// `RST n`: calls the subroutine at `address`, which is `8 × n`.
+    Rst { address: u16 },
+    /// `RET`: returns from a subroutine.
+    Ret,
+    /// `CALL address`: calls the subroutine at `address`.
+    Call { address: u16 },
     /// `ACI value`: adds a constant and the carry flag to `A`.
     Aci { value: u8 },
     /// `SUI value`: subtracts a constant from `A`.
@@ -180,6 +191,7 @@ impl Instruction {
             0xA8..=0xAF => Self::Xra { src: sss },
             0xB0..=0xB7 => Self::Ora { src: sss },
             0xB8..=0xBF => Self::Cmp { src: sss },
+            0xC0 | 0xC8 | 0xD0 | 0xD8 | 0xE0 | 0xE8 | 0xF0 | 0xF8 => Self::Rcc { condition: ccc },
             0xC1 | 0xD1 | 0xE1 | 0xF1 => Self::Pop {
                 dst: StackOperand::from_code(opcode >> 4),
             },
@@ -187,13 +199,29 @@ impl Instruction {
                 condition: ccc,
                 address: next_word(&mut next_byte),
             },
-            0xC3 => Self::Jmp {
+            // CBH is an undocumented copy of JMP.
+            0xC3 | 0xCB => Self::Jmp {
+                address: next_word(&mut next_byte),
+            },
+            0xC4 | 0xCC | 0xD4 | 0xDC | 0xE4 | 0xEC | 0xF4 | 0xFC => Self::Ccc {
+                condition: ccc,
                 address: next_word(&mut next_byte),
             },
             0xC5 | 0xD5 | 0xE5 | 0xF5 => Self::Push {
                 src: StackOperand::from_code(opcode >> 4),
             },
             0xC6 => Self::Adi { value: next_byte() },
+            // RST n: 11 nnn 111. The bits nnn sit at bits 5-3, so masking
+            // them out of the opcode gives 8 × n.
+            0xC7 | 0xCF | 0xD7 | 0xDF | 0xE7 | 0xEF | 0xF7 | 0xFF => Self::Rst {
+                address: u16::from(opcode & 0b0011_1000),
+            },
+            // D9H is an undocumented copy of RET.
+            0xC9 | 0xD9 => Self::Ret,
+            // DDH, EDH and FDH are undocumented copies of CALL.
+            0xCD | 0xDD | 0xED | 0xFD => Self::Call {
+                address: next_word(&mut next_byte),
+            },
             0xCE => Self::Aci { value: next_byte() },
             0xD6 => Self::Sui { value: next_byte() },
             0xDE => Self::Sbi { value: next_byte() },
