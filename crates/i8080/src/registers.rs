@@ -1,4 +1,6 @@
-/// The 8080 registers that programs can see, apart from the flags.
+use crate::Flags;
+
+/// The 8080 registers that programs can see, flags included.
 ///
 /// The fields are public: any value is valid in any register, so code that
 /// drives the CPU (tests, a debugger, the Altair front panel) can read and set
@@ -24,6 +26,8 @@ pub struct Registers {
     pub sp: u16,
     /// The program counter: the address of the next instruction to fetch.
     pub pc: u16,
+    /// The condition flags.
+    pub flags: Flags,
 }
 
 /// Register pairs. Each pair joins two 8-bit registers into one 16-bit value,

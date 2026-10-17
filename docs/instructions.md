@@ -48,7 +48,7 @@ applies when the condition holds.
 
 | Instruction | Bytes | Cycles | Flags       | What it does                            | Status |
 |-------------|-------|--------|-------------|-----------------------------------------|--------|
-| `ADD r`     | 1     | 4 / 7  | S Z AC P CY | `A = A + r`                             | ⬜     |
+| `ADD r`     | 1     | 4 / 7  | S Z AC P CY | `A = A + r`                             | ✅     |
 | `ADI n`     | 2     | 7      | S Z AC P CY | `A = A + n`                             | ⬜     |
 | `ADC r`     | 1     | 4 / 7  | S Z AC P CY | `A = A + r + CY`                        | ⬜     |
 | `ACI n`     | 2     | 7      | S Z AC P CY | `A = A + n + CY`                        | ⬜     |
@@ -241,3 +241,49 @@ Intel placed `HLT` in the slot where `MOV M,M` would sit, `01 110 110`.
 | next step   | `0103H` | `07H` | yes    |
 
 **Emulator status:** nothing wakes the CPU yet. Interrupts come later.
+
+### ADD: add to the accumulator
+
+`ADD src` · opcode `10 000 sss` · 1 byte · 4 cycles (7 with `M`) ·
+flags: S Z AC P CY
+
+`ADD` adds `src` to `A` and keeps the low 8 bits of the sum in `A`. With
+`M` as the source, the CPU reads the byte at the address in `HL`.
+
+| Instruction | Opcode | Instruction | Opcode |
+|-------------|--------|-------------|--------|
+| `ADD B`     | `80H`  | `ADD H`     | `84H`  |
+| `ADD C`     | `81H`  | `ADD L`     | `85H`  |
+| `ADD D`     | `82H`  | `ADD M`     | `86H`  |
+| `ADD E`     | `83H`  | `ADD A`     | `87H`  |
+
+`ADD` sets all five flags from the result:
+
+| Flag | Set to 1 when                                          |
+|------|--------------------------------------------------------|
+| `S`  | bit 7 of the result is 1                               |
+| `Z`  | the result is `00H`                                    |
+| `AC` | the low 4 bits of the operands sum to more than `0FH`  |
+| `P`  | the result has an even number of 1 bits                |
+| `CY` | the full sum doesn't fit in 8 bits                     |
+
+The first `ADD` below repeats the example from the Intel manual. `ADD A`
+doubles `A`.
+
+```asm
+0100H   MVI  A,6CH   ; A = 6CH                        bytes: 3E 6C
+0102H   MVI  D,2EH   ; D = 2EH                        bytes: 16 2E
+0104H   ADD  D       ; A = 6CH + 2EH = 9AH            bytes: 82
+0105H   ADD  A       ; 9AH + 9AH = 134H: A = 34H      bytes: 87
+```
+
+| After       | `PC`    | `A`   | `D`   | `S` | `Z` | `AC` | `P` | `CY` |
+|-------------|---------|-------|-------|-----|-----|------|-----|------|
+| `MVI A,6CH` | `0102H` | `6CH` | `00H` | 0   | 0   | 0    | 0   | 0    |
+| `MVI D,2EH` | `0104H` | `6CH` | `2EH` | 0   | 0   | 0    | 0   | 0    |
+| `ADD D`     | `0105H` | `9AH` | `2EH` | 1   | 0   | 1    | 1   | 0    |
+| `ADD A`     | `0106H` | `34H` | `2EH` | 0   | 0   | 1    | 0   | 1    |
+
+In `ADD D`, `CH + EH = 1AH` carries out of the low 4 bits, so `AC` is 1.
+`9AH` is `1001 1010`: bit 7 gives `S`, and four 1 bits give `P`. In `ADD A`,
+the sum `134H` needs 9 bits, so `CY` is 1 and `A` keeps `34H`.

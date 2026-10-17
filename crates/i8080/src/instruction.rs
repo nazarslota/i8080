@@ -9,6 +9,8 @@ pub(crate) enum Instruction {
     Mov { dst: Operand, src: Operand },
     /// `HLT`: stops the CPU until an interrupt or a reset.
     Hlt,
+    /// `ADD src`: adds `src` to `A`.
+    Add { src: Operand },
 }
 
 impl Instruction {
@@ -52,6 +54,10 @@ impl Instruction {
             // MOV ddd,sss: 01 ddd sss
             (0b01, ddd, sss) => Self::Mov {
                 dst: Operand::from_code(ddd),
+                src: Operand::from_code(sss),
+            },
+            // ADD sss: 10 000 sss
+            (0b10, 0b000, sss) => Self::Add {
                 src: Operand::from_code(sss),
             },
             _ => unimplemented!("opcode {opcode:#04X} is not supported yet"),

@@ -1,6 +1,6 @@
 use crate::cycles::{self, HALTED_STEP_CYCLES};
 use crate::instruction::{Instruction, Operand};
-use crate::{MemoryBus, Registers};
+use crate::{Flags, MemoryBus, Registers};
 
 /// The Intel 8080 processor.
 ///
@@ -63,6 +63,7 @@ impl Cpu {
             Instruction::Mvi { dst, value } => self.mvi(memory, dst, value),
             Instruction::Mov { dst, src } => self.mov(memory, dst, src),
             Instruction::Hlt => self.hlt(),
+            Instruction::Add { src } => self.add(memory, src),
         }
     }
 
@@ -91,6 +92,28 @@ impl Cpu {
     fn hlt(&mut self) -> u32 {
         self.halted = true;
         cycles::HLT
+    }
+
+    /// `ADD src`: adds a register or `M` to `A` and sets every flag.
+    fn add(&mut self, memory: &mut impl MemoryBus, src: Operand) -> u32 {
+        let a = self.registers.a;
+        let value = self.read_operand(memory, src);
+        let (result, carry) = a.overflowing_add(value);
+
+        self.registers.a = result;
+        self.registers.flags = Flags {
+            sign: result & 0x80 != 0,
+            zero: result == 0,
+            aux_carry: (a & 0x0F) + (value & 0x0F) > 0x0F,
+            parity: result.count_ones() % 2 == 0,
+            carry,
+        };
+
+        if src == Operand::M {
+            cycles::ADD_M
+        } else {
+            cycles::ADD
+        }
     }
 
     /// Reads an 8-bit operand. `M` reads memory at the address in `HL`.
@@ -148,6 +171,7 @@ mod tests {
             l: 0x02,
             sp: 0xF000,
             pc: 0x0100,
+            flags: Flags::default(),
         }
     }
 
@@ -396,10 +420,132 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "opcode 0x80 is not supported yet")]
+    fn add_adds_register_to_a() {
+        // Opcodes from the Intel manual, each with the sum it should leave
+        // in A. A starts at 0AH.
+        let cases = [
+            (0x80, 0x0A + 0x0B), // ADD B
+            (0x81, 0x0A + 0x0C), // ADD C
+            (0x82, 0x0A + 0x0D), // ADD D
+            (0x83, 0x0A + 0x0E), // ADD E
+            (0x84, 0x0A + 0x01), // ADD H
+            (0x85, 0x0A + 0x02), // ADD L
+            (0x87, 0x0A + 0x0A), // ADD A
+        ];
+
+        for (opcode, sum) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0x0100] = opcode;
+            let mut cpu = Cpu::new();
+            cpu.registers = distinct_registers();
+
+            let cycles = cpu.step(&mut memory);
+
+            assert_eq!(cpu.registers.a, sum, "opcode {opcode:#04X}");
+            assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
+            assert_eq!(cycles, cycles::ADD, "opcode {opcode:#04X}");
+        }
+    }
+
+    #[test]
+    fn add_m_adds_memory_at_hl() {
+        let mut memory = [0u8; 0x10000];
+        memory[0x0100] = 0x86; // ADD M
+        memory[0x2000] = 0x05;
+        let mut cpu = Cpu::new();
+        cpu.registers = Registers {
+            a: 0x10,
+            h: 0x20,
+            l: 0x00,
+            ..distinct_registers()
+        };
+
+        let cycles = cpu.step(&mut memory);
+
+        assert_eq!(cpu.registers.a, 0x15);
+        assert_eq!(cycles, cycles::ADD_M);
+    }
+
+    #[test]
+    fn add_sets_flags_from_result() {
+        // Each case: A, B, the sum and the flags it should leave behind. The
+        // CPU starts with every flag set, so a flag that should clear does.
+        let none = Flags::default();
+        let cases = [
+            (0x12, 0x34, 0x46, none), // 0100 0110: three 1 bits, odd parity
+            (0x70, 0x10, 0x80, Flags { sign: true, ..none }),
+            (
+                0x0F,
+                0x01,
+                0x10,
+                Flags {
+                    aux_carry: true,
+                    ..none
+                },
+            ),
+            (
+                0x01,
+                0x02,
+                0x03,
+                Flags {
+                    parity: true,
+                    ..none
+                },
+            ),
+            (
+                0x80,
+                0x80,
+                0x00,
+                Flags {
+                    zero: true,
+                    parity: true,
+                    carry: true,
+                    ..none
+                },
+            ),
+            // The ADD example from the Intel manual: 6CH + 2EH = 9AH.
+            (
+                0x6C,
+                0x2E,
+                0x9A,
+                Flags {
+                    sign: true,
+                    aux_carry: true,
+                    parity: true,
+                    ..none
+                },
+            ),
+        ];
+
+        for (a, b, sum, flags) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0x0100] = 0x80; // ADD B
+            let mut cpu = Cpu::new();
+            cpu.registers = Registers {
+                a,
+                b,
+                flags: Flags {
+                    sign: true,
+                    zero: true,
+                    aux_carry: true,
+                    parity: true,
+                    carry: true,
+                },
+                ..distinct_registers()
+            };
+
+            cpu.step(&mut memory);
+
+            assert_eq!(cpu.registers.a, sum, "{a:#04X} + {b:#04X}");
+            assert_eq!(cpu.registers.flags, flags, "{a:#04X} + {b:#04X}");
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "opcode 0x88 is not supported yet")]
     fn unsupported_opcode_panics() {
         let mut memory = [0u8; 0x10000];
-        memory[0] = 0x80; // ADD B, not implemented yet
+        memory[0] = 0x88; // ADC B, not implemented yet
         let mut cpu = Cpu::new();
 
         cpu.step(&mut memory);

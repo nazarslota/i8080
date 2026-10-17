@@ -17,18 +17,20 @@
 //!
 //! # Status
 //!
-//! Work in progress: the CPU runs `NOP`, `MVI`, `MOV` and `HLT` and panics on
-//! every other opcode.
+//! Work in progress: the CPU runs `NOP`, `MVI`, `MOV`, `HLT` and `ADD` and
+//! panics on every other opcode.
 
 #![no_std]
 
 mod bus;
 mod cpu;
 mod cycles;
+mod flags;
 mod instruction;
 mod registers;
 
 pub use bus::{IoBus, MemoryBus, Unconnected};
 pub use cpu::Cpu;
 pub use cycles::HALTED_STEP_CYCLES;
+pub use flags::Flags;
 pub use registers::Registers;

@@ -22,6 +22,11 @@ pub(crate) const MOV: u32 = 5;
 /// transfer.
 pub(crate) const MOV_M: u32 = 7;
 
+/// `ADD r`.
+pub(crate) const ADD: u32 = 4;
+/// `ADD M`: `ADD` plus a memory read.
+pub(crate) const ADD_M: u32 = 7;
+
 /// `HLT`.
 pub(crate) const HLT: u32 = 7;
 
