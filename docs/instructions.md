@@ -49,13 +49,13 @@ applies when the condition holds.
 | Instruction | Bytes | Cycles | Flags       | What it does                            | Status |
 |-------------|-------|--------|-------------|-----------------------------------------|--------|
 | `ADD r`     | 1     | 4 / 7  | S Z AC P CY | `A = A + r`                             | ✅     |
-| `ADI n`     | 2     | 7      | S Z AC P CY | `A = A + n`                             | ⬜     |
+| `ADI n`     | 2     | 7      | S Z AC P CY | `A = A + n`                             | ✅     |
 | `ADC r`     | 1     | 4 / 7  | S Z AC P CY | `A = A + r + CY`                        | ✅     |
-| `ACI n`     | 2     | 7      | S Z AC P CY | `A = A + n + CY`                        | ⬜     |
+| `ACI n`     | 2     | 7      | S Z AC P CY | `A = A + n + CY`                        | ✅     |
 | `SUB r`     | 1     | 4 / 7  | S Z AC P CY | `A = A - r`                             | ✅     |
-| `SUI n`     | 2     | 7      | S Z AC P CY | `A = A - n`                             | ⬜     |
+| `SUI n`     | 2     | 7      | S Z AC P CY | `A = A - n`                             | ✅     |
 | `SBB r`     | 1     | 4 / 7  | S Z AC P CY | `A = A - r - CY`                        | ✅     |
-| `SBI n`     | 2     | 7      | S Z AC P CY | `A = A - n - CY`                        | ⬜     |
+| `SBI n`     | 2     | 7      | S Z AC P CY | `A = A - n - CY`                        | ✅     |
 | `INR r`     | 1     | 5 / 10 | S Z AC P    | `r = r + 1`, carry unchanged            | ⬜     |
 | `DCR r`     | 1     | 5 / 10 | S Z AC P    | `r = r - 1`, carry unchanged            | ⬜     |
 | `INX rp`    | 1     | 5      | none        | `rp = rp + 1`                           | ⬜     |
@@ -68,13 +68,13 @@ applies when the condition holds.
 | Instruction | Bytes | Cycles | Flags       | What it does                       | Status |
 |-------------|-------|--------|-------------|------------------------------------|--------|
 | `ANA r`     | 1     | 4 / 7  | S Z AC P CY | `A = A AND r`                      | ✅     |
-| `ANI n`     | 2     | 7      | S Z AC P CY | `A = A AND n`                      | ⬜     |
+| `ANI n`     | 2     | 7      | S Z AC P CY | `A = A AND n`                      | ✅     |
 | `XRA r`     | 1     | 4 / 7  | S Z AC P CY | `A = A XOR r`                      | ✅     |
-| `XRI n`     | 2     | 7      | S Z AC P CY | `A = A XOR n`                      | ⬜     |
+| `XRI n`     | 2     | 7      | S Z AC P CY | `A = A XOR n`                      | ✅     |
 | `ORA r`     | 1     | 4 / 7  | S Z AC P CY | `A = A OR r`                       | ✅     |
-| `ORI n`     | 2     | 7      | S Z AC P CY | `A = A OR n`                       | ⬜     |
+| `ORI n`     | 2     | 7      | S Z AC P CY | `A = A OR n`                       | ✅     |
 | `CMP r`     | 1     | 4 / 7  | S Z AC P CY | Sets flags from `A - r`, keeps `A` | ✅     |
-| `CPI n`     | 2     | 7      | S Z AC P CY | Sets flags from `A - n`, keeps `A` | ⬜     |
+| `CPI n`     | 2     | 7      | S Z AC P CY | Sets flags from `A - n`, keeps `A` | ✅     |
 | `RLC`       | 1     | 4      | CY          | Rotates `A` left, bit 7 into `CY`  | ⬜     |
 | `RRC`       | 1     | 4      | CY          | Rotates `A` right, bit 0 into `CY` | ⬜     |
 | `RAL`       | 1     | 4      | CY          | Rotates `A` left through `CY`      | ⬜     |
@@ -557,3 +557,64 @@ Both `CMP E` below repeat the examples from the Intel manual.
 | `CMP E`     | `0105H` | `0AH` | `05H` | 0   | 0   | 1    | 1   | 0    |
 | `MVI A,02H` | `0107H` | `02H` | `05H` | 0   | 0   | 1    | 1   | 0    |
 | `CMP E`     | `0108H` | `02H` | `05H` | 1   | 0   | 0    | 0   | 1    |
+
+### ADI, ACI, SUI, SBI, ANI, XRI, ORI, CPI: arithmetic and logic with a constant
+
+`ADI n` and the rest · opcode `11 yyy 110` · 2 bytes · 7 cycles ·
+flags: S Z AC P CY
+
+Each of these does what its register twin does, with the byte after the
+opcode in place of `src`. `ADI 03H` adds 3 to `A` the way `ADD B` adds `B`,
+and the flags follow the same rules. The CPU reads the opcode and the
+constant in two memory reads, so each takes 7 cycles, like `MVI`.
+
+| Instruction | Opcode | What it does                       | Register twin                                   |
+|-------------|--------|------------------------------------|-------------------------------------------------|
+| `ADI n`     | `C6H`  | `A = A + n`                        | [`ADD`](#add-add-to-the-accumulator)            |
+| `ACI n`     | `CEH`  | `A = A + n + CY`                   | [`ADC`](#adc-add-with-carry)                    |
+| `SUI n`     | `D6H`  | `A = A - n`                        | [`SUB`](#sub-subtract-from-the-accumulator)     |
+| `SBI n`     | `DEH`  | `A = A - n - CY`                   | [`SBB`](#sbb-subtract-with-borrow)              |
+| `ANI n`     | `E6H`  | `A = A AND n`                      | [`ANA`](#ana-and-with-the-accumulator)          |
+| `XRI n`     | `EEH`  | `A = A XOR n`                      | [`XRA`](#xra-exclusive-or-with-the-accumulator) |
+| `ORI n`     | `F6H`  | `A = A OR n`                       | [`ORA`](#ora-or-with-the-accumulator)           |
+| `CPI n`     | `FEH`  | Sets flags from `A - n`, keeps `A` | [`CMP`](#cmp-compare-with-the-accumulator)      |
+
+The 3 bits `yyy` pick the operation in the same order as in `10 yyy sss`:
+`ADD` is `000`, `CMP` is `111`. That is why the opcodes go up in steps of 8.
+
+Three of them need a closer look:
+
+- `ACI` and `SBI` read `CY` left by the instruction before them. Chained
+  after `ADI` or `SUI`, they add and subtract numbers wider than 8 bits.
+- `CPI` subtracts and throws the difference away. `A` keeps its value, and
+  the flags read the same way as after `CMP`: `Z = 1` means `A` equals `n`,
+  `CY = 1` means `A` is less than `n`.
+- `ANI` sets `AC` to bit 3 of `A OR n`, like `ANA`. Some Intel manuals say
+  `ANI` clears `AC`; the 8080 does not, and 8080EXM checks for that.
+
+The program below runs all eight. Watch `CY` pass from `SUI` to `ACI` and
+from `ACI` to `SBI`.
+
+```asm
+0100H   MVI  A,0AH   ; A = 0AH                           bytes: 3E 0A
+0102H   ADI  03H     ; A = 0AH + 03H = 0DH               bytes: C6 03
+0104H   SUI  0EH     ; A = 0DH - 0EH = FFH, borrow       bytes: D6 0E
+0106H   ACI  01H     ; A = FFH + 01H + CY = 101H: 01H    bytes: CE 01
+0108H   SBI  00H     ; A = 01H - 00H - CY = 00H          bytes: DE 00
+010AH   ORI  0F0H    ; A = 00H OR F0H = F0H              bytes: F6 F0
+010CH   ANI  3CH     ; A = F0H AND 3CH = 30H             bytes: E6 3C
+010EH   XRI  33H     ; A = 30H XOR 33H = 03H             bytes: EE 33
+0110H   CPI  03H     ; A stays 03H, Z = 1: equal         bytes: FE 03
+```
+
+| After       | `PC`    | `A`   | `S` | `Z` | `AC` | `P` | `CY` |
+|-------------|---------|-------|-----|-----|------|-----|------|
+| `MVI A,0AH` | `0102H` | `0AH` | 0   | 0   | 0    | 0   | 0    |
+| `ADI 03H`   | `0104H` | `0DH` | 0   | 0   | 0    | 0   | 0    |
+| `SUI 0EH`   | `0106H` | `FFH` | 1   | 0   | 0    | 1   | 1    |
+| `ACI 01H`   | `0108H` | `01H` | 0   | 0   | 1    | 0   | 1    |
+| `SBI 00H`   | `010AH` | `00H` | 0   | 1   | 1    | 1   | 0    |
+| `ORI 0F0H`  | `010CH` | `F0H` | 1   | 0   | 0    | 1   | 0    |
+| `ANI 3CH`   | `010EH` | `30H` | 0   | 0   | 1    | 1   | 0    |
+| `XRI 33H`   | `0110H` | `03H` | 0   | 0   | 0    | 1   | 0    |
+| `CPI 03H`   | `0112H` | `03H` | 0   | 1   | 1    | 1   | 0    |

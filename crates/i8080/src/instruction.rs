@@ -25,6 +25,23 @@ pub(crate) enum Instruction {
     Ora { src: Operand },
     /// `CMP src`: sets the flags from `A - src` and leaves `A` as it was.
     Cmp { src: Operand },
+    /// `ADI value`: adds a constant to `A`.
+    Adi { value: u8 },
+    /// `ACI value`: adds a constant and the carry flag to `A`.
+    Aci { value: u8 },
+    /// `SUI value`: subtracts a constant from `A`.
+    Sui { value: u8 },
+    /// `SBI value`: subtracts a constant and the carry flag from `A`.
+    Sbi { value: u8 },
+    /// `ANI value`: `A = A AND value`.
+    Ani { value: u8 },
+    /// `XRI value`: `A = A XOR value`.
+    Xri { value: u8 },
+    /// `ORI value`: `A = A OR value`.
+    Ori { value: u8 },
+    /// `CPI value`: sets the flags from `A - value` and leaves `A` as it
+    /// was.
+    Cpi { value: u8 },
 }
 
 impl Instruction {
@@ -102,6 +119,16 @@ impl Instruction {
             (0b10, 0b111, sss) => Self::Cmp {
                 src: Operand::from_code(sss),
             },
+            // The same eight operations with a constant byte after the
+            // opcode: 11 yyy 110.
+            (0b11, 0b000, 0b110) => Self::Adi { value: next_byte() },
+            (0b11, 0b001, 0b110) => Self::Aci { value: next_byte() },
+            (0b11, 0b010, 0b110) => Self::Sui { value: next_byte() },
+            (0b11, 0b011, 0b110) => Self::Sbi { value: next_byte() },
+            (0b11, 0b100, 0b110) => Self::Ani { value: next_byte() },
+            (0b11, 0b101, 0b110) => Self::Xri { value: next_byte() },
+            (0b11, 0b110, 0b110) => Self::Ori { value: next_byte() },
+            (0b11, 0b111, 0b110) => Self::Cpi { value: next_byte() },
             _ => unimplemented!("opcode {opcode:#04X} is not supported yet"),
         }
     }

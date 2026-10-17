@@ -18,8 +18,8 @@
 //! # Status
 //!
 //! Work in progress: the CPU runs `NOP`, `MVI`, `MOV`, `HLT` and the eight
-//! arithmetic and logic instructions from `ADD` to `CMP` (opcodes `80H` to
-//! `BFH`). It panics on every other opcode.
+//! arithmetic and logic operations, with a register or `M` (`ADD` to `CMP`)
+//! and with a constant (`ADI` to `CPI`). It panics on every other opcode.
 
 #![no_std]
 

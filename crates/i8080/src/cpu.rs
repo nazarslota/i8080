@@ -72,6 +72,14 @@ impl Cpu {
             Instruction::Xra { src } => self.xra(memory, src),
             Instruction::Ora { src } => self.ora(memory, src),
             Instruction::Cmp { src } => self.cmp(memory, src),
+            Instruction::Adi { value } => self.adi(value),
+            Instruction::Aci { value } => self.aci(value),
+            Instruction::Sui { value } => self.sui(value),
+            Instruction::Sbi { value } => self.sbi(value),
+            Instruction::Ani { value } => self.ani(value),
+            Instruction::Xri { value } => self.xri(value),
+            Instruction::Ori { value } => self.ori(value),
+            Instruction::Cpi { value } => self.cpi(value),
         }
     }
 
@@ -200,6 +208,57 @@ impl Cpu {
         }
     }
 
+    /// `ADI value`: adds a constant to `A`.
+    fn adi(&mut self, value: u8) -> u32 {
+        (self.registers.a, self.registers.flags) = alu::add(self.registers.a, value, false);
+        cycles::ADI
+    }
+
+    /// `ACI value`: adds a constant and the carry flag to `A`.
+    fn aci(&mut self, value: u8) -> u32 {
+        let carry = self.registers.flags.carry;
+        (self.registers.a, self.registers.flags) = alu::add(self.registers.a, value, carry);
+        cycles::ACI
+    }
+
+    /// `SUI value`: subtracts a constant from `A`.
+    fn sui(&mut self, value: u8) -> u32 {
+        (self.registers.a, self.registers.flags) = alu::subtract(self.registers.a, value, false);
+        cycles::SUI
+    }
+
+    /// `SBI value`: subtracts a constant and the carry flag from `A`.
+    fn sbi(&mut self, value: u8) -> u32 {
+        let carry = self.registers.flags.carry;
+        (self.registers.a, self.registers.flags) = alu::subtract(self.registers.a, value, carry);
+        cycles::SBI
+    }
+
+    /// `ANI value`: `A = A AND value`.
+    fn ani(&mut self, value: u8) -> u32 {
+        (self.registers.a, self.registers.flags) = alu::and(self.registers.a, value);
+        cycles::ANI
+    }
+
+    /// `XRI value`: `A = A XOR value`.
+    fn xri(&mut self, value: u8) -> u32 {
+        (self.registers.a, self.registers.flags) = alu::xor(self.registers.a, value);
+        cycles::XRI
+    }
+
+    /// `ORI value`: `A = A OR value`.
+    fn ori(&mut self, value: u8) -> u32 {
+        (self.registers.a, self.registers.flags) = alu::or(self.registers.a, value);
+        cycles::ORI
+    }
+
+    /// `CPI value`: compares `A` with a constant: sets the flags from
+    /// `A - value` and leaves `A` as it was.
+    fn cpi(&mut self, value: u8) -> u32 {
+        (_, self.registers.flags) = alu::subtract(self.registers.a, value, false);
+        cycles::CPI
+    }
+
     /// Reads an 8-bit operand. `M` reads memory at the address in `HL`.
     fn read_operand(&self, memory: &mut impl MemoryBus, operand: Operand) -> u8 {
         let r = &self.registers;
@@ -295,11 +354,11 @@ mod tests {
         (cpu, cycles)
     }
 
-    /// Runs a one-byte ALU `opcode` on [`distinct_registers`] with the
-    /// carry flag at `carry`. Checks that A ends up at `a`, PC moves one byte
-    /// and the step takes `cycles`.
+    /// Runs one ALU instruction from `program` on [`distinct_registers`] with
+    /// the carry flag at `carry`. Checks that A ends up at `a`, PC moves past
+    /// the instruction and the step takes `cycles`.
     #[track_caller]
-    fn assert_alu_result(opcode: u8, carry: bool, a: u8, cycles: u32) {
+    fn assert_alu_result(program: &[u8], carry: bool, a: u8, cycles: u32) {
         let registers = Registers {
             flags: Flags {
                 carry,
@@ -308,23 +367,25 @@ mod tests {
             ..distinct_registers()
         };
 
-        let (cpu, actual_cycles) = run(&[opcode], registers);
+        let next = registers.pc + program.len() as u16;
 
-        assert_eq!(cpu.registers.a, a, "opcode {opcode:#04X}");
-        assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
-        assert_eq!(actual_cycles, cycles, "opcode {opcode:#04X}");
+        let (cpu, actual_cycles) = run(program, registers);
+
+        assert_eq!(cpu.registers.a, a, "program {program:02X?}");
+        assert_eq!(cpu.registers.pc, next, "program {program:02X?}");
+        assert_eq!(actual_cycles, cycles, "program {program:02X?}");
     }
 
-    /// Runs a one-byte ALU `opcode` with `registers`. Checks that A ends up
-    /// at `a` and the flags at `flags`.
+    /// Runs one ALU instruction from `program` with `registers`. Checks that
+    /// A ends up at `a` and the flags at `flags`.
     #[track_caller]
-    fn assert_alu_flags(opcode: u8, registers: Registers, a: u8, flags: Flags) {
-        let (cpu, _) = run(&[opcode], registers);
+    fn assert_alu_flags(program: &[u8], registers: Registers, a: u8, flags: Flags) {
+        let (cpu, _) = run(program, registers);
 
-        assert_eq!(cpu.registers.a, a, "opcode {opcode:#04X}, {registers:?}");
+        assert_eq!(cpu.registers.a, a, "program {program:02X?}, {registers:?}");
         assert_eq!(
             cpu.registers.flags, flags,
-            "opcode {opcode:#04X}, {registers:?}"
+            "program {program:02X?}, {registers:?}"
         );
     }
 
@@ -562,7 +623,7 @@ mod tests {
         ];
 
         for (opcode, sum) in cases {
-            assert_alu_result(opcode, false, sum, cycles::ADD);
+            assert_alu_result(&[opcode], false, sum, cycles::ADD);
         }
     }
 
@@ -625,7 +686,7 @@ mod tests {
                 ..distinct_registers()
             };
 
-            assert_alu_flags(0x80, registers, sum, flags); // ADD B
+            assert_alu_flags(&[0x80], registers, sum, flags); // ADD B
         }
     }
 
@@ -644,7 +705,7 @@ mod tests {
         ];
 
         for (opcode, carry, sum) in cases {
-            assert_alu_result(opcode, carry, sum, cycles::ADC);
+            assert_alu_result(&[opcode], carry, sum, cycles::ADC);
         }
     }
 
@@ -703,7 +764,7 @@ mod tests {
                 ..distinct_registers()
             };
 
-            assert_alu_flags(0x88, registers, sum, flags); // ADC B
+            assert_alu_flags(&[0x88], registers, sum, flags); // ADC B
         }
     }
 
@@ -722,7 +783,7 @@ mod tests {
         ];
 
         for (opcode, difference) in cases {
-            assert_alu_result(opcode, false, difference, cycles::SUB);
+            assert_alu_result(&[opcode], false, difference, cycles::SUB);
         }
     }
 
@@ -788,7 +849,7 @@ mod tests {
                 ..distinct_registers()
             };
 
-            assert_alu_flags(0x90, registers, difference, flags); // SUB B
+            assert_alu_flags(&[0x90], registers, difference, flags); // SUB B
         }
     }
 
@@ -807,7 +868,7 @@ mod tests {
         ];
 
         for (opcode, carry, difference) in cases {
-            assert_alu_result(opcode, carry, difference, cycles::SBB);
+            assert_alu_result(&[opcode], carry, difference, cycles::SBB);
         }
     }
 
@@ -851,7 +912,7 @@ mod tests {
                 ..distinct_registers()
             };
 
-            assert_alu_flags(0x9D, registers, difference, flags); // SBB L
+            assert_alu_flags(&[0x9D], registers, difference, flags); // SBB L
         }
     }
 
@@ -904,7 +965,7 @@ mod tests {
         ];
 
         for (opcode, result) in cases {
-            assert_alu_result(opcode, false, result, cycles::ANA);
+            assert_alu_result(&[opcode], false, result, cycles::ANA);
         }
     }
 
@@ -949,7 +1010,7 @@ mod tests {
                 ..distinct_registers()
             };
 
-            assert_alu_flags(0xA0, registers, result, flags); // ANA B
+            assert_alu_flags(&[0xA0], registers, result, flags); // ANA B
         }
     }
 
@@ -968,7 +1029,7 @@ mod tests {
         ];
 
         for (opcode, result) in cases {
-            assert_alu_result(opcode, false, result, cycles::XRA);
+            assert_alu_result(&[opcode], false, result, cycles::XRA);
         }
     }
 
@@ -1020,7 +1081,7 @@ mod tests {
                 ..distinct_registers()
             };
 
-            assert_alu_flags(0xA8, registers, result, flags); // XRA B
+            assert_alu_flags(&[0xA8], registers, result, flags); // XRA B
         }
     }
 
@@ -1039,7 +1100,7 @@ mod tests {
         ];
 
         for (opcode, result) in cases {
-            assert_alu_result(opcode, false, result, cycles::ORA);
+            assert_alu_result(&[opcode], false, result, cycles::ORA);
         }
     }
 
@@ -1099,7 +1160,7 @@ mod tests {
                 ..distinct_registers()
             };
 
-            assert_alu_flags(0xB0, registers, result, flags); // ORA B
+            assert_alu_flags(&[0xB0], registers, result, flags); // ORA B
         }
     }
 
@@ -1171,7 +1232,74 @@ mod tests {
                 ..distinct_registers()
             };
 
-            assert_alu_flags(0xBB, registers, a, flags); // CMP E
+            assert_alu_flags(&[0xBB], registers, a, flags); // CMP E
+        }
+    }
+
+    #[test]
+    fn immediate_alu_uses_next_byte() {
+        // Each case: an opcode with the constant 03H after it, the value it
+        // should leave in A and its cycle count. A starts at 0AH and the
+        // carry flag is 1.
+        let cases = [
+            (0xC6, 0x0D, cycles::ADI), // ADI 03H: 0AH + 03H
+            (0xCE, 0x0E, cycles::ACI), // ACI 03H: 0AH + 03H + 1
+            (0xD6, 0x07, cycles::SUI), // SUI 03H: 0AH - 03H
+            (0xDE, 0x06, cycles::SBI), // SBI 03H: 0AH - 03H - 1
+            (0xE6, 0x02, cycles::ANI), // ANI 03H: 0AH AND 03H
+            (0xEE, 0x09, cycles::XRI), // XRI 03H: 0AH XOR 03H
+            (0xF6, 0x0B, cycles::ORI), // ORI 03H: 0AH OR 03H
+            (0xFE, 0x0A, cycles::CPI), // CPI 03H: A stays 0AH
+        ];
+
+        for (opcode, result, cycles) in cases {
+            assert_alu_result(&[opcode, 0x03], true, result, cycles);
+        }
+    }
+
+    #[test]
+    fn cpi_sets_flags_like_cmp() {
+        // Each case: the constant and the flags CPI should leave behind. A
+        // holds 4AH. The first case repeats the example from the Intel
+        // manual.
+        let none = Flags::default();
+        let cases = [
+            (
+                0x40,
+                Flags {
+                    aux_carry: true,
+                    parity: true,
+                    ..none
+                },
+            ),
+            (
+                0x4A,
+                Flags {
+                    zero: true,
+                    aux_carry: true,
+                    parity: true,
+                    ..none
+                },
+            ),
+            (
+                0x50,
+                Flags {
+                    sign: true,
+                    aux_carry: true,
+                    parity: true,
+                    carry: true,
+                    ..none
+                },
+            ),
+        ];
+
+        for (value, flags) in cases {
+            let registers = Registers {
+                a: 0x4A,
+                ..distinct_registers()
+            };
+
+            assert_alu_flags(&[0xFE, value], registers, 0x4A, flags); // CPI value
         }
     }
 
