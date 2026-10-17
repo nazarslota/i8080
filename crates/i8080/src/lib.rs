@@ -10,10 +10,12 @@
 //!
 //! # Status
 //!
-//! Work in progress: only the bus traits exist so far.
+//! Work in progress: the bus traits and the registers exist so far.
 
 #![no_std]
 
 mod bus;
+mod registers;
 
 pub use bus::{IoBus, MemoryBus, Unconnected};
+pub use registers::Registers;
