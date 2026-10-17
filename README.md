@@ -3,7 +3,8 @@
 An Intel 8080 emulator written in Rust, built to run the MITS Altair 8800:
 from Altair BASIC in your terminal to a real CP/M booted from a floppy image.
 
-> **Status:** early work in progress. Nothing runs yet.
+> **Status:** early work in progress. The CPU core runs every instruction
+> and awaits the diagnostic programs. No machine runs yet.
 
 ## Roadmap
 

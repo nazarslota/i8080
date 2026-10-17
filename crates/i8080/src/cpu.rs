@@ -2,20 +2,21 @@ use crate::alu;
 use crate::condition::Condition;
 use crate::cycles::{self, HALTED_STEP_CYCLES};
 use crate::instruction::{Instruction, Operand8, Operand16, StackOperand};
-use crate::{Flags, MemoryBus, Registers};
+use crate::{Flags, IoBus, MemoryBus, Registers};
 
 /// The Intel 8080 processor.
 ///
-/// `Cpu` holds the processor's state. The machine owns the memory and lends
-/// it to the CPU on each call to [`step`](Cpu::step).
+/// `Cpu` holds the processor's state. The machine owns the memory and the
+/// I/O devices and lends them to the CPU on each call to
+/// [`step`](Cpu::step).
 ///
 /// ```
-/// use i8080::Cpu;
+/// use i8080::{Cpu, Unconnected};
 ///
 /// let mut memory = [0u8; 0x10000]; // all zeros: NOP everywhere
 /// let mut cpu = Cpu::new();
 ///
-/// let cycles = cpu.step(&mut memory);
+/// let cycles = cpu.step(&mut memory, &mut Unconnected);
 ///
 /// assert_eq!(cpu.registers.pc, 1);
 /// assert_eq!(cycles, 4); // NOP takes 4 cycles
@@ -25,6 +26,7 @@ pub struct Cpu {
     /// The registers.
     pub registers: Registers,
     halted: bool,
+    interrupts_enabled: bool,
 }
 
 impl Cpu {
@@ -42,15 +44,17 @@ impl Cpu {
         self.halted
     }
 
+    /// Returns `true` after `EI` and `false` after `DI`. The 8080 starts
+    /// with interrupts disabled.
+    pub const fn interrupts_enabled(&self) -> bool {
+        self.interrupts_enabled
+    }
+
     /// Executes one instruction and returns how many clock cycles it took.
     ///
     /// A halted CPU executes nothing and returns [`HALTED_STEP_CYCLES`], so
     /// the machine's clock keeps running while the CPU waits.
-    ///
-    /// # Panics
-    ///
-    /// Panics on opcodes the emulator doesn't support yet.
-    pub fn step(&mut self, memory: &mut impl MemoryBus) -> u32 {
+    pub fn step(&mut self, memory: &mut impl MemoryBus, io: &mut impl IoBus) -> u32 {
         if self.halted {
             return HALTED_STEP_CYCLES;
         }
@@ -104,15 +108,19 @@ impl Cpu {
             Instruction::Ret => self.ret(memory),
             Instruction::Call { address } => self.call(memory, address),
             Instruction::Aci { value } => self.aci(value),
+            Instruction::Out { port } => self.out(io, port),
             Instruction::Sui { value } => self.sui(value),
+            Instruction::In { port } => self.r#in(io, port),
             Instruction::Sbi { value } => self.sbi(value),
             Instruction::Xthl => self.xthl(memory),
             Instruction::Ani { value } => self.ani(value),
             Instruction::Pchl => self.pchl(),
             Instruction::Xchg => self.xchg(),
             Instruction::Xri { value } => self.xri(value),
+            Instruction::Di => self.di(),
             Instruction::Ori { value } => self.ori(value),
             Instruction::Sphl => self.sphl(),
+            Instruction::Ei => self.ei(),
             Instruction::Cpi { value } => self.cpi(value),
         }
     }
@@ -486,10 +494,23 @@ impl Cpu {
         cycles::ACI
     }
 
+    /// `OUT port`: writes `A` to an I/O port.
+    fn out(&mut self, io: &mut impl IoBus, port: u8) -> u32 {
+        io.output(port, self.registers.a);
+        cycles::OUT
+    }
+
     /// `SUI value`: subtracts a constant from `A`.
     fn sui(&mut self, value: u8) -> u32 {
         (self.registers.a, self.registers.flags) = alu::subtract(self.registers.a, value, false);
         cycles::SUI
+    }
+
+    /// `IN port`: reads an I/O port into `A`. `in` is a Rust keyword, so
+    /// the method takes the raw name `r#in`.
+    fn r#in(&mut self, io: &mut impl IoBus, port: u8) -> u32 {
+        self.registers.a = io.input(port);
+        cycles::IN
     }
 
     /// `SBI value`: subtracts a constant and the carry flag from `A`.
@@ -537,6 +558,12 @@ impl Cpu {
         cycles::XRI
     }
 
+    /// `DI`: disables interrupts.
+    fn di(&mut self) -> u32 {
+        self.interrupts_enabled = false;
+        cycles::DI
+    }
+
     /// `ORI value`: `A = A OR value`.
     fn ori(&mut self, value: u8) -> u32 {
         (self.registers.a, self.registers.flags) = alu::or(self.registers.a, value);
@@ -547,6 +574,12 @@ impl Cpu {
     fn sphl(&mut self) -> u32 {
         self.registers.sp = self.registers.hl();
         cycles::SPHL
+    }
+
+    /// `EI`: enables interrupts.
+    fn ei(&mut self) -> u32 {
+        self.interrupts_enabled = true;
+        cycles::EI
     }
 
     /// `CPI value`: compares `A` with a constant: sets the flags from
@@ -674,6 +707,7 @@ impl Cpu {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Unconnected;
 
     /// Registers holding distinct values, so a test notices when an
     /// instruction writes to the wrong register. PC starts at 0100H.
@@ -717,14 +751,44 @@ mod tests {
         program: &[u8],
         registers: Registers,
     ) -> (Cpu, u32) {
+        run_with_io(memory, &mut Unconnected, program, registers)
+    }
+
+    /// Same as [`run_with_memory`], with `io` as the I/O bus.
+    fn run_with_io(
+        memory: &mut [u8; 0x10000],
+        io: &mut impl IoBus,
+        program: &[u8],
+        registers: Registers,
+    ) -> (Cpu, u32) {
         let start = usize::from(registers.pc);
         memory[start..start + program.len()].copy_from_slice(program);
         let mut cpu = Cpu::new();
         cpu.registers = registers;
 
-        let cycles = cpu.step(memory);
+        let cycles = cpu.step(memory, io);
 
         (cpu, cycles)
+    }
+
+    /// An I/O bus that answers every read with `input` and remembers the
+    /// last port read and the last write.
+    #[derive(Default)]
+    struct RecordingIo {
+        input: u8,
+        read_port: Option<u8>,
+        written: Option<(u8, u8)>,
+    }
+
+    impl IoBus for RecordingIo {
+        fn input(&mut self, port: u8) -> u8 {
+            self.read_port = Some(port);
+            self.input
+        }
+
+        fn output(&mut self, port: u8, value: u8) {
+            self.written = Some((port, value));
+        }
     }
 
     /// Runs one instruction from `program` with `before`, which keeps
@@ -1569,7 +1633,7 @@ mod tests {
         cpu.halted = true;
         let before = cpu.registers;
 
-        let cycles = cpu.step(&mut memory);
+        let cycles = cpu.step(&mut memory, &mut Unconnected);
 
         assert!(cpu.is_halted());
         assert_eq!(cpu.registers, before);
@@ -2601,6 +2665,48 @@ mod tests {
     }
 
     #[test]
+    fn out_writes_a_to_port() {
+        let mut memory = [0u8; 0x10000];
+        let mut io = RecordingIo::default();
+        let before = distinct_registers();
+
+        let (cpu, cycles) = run_with_io(&mut memory, &mut io, &[0xD3, 0x11], before); // OUT 11H
+
+        assert_eq!(io.written, Some((0x11, 0x0A)));
+        assert_eq!(
+            cpu.registers,
+            Registers {
+                pc: 0x0102,
+                ..before
+            }
+        );
+        assert_eq!(cycles, cycles::OUT);
+    }
+
+    #[test]
+    fn in_reads_port_into_a() {
+        let mut memory = [0u8; 0x10000];
+        let mut io = RecordingIo {
+            input: 0x42,
+            ..RecordingIo::default()
+        };
+        let before = distinct_registers();
+
+        let (cpu, cycles) = run_with_io(&mut memory, &mut io, &[0xDB, 0x11], before); // IN 11H
+
+        assert_eq!(io.read_port, Some(0x11));
+        assert_eq!(
+            cpu.registers,
+            Registers {
+                a: 0x42,
+                pc: 0x0102,
+                ..before
+            }
+        );
+        assert_eq!(cycles, cycles::IN);
+    }
+
+    #[test]
     fn xthl_swaps_hl_with_top_of_stack() {
         // The XTHL example from the Intel manual: SP = 10ADH, HL = 0B3CH and
         // the stack holds F0H 0DH.
@@ -2656,6 +2762,32 @@ mod tests {
             }
         );
         assert_eq!(cycles, cycles::XCHG);
+    }
+
+    #[test]
+    fn di_and_ei_switch_interrupts() {
+        // Each case: an opcode, the interrupt enable before the step and
+        // after it, and the cycle count.
+        let cases = [
+            (0xF3, true, false, cycles::DI), // DI
+            (0xF3, false, false, cycles::DI),
+            (0xFB, false, true, cycles::EI), // EI
+            (0xFB, true, true, cycles::EI),
+        ];
+
+        for (opcode, enabled, expected, expected_cycles) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0x0100] = opcode;
+            let mut cpu = Cpu::new();
+            cpu.registers = distinct_registers();
+            cpu.interrupts_enabled = enabled;
+
+            let cycles = cpu.step(&mut memory, &mut Unconnected);
+
+            assert_eq!(cpu.interrupts_enabled(), expected, "opcode {opcode:#04X}");
+            assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
+            assert_eq!(cycles, expected_cycles, "opcode {opcode:#04X}");
+        }
     }
 
     #[test]
@@ -2716,11 +2848,5 @@ mod tests {
 
             assert_alu_flags(&[0xFE, value], registers, 0x4A, flags); // CPI value
         }
-    }
-
-    #[test]
-    #[should_panic(expected = "opcode 0xD3 is not supported yet")]
-    fn unsupported_opcode_panics() {
-        run(&[0xD3, 0x00], distinct_registers()); // OUT 00H, not implemented yet
     }
 }

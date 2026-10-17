@@ -6,10 +6,26 @@ groups it. The catalog shows what each instruction does and whether the
 emulator supports it yet. Details follow for the instructions the emulator
 runs.
 
-When you add an instruction, update its status in the catalog and write its
-section under [Details](#details).
+When you change an instruction, update its status in the catalog, its
+section under [Details](#details) and its link in [Contents](#contents).
 
 **Status:** ✅ supported · 🟡 partly supported · ⬜ not yet
+
+## Contents
+
+- [Notation](#notation)
+- [Catalog](#catalog)
+  - [Data transfer](#data-transfer)
+  - [Arithmetic](#arithmetic)
+  - [Logical](#logical)
+  - [Branch](#branch)
+  - [Stack, I/O and machine control](#stack-io-and-machine-control)
+- [Details](#details)
+  - Data transfer: [`MOV`](#mov-copy-a-byte) · [`MVI`](#mvi-load-a-constant-byte) · [`LXI`](#lxi-load-a-register-pair) · [`LDA`](#lda-load-a-from-an-address) · [`STA`](#sta-store-a-at-an-address) · [`LHLD`](#lhld-load-hl-from-an-address) · [`SHLD`](#shld-store-hl-at-an-address) · [`LDAX`](#ldax-load-a-through-bc-or-de) · [`STAX`](#stax-store-a-through-bc-or-de) · [`XCHG`](#xchg-swap-hl-and-de)
+  - Arithmetic: [`ADD`](#add-add-to-the-accumulator) · [`ADI…CPI`](#adi-aci-sui-sbi-ani-xri-ori-cpi-arithmetic-and-logic-with-a-constant) · [`ADC`](#adc-add-with-carry) · [`SUB`](#sub-subtract-from-the-accumulator) · [`SBB`](#sbb-subtract-with-borrow) · [`INR`](#inr-increment) · [`DCR`](#dcr-decrement) · [`INX`](#inx-increment-a-register-pair) · [`DCX`](#dcx-decrement-a-register-pair) · [`DAD`](#dad-add-a-register-pair-to-hl) · [`DAA`](#daa-decimal-adjust-a)
+  - Logical: [`ANA`](#ana-and-with-the-accumulator) · [`XRA`](#xra-exclusive-or-with-the-accumulator) · [`ORA`](#ora-or-with-the-accumulator) · [`CMP`](#cmp-compare-with-the-accumulator) · [`RLC…RAR`](#rlc-rrc-ral-rar-rotate-a) · [`CMA`](#cma-complement-a) · [`CMC`](#cmc-complement-carry) · [`STC`](#stc-set-carry)
+  - Branch: [`JMP`](#jmp-jump) · [`Jcc`](#jcc-jump-if-a-condition-holds) · [`CALL`](#call-call-a-subroutine) · [`Ccc`](#ccc-call-if-a-condition-holds) · [`RET`](#ret-return-from-a-subroutine) · [`Rcc`](#rcc-return-if-a-condition-holds) · [`RST`](#rst-restart) · [`PCHL`](#pchl-jump-to-the-address-in-hl)
+  - Stack, I/O and machine control: [`PUSH`](#push-push-onto-the-stack) · [`POP`](#pop-pop-from-the-stack) · [`XTHL`](#xthl-swap-hl-with-the-top-of-the-stack) · [`SPHL`](#sphl-copy-hl-into-sp) · [`IN`](#in-read-an-io-port) · [`OUT`](#out-write-an-io-port) · [`EI`](#ei-enable-interrupts) · [`DI`](#di-disable-interrupts) · [`HLT`](#hlt-stop-the-cpu) · [`NOP`](#nop-do-nothing)
 
 ## Notation
 
@@ -104,82 +120,14 @@ applies when the condition holds.
 | `POP rp`    | 1     | 10     | all, for `POP PSW` | Pops `BC`, `DE`, `HL` or `PSW`                 | ✅     |
 | `XTHL`      | 1     | 18     | none               | Swaps `HL` with the two bytes on top of stack  | ✅     |
 | `SPHL`      | 1     | 5      | none               | Copies `HL` into `SP`                          | ✅     |
-| `IN n`      | 2     | 10     | none               | Reads port `n` into `A`                        | ⬜     |
-| `OUT n`     | 2     | 10     | none               | Writes `A` to port `n`                         | ⬜     |
-| `EI`        | 1     | 4      | none               | Enables interrupts after the next instruction  | ⬜     |
-| `DI`        | 1     | 4      | none               | Disables interrupts                            | ⬜     |
+| `IN n`      | 2     | 10     | none               | Reads port `n` into `A`                        | ✅     |
+| `OUT n`     | 2     | 10     | none               | Writes `A` to port `n`                         | ✅     |
+| `EI`        | 1     | 4      | none               | Enables interrupts after the next instruction  | ✅     |
+| `DI`        | 1     | 4      | none               | Disables interrupts                            | ✅     |
 | `HLT`       | 1     | 7      | none               | Stops the CPU until an interrupt arrives       | ✅     |
 | `NOP`       | 1     | 4      | none               | Does nothing                                   | ✅     |
 
 ## Details
-
-### NOP: do nothing
-
-`NOP` · opcode `00H` · 1 byte · 4 cycles · flags: none
-
-`NOP` changes no register, flag or memory byte. The CPU spends 4 cycles
-fetching it and moves `PC` to the next byte. Programmers used it to fill
-space, reserve bytes for a later patch or wait a few microseconds.
-
-Zeroed memory reads as `NOP`, so a CPU running through empty RAM executes
-`NOP` after `NOP` until it reaches something else.
-
-Intel documents only `00H`. The 8080 also runs `08H`, `10H`, `18H`, `20H`,
-`28H`, `30H` and `38H` as `NOP`: they share the `00 yyy 000` column, and
-the CPU ignores `yyy` there. The emulator does the same.
-
-A program that leaves room for a later fix:
-
-```asm
-0100H   MVI  B,05H   ; B = 05H
-0102H   NOP          ; two spare bytes: a later patch can put
-0103H   NOP          ; MVI C,n here without moving the code below
-0104H   MVI  A,01H   ; runs right after the NOPs
-```
-
-| After       | `PC`    | `A`   | `B`   |
-|-------------|---------|-------|-------|
-| `MVI B,05H` | `0102H` | `00H` | `05H` |
-| `NOP`       | `0103H` | `00H` | `05H` |
-| `NOP`       | `0104H` | `00H` | `05H` |
-| `MVI A,01H` | `0106H` | `01H` | `05H` |
-
-### MVI: load a constant byte
-
-`MVI dst,n` · opcode `00 ddd 110` · 2 bytes · 7 cycles (10 with `M`) ·
-flags: none
-
-`MVI` copies the byte that follows the opcode into `dst`. With `M` as the
-destination, the byte goes to memory at the address in `HL`. The CPU reads
-the opcode and the constant in two memory reads, which is why `MVI` takes 7
-cycles and `NOP` takes 4. Writing to `M` adds a memory write and 3 more
-cycles.
-
-| Instruction | Opcode | Instruction | Opcode |
-|-------------|--------|-------------|--------|
-| `MVI B,n`   | `06H`  | `MVI H,n`   | `26H`  |
-| `MVI C,n`   | `0EH`  | `MVI L,n`   | `2EH`  |
-| `MVI D,n`   | `16H`  | `MVI M,n`   | `36H`  |
-| `MVI E,n`   | `1EH`  | `MVI A,n`   | `3EH`  |
-
-```asm
-0100H   MVI  B,42H   ; B = 42H                       bytes: 06 42
-0102H   MVI  A,0FFH  ; A = FFH                       bytes: 3E FF
-0104H   MVI  H,20H   ; H = 20H                       bytes: 26 20
-0106H   MVI  L,00H   ; L = 00H, so HL = 2000H        bytes: 2E 00
-0108H   MVI  M,99H   ; memory[2000H] = 99H           bytes: 36 99
-```
-
-| After        | `PC`    | `A`   | `B`   | `HL`    | `memory[2000H]` |
-|--------------|---------|-------|-------|---------|-----------------|
-| `MVI B,42H`  | `0102H` | `00H` | `42H` | `0000H` | `00H`           |
-| `MVI A,0FFH` | `0104H` | `FFH` | `42H` | `0000H` | `00H`           |
-| `MVI H,20H`  | `0106H` | `FFH` | `42H` | `2000H` | `00H`           |
-| `MVI L,00H`  | `0108H` | `FFH` | `42H` | `2000H` | `00H`           |
-| `MVI M,99H`  | `010AH` | `FFH` | `42H` | `2000H` | `99H`           |
-
-Intel assembler writes `0FFH` with a leading zero. Without it, the assembler
-would read `FFH` as a name.
 
 ### MOV: copy a byte
 
@@ -221,30 +169,226 @@ more bus access, which is why `MOV` takes 7 cycles with `M` and 5 without.
 | `MOV M,A`   | `0108H` | `42H` | `42H` | `00H` | `2000H` | `42H`           |
 | `MOV C,M`   | `0109H` | `42H` | `42H` | `42H` | `2000H` | `42H`           |
 
-### HLT: stop the CPU
+### MVI: load a constant byte
 
-`HLT` · opcode `76H` · 1 byte · 7 cycles · flags: none
+`MVI dst,n` · opcode `00 ddd 110` · 2 bytes · 7 cycles (10 with `M`) ·
+flags: none
 
-`HLT` stops the CPU. `PC` points past the `HLT`, and the CPU fetches nothing
-more until an interrupt or a reset arrives. After an interrupt, the CPU runs
-the interrupt handler and then continues with the instruction after `HLT`.
-On the Altair, the HLTA light on the front panel shows the halted state.
+`MVI` copies the byte that follows the opcode into `dst`. With `M` as the
+destination, the byte goes to memory at the address in `HL`. The CPU reads
+the opcode and the constant in two memory reads, which is why `MVI` takes 7
+cycles and `NOP` takes 4. Writing to `M` adds a memory write and 3 more
+cycles.
 
-Intel placed `HLT` in the slot where `MOV M,M` would sit, `01 110 110`.
+| Instruction | Opcode | Instruction | Opcode |
+|-------------|--------|-------------|--------|
+| `MVI B,n`   | `06H`  | `MVI H,n`   | `26H`  |
+| `MVI C,n`   | `0EH`  | `MVI L,n`   | `2EH`  |
+| `MVI D,n`   | `16H`  | `MVI M,n`   | `36H`  |
+| `MVI E,n`   | `1EH`  | `MVI A,n`   | `3EH`  |
 
 ```asm
-0100H   MVI  A,07H   ; A = 07H                    bytes: 3E 07
-0102H   HLT          ; stop                       bytes: 76
-0103H   MVI  A,08H   ; never runs                 bytes: 3E 08
+0100H   MVI  B,42H   ; B = 42H                       bytes: 06 42
+0102H   MVI  A,0FFH  ; A = FFH                       bytes: 3E FF
+0104H   MVI  H,20H   ; H = 20H                       bytes: 26 20
+0106H   MVI  L,00H   ; L = 00H, so HL = 2000H        bytes: 2E 00
+0108H   MVI  M,99H   ; memory[2000H] = 99H           bytes: 36 99
 ```
 
-| After       | `PC`    | `A`   | Halted |
-|-------------|---------|-------|--------|
-| `MVI A,07H` | `0102H` | `07H` | no     |
-| `HLT`       | `0103H` | `07H` | yes    |
-| next step   | `0103H` | `07H` | yes    |
+| After        | `PC`    | `A`   | `B`   | `HL`    | `memory[2000H]` |
+|--------------|---------|-------|-------|---------|-----------------|
+| `MVI B,42H`  | `0102H` | `00H` | `42H` | `0000H` | `00H`           |
+| `MVI A,0FFH` | `0104H` | `FFH` | `42H` | `0000H` | `00H`           |
+| `MVI H,20H`  | `0106H` | `FFH` | `42H` | `2000H` | `00H`           |
+| `MVI L,00H`  | `0108H` | `FFH` | `42H` | `2000H` | `00H`           |
+| `MVI M,99H`  | `010AH` | `FFH` | `42H` | `2000H` | `99H`           |
 
-**Emulator status:** nothing wakes the CPU yet. Interrupts come later.
+Intel assembler writes `0FFH` with a leading zero. Without it, the assembler
+would read `FFH` as a name.
+
+### LXI: load a register pair
+
+`LXI rp,nn` · opcode `00 rp0 001` · 3 bytes · 10 cycles · flags: none
+
+`LXI` loads the 16-bit constant after the opcode into a register pair. The
+constant sits in memory low byte first: `LXI H,2000H` assembles to
+`21 00 20`. Programs use `LXI H` to point `HL` at data before working on it
+through `M`, and `LXI SP` to set up the stack.
+
+| Instruction | Opcode |
+|-------------|--------|
+| `LXI B,nn`  | `01H`  |
+| `LXI D,nn`  | `11H`  |
+| `LXI H,nn`  | `21H`  |
+| `LXI SP,nn` | `31H`  |
+
+The 2 bits `rp` pick the pair: `00` is `BC`, `01` `DE`, `10` `HL` and `11`
+`SP`. Intel assembler names a pair by its first register, so `LXI B` loads
+`BC`.
+
+```asm
+0100H   LXI  H,2000H   ; HL = 2000H                  bytes: 21 00 20
+0103H   LXI  SP,0F000H ; SP = F000H                  bytes: 31 00 F0
+0106H   MVI  M,42H     ; memory[2000H] = 42H         bytes: 36 42
+```
+
+| After           | `PC`    | `HL`    | `SP`    | `memory[2000H]` |
+|-----------------|---------|---------|---------|-----------------|
+| `LXI H,2000H`   | `0103H` | `2000H` | `0000H` | `00H`           |
+| `LXI SP,0F000H` | `0106H` | `2000H` | `F000H` | `00H`           |
+| `MVI M,42H`     | `0108H` | `2000H` | `F000H` | `42H`           |
+
+### LDA: load A from an address
+
+`LDA nn` · opcode `3AH` · 3 bytes · 13 cycles · flags: none
+
+`LDA` loads `A` from address `nn`.
+
+The example repeats the one from the Intel manual. Memory at `0300H` holds
+`77H` before the program runs.
+
+```asm
+0100H   LDA  0300H    ; A = memory[0300H] = 77H      bytes: 3A 00 03
+```
+
+| After       | `PC`    | `A`   |
+|-------------|---------|-------|
+| `LDA 0300H` | `0103H` | `77H` |
+
+### STA: store A at an address
+
+`STA nn` · opcode `32H` · 3 bytes · 13 cycles · flags: none
+
+`STA` stores `A` at address `nn`. Unlike `MOV M,A`, it needs no pair set up
+first, and it costs 13 cycles instead of 7.
+
+The example repeats the one from the Intel manual.
+
+```asm
+0100H   MVI  A,42H    ; A = 42H                      bytes: 3E 42
+0102H   STA  05B3H    ; memory[05B3H] = A = 42H      bytes: 32 B3 05
+```
+
+| After       | `PC`    | `A`   | `memory[05B3H]` |
+|-------------|---------|-------|-----------------|
+| `MVI A,42H` | `0102H` | `42H` | `00H`           |
+| `STA 05B3H` | `0105H` | `42H` | `42H`           |
+
+### LHLD: load HL from an address
+
+`LHLD nn` · opcode `2AH` · 3 bytes · 16 cycles · flags: none
+
+`LHLD` loads `L` from address `nn` and `H` from `nn + 1`. Programs keep
+their 16-bit variables in memory and pair `LHLD` with `SHLD` to read and
+write them.
+
+The example repeats the one from the Intel manual. Memory at `025BH` holds
+`FFH` and at `025CH` holds `03H` before the program runs.
+
+```asm
+0100H   LHLD 025BH    ; L = FFH, H = 03H             bytes: 2A 5B 02
+```
+
+| After        | `PC`    | `H`   | `L`   |
+|--------------|---------|-------|-------|
+| `LHLD 025BH` | `0103H` | `03H` | `FFH` |
+
+### SHLD: store HL at an address
+
+`SHLD nn` · opcode `22H` · 3 bytes · 16 cycles · flags: none
+
+`SHLD` stores `L` at address `nn` and `H` at `nn + 1`. The low byte goes
+first, the same order the 8080 uses for 16-bit constants in code.
+
+The example repeats the one from the Intel manual.
+
+```asm
+0100H   LXI  H,0AE29H ; HL = AE29H                   bytes: 21 29 AE
+0103H   SHLD 010AH    ; memory[010AH] = L = 29H,     bytes: 22 0A 01
+                      ; memory[010BH] = H = AEH
+```
+
+| After          | `PC`    | `HL`    | `memory[010AH]` | `memory[010BH]` |
+|----------------|---------|---------|-----------------|-----------------|
+| `LXI H,0AE29H` | `0103H` | `AE29H` | `00H`           | `00H`           |
+| `SHLD 010AH`   | `0106H` | `AE29H` | `29H`           | `AEH`           |
+
+### LDAX: load A through BC or DE
+
+`LDAX rp` · opcode `00 rp1 010` · 1 byte · 7 cycles · flags: none
+
+`LDAX` loads `A` from the address in `BC` or `DE`. It works like `MOV A,M`,
+with another pair in place of `HL`. A copy loop can read through `DE` with
+`LDAX D` and write through `HL` with `MOV M,A`.
+
+| Instruction | Opcode |
+|-------------|--------|
+| `LDAX B`    | `0AH`  |
+| `LDAX D`    | `1AH`  |
+
+The example repeats the one from the Intel manual. Memory at `938BH` holds
+`77H` before the program runs.
+
+```asm
+0100H   LXI  D,938BH  ; DE = 938BH                   bytes: 11 8B 93
+0103H   LDAX D        ; A = memory[938BH] = 77H      bytes: 1A
+```
+
+| After         | `PC`    | `A`   | `DE`    |
+|---------------|---------|-------|---------|
+| `LXI D,938BH` | `0103H` | `00H` | `938BH` |
+| `LDAX D`      | `0104H` | `77H` | `938BH` |
+
+### STAX: store A through BC or DE
+
+`STAX rp` · opcode `00 rp0 010` · 1 byte · 7 cycles · flags: none
+
+`STAX` stores `A` at the address in `BC` or `DE`. It works like `MOV M,A`,
+with another pair in place of `HL`.
+
+| Instruction | Opcode |
+|-------------|--------|
+| `STAX B`    | `02H`  |
+| `STAX D`    | `12H`  |
+
+`STAX H` and `STAX SP` don't exist: `MOV M,A` covers `HL`, and their slots
+hold `SHLD` and `STA`.
+
+The example repeats the one from the Intel manual.
+
+```asm
+0100H   MVI  A,42H    ; A = 42H                      bytes: 3E 42
+0102H   LXI  B,3F16H  ; BC = 3F16H                   bytes: 01 16 3F
+0105H   STAX B        ; memory[3F16H] = A = 42H      bytes: 02
+```
+
+| After         | `PC`    | `A`   | `BC`    | `memory[3F16H]` |
+|---------------|---------|-------|---------|-----------------|
+| `MVI A,42H`   | `0102H` | `42H` | `0000H` | `00H`           |
+| `LXI B,3F16H` | `0105H` | `42H` | `3F16H` | `00H`           |
+| `STAX B`      | `0106H` | `42H` | `3F16H` | `42H`           |
+
+### XCHG: swap HL and DE
+
+`XCHG` · opcode `EBH` · 1 byte · 4 cycles · flags: none
+
+`XCHG` swaps `H` with `D` and `L` with `E`. Only `HL` works with `M`, `DAD`
+and `SHLD`, so programs swap a pointer into `HL`, use it there and swap it
+back.
+
+The example repeats the one from the Intel manual.
+
+```asm
+0100H   LXI  D,3355H  ; DE = 3355H                   bytes: 11 55 33
+0103H   LXI  H,00FFH  ; HL = 00FFH                   bytes: 21 FF 00
+0106H   XCHG          ; DE = 00FFH, HL = 3355H       bytes: EB
+```
+
+| After         | `PC`    | `DE`    | `HL`    |
+|---------------|---------|---------|---------|
+| `LXI D,3355H` | `0103H` | `3355H` | `0000H` |
+| `LXI H,00FFH` | `0106H` | `3355H` | `00FFH` |
+| `XCHG`        | `0107H` | `00FFH` | `3355H` |
 
 ### ADD: add to the accumulator
 
@@ -291,6 +435,67 @@ doubles `A`.
 In `ADD D`, `CH + EH = 1AH` carries out of the low 4 bits, so `AC` is 1.
 `9AH` is `1001 1010`: bit 7 gives `S`, and four 1 bits give `P`. In `ADD A`,
 the sum `134H` needs 9 bits, so `CY` is 1 and `A` keeps `34H`.
+
+### ADI, ACI, SUI, SBI, ANI, XRI, ORI, CPI: arithmetic and logic with a constant
+
+`ADI n` and the rest · opcode `11 yyy 110` · 2 bytes · 7 cycles ·
+flags: S Z AC P CY
+
+Each of these does what its register twin does, with the byte after the
+opcode in place of `src`. `ADI 03H` adds 3 to `A` the way `ADD B` adds `B`,
+and the flags follow the same rules. The CPU reads the opcode and the
+constant in two memory reads, so each takes 7 cycles, like `MVI`.
+
+| Instruction | Opcode | What it does                       | Register twin                                   |
+|-------------|--------|------------------------------------|-------------------------------------------------|
+| `ADI n`     | `C6H`  | `A = A + n`                        | [`ADD`](#add-add-to-the-accumulator)            |
+| `ACI n`     | `CEH`  | `A = A + n + CY`                   | [`ADC`](#adc-add-with-carry)                    |
+| `SUI n`     | `D6H`  | `A = A - n`                        | [`SUB`](#sub-subtract-from-the-accumulator)     |
+| `SBI n`     | `DEH`  | `A = A - n - CY`                   | [`SBB`](#sbb-subtract-with-borrow)              |
+| `ANI n`     | `E6H`  | `A = A AND n`                      | [`ANA`](#ana-and-with-the-accumulator)          |
+| `XRI n`     | `EEH`  | `A = A XOR n`                      | [`XRA`](#xra-exclusive-or-with-the-accumulator) |
+| `ORI n`     | `F6H`  | `A = A OR n`                       | [`ORA`](#ora-or-with-the-accumulator)           |
+| `CPI n`     | `FEH`  | Sets flags from `A - n`, keeps `A` | [`CMP`](#cmp-compare-with-the-accumulator)      |
+
+The 3 bits `yyy` pick the operation in the same order as in `10 yyy sss`:
+`ADD` is `000`, `CMP` is `111`. That is why the opcodes go up in steps of 8.
+
+Three of them need a closer look:
+
+- `ACI` and `SBI` read `CY` left by the instruction before them. Chained
+  after `ADI` or `SUI`, they add and subtract numbers wider than 8 bits.
+- `CPI` subtracts and throws the difference away. `A` keeps its value, and
+  the flags read the same way as after `CMP`: `Z = 1` means `A` equals `n`,
+  `CY = 1` means `A` is less than `n`.
+- `ANI` sets `AC` to bit 3 of `A OR n`, like `ANA`. Some Intel manuals say
+  `ANI` clears `AC`; the 8080 does not, and 8080EXM checks for that.
+
+The program below runs all eight. Watch `CY` pass from `SUI` to `ACI` and
+from `ACI` to `SBI`.
+
+```asm
+0100H   MVI  A,0AH   ; A = 0AH                           bytes: 3E 0A
+0102H   ADI  03H     ; A = 0AH + 03H = 0DH               bytes: C6 03
+0104H   SUI  0EH     ; A = 0DH - 0EH = FFH, borrow       bytes: D6 0E
+0106H   ACI  01H     ; A = FFH + 01H + CY = 101H: 01H    bytes: CE 01
+0108H   SBI  00H     ; A = 01H - 00H - CY = 00H          bytes: DE 00
+010AH   ORI  0F0H    ; A = 00H OR F0H = F0H              bytes: F6 F0
+010CH   ANI  3CH     ; A = F0H AND 3CH = 30H             bytes: E6 3C
+010EH   XRI  33H     ; A = 30H XOR 33H = 03H             bytes: EE 33
+0110H   CPI  03H     ; A stays 03H, Z = 1: equal         bytes: FE 03
+```
+
+| After       | `PC`    | `A`   | `S` | `Z` | `AC` | `P` | `CY` |
+|-------------|---------|-------|-----|-----|------|-----|------|
+| `MVI A,0AH` | `0102H` | `0AH` | 0   | 0   | 0    | 0   | 0    |
+| `ADI 03H`   | `0104H` | `0DH` | 0   | 0   | 0    | 0   | 0    |
+| `SUI 0EH`   | `0106H` | `FFH` | 1   | 0   | 0    | 1   | 1    |
+| `ACI 01H`   | `0108H` | `01H` | 0   | 0   | 1    | 0   | 1    |
+| `SBI 00H`   | `010AH` | `00H` | 0   | 1   | 1    | 1   | 0    |
+| `ORI 0F0H`  | `010CH` | `F0H` | 1   | 0   | 0    | 1   | 0    |
+| `ANI 3CH`   | `010EH` | `30H` | 0   | 0   | 1    | 1   | 0    |
+| `XRI 33H`   | `0110H` | `03H` | 0   | 0   | 0    | 1   | 0    |
+| `CPI 03H`   | `0112H` | `03H` | 0   | 1   | 1    | 1   | 0    |
 
 ### ADC: add with carry
 
@@ -417,6 +622,223 @@ before it sets the carry.
 
 In `SBB L`, the CPU computes `04H + FDH + 0 = 101H`. The carry into the sum
 is `NOT CY`, so a set carry flag takes 1 away.
+
+### INR: increment
+
+`INR dst` · opcode `00 ddd 100` · 1 byte · 5 cycles (10 with `M`) ·
+flags: S Z AC P
+
+`INR` adds 1 to a register or to `M`, the memory byte at the address in
+`HL`. `FFH` wraps to `00H`. With `M`, the CPU reads the byte, adds 1 and
+writes it back, so it takes 5 more cycles.
+
+| Instruction | Opcode | Instruction | Opcode |
+|-------------|--------|-------------|--------|
+| `INR B`     | `04H`  | `INR H`     | `24H`  |
+| `INR C`     | `0CH`  | `INR L`     | `2CH`  |
+| `INR D`     | `14H`  | `INR M`     | `34H`  |
+| `INR E`     | `1CH`  | `INR A`     | `3CH`  |
+
+`INR` sets `S`, `Z`, `AC` and `P` the way `ADD` with 1 would, and leaves
+`CY` as it was. A loop can count in one register while `CY` carries a
+multi-byte sum from one pass to the next.
+
+The `INR C` below repeats the example from the Intel manual. `INR A` wraps
+`FFH` to `00H` and still leaves `CY` at 0.
+
+```asm
+0100H   MVI  C,99H   ; C = 99H                       bytes: 0E 99
+0102H   INR  C       ; C = 99H + 1 = 9AH             bytes: 0C
+0103H   MVI  A,0FFH  ; A = FFH                       bytes: 3E FF
+0105H   INR  A       ; A = 00H, CY stays 0           bytes: 3C
+```
+
+| After        | `PC`    | `A`   | `C`   | `S` | `Z` | `AC` | `P` | `CY` |
+|--------------|---------|-------|-------|-----|-----|------|-----|------|
+| `MVI C,99H`  | `0102H` | `00H` | `99H` | 0   | 0   | 0    | 0   | 0    |
+| `INR C`      | `0103H` | `00H` | `9AH` | 1   | 0   | 0    | 1   | 0    |
+| `MVI A,0FFH` | `0105H` | `FFH` | `9AH` | 1   | 0   | 0    | 1   | 0    |
+| `INR A`      | `0106H` | `00H` | `9AH` | 0   | 1   | 1    | 1   | 0    |
+
+### DCR: decrement
+
+`DCR dst` · opcode `00 ddd 101` · 1 byte · 5 cycles (10 with `M`) ·
+flags: S Z AC P
+
+`DCR` subtracts 1 from a register or from `M`. `00H` wraps to `FFH`. It sets
+`S`, `Z`, `AC` and `P` the way `SUB` with 1 would, and leaves `CY` as it
+was. `AC = 0` means the low 4 bits borrowed, as after `SUB`: `10H` drops to
+`0FH` with `AC = 0`.
+
+| Instruction | Opcode | Instruction | Opcode |
+|-------------|--------|-------------|--------|
+| `DCR B`     | `05H`  | `DCR H`     | `25H`  |
+| `DCR C`     | `0DH`  | `DCR L`     | `2DH`  |
+| `DCR D`     | `15H`  | `DCR M`     | `35H`  |
+| `DCR E`     | `1DH`  | `DCR A`     | `3DH`  |
+
+Programs count loops down with `DCR`: load a counter, run the loop body,
+`DCR` the counter and jump back while `Z = 0`. The jump comes with `JNZ`
+later.
+
+The `DCR M` below repeats the example from the Intel manual.
+
+```asm
+0100H   MVI  H,3AH   ; H = 3AH                       bytes: 26 3A
+0102H   MVI  L,7CH   ; L = 7CH, so HL = 3A7CH        bytes: 2E 7C
+0104H   MVI  M,40H   ; memory[3A7CH] = 40H           bytes: 36 40
+0106H   DCR  M       ; memory[3A7CH] = 40H - 1 = 3FH bytes: 35
+0107H   DCR  A       ; A = 00H - 1 = FFH, CY stays 0 bytes: 3D
+```
+
+| After       | `PC`    | `A`   | `HL`    | `memory[3A7CH]` | `S` | `Z` | `AC` | `P` | `CY` |
+|-------------|---------|-------|---------|-----------------|-----|-----|------|-----|------|
+| `MVI H,3AH` | `0102H` | `00H` | `3A00H` | `00H`           | 0   | 0   | 0    | 0   | 0    |
+| `MVI L,7CH` | `0104H` | `00H` | `3A7CH` | `00H`           | 0   | 0   | 0    | 0   | 0    |
+| `MVI M,40H` | `0106H` | `00H` | `3A7CH` | `40H`           | 0   | 0   | 0    | 0   | 0    |
+| `DCR M`     | `0107H` | `00H` | `3A7CH` | `3FH`           | 0   | 0   | 0    | 1   | 0    |
+| `DCR A`     | `0108H` | `FFH` | `3A7CH` | `3FH`           | 1   | 0   | 0    | 1   | 0    |
+
+### INX: increment a register pair
+
+`INX rp` · opcode `00 rp0 011` · 1 byte · 5 cycles · flags: none
+
+`INX` adds 1 to a register pair. `FFFFH` wraps to `0000H`. Programs step
+`HL` through a block of memory with `INX H`.
+
+| Instruction | Opcode |
+|-------------|--------|
+| `INX B`     | `03H`  |
+| `INX D`     | `13H`  |
+| `INX H`     | `23H`  |
+| `INX SP`    | `33H`  |
+
+`INX` sets no flags, even when the pair wraps to `0000H`. A program can't
+test `Z` after it.
+
+The example repeats the one from the Intel manual: the carry from `E`
+moves into `D`.
+
+```asm
+0100H   LXI  D,38FFH  ; DE = 38FFH                   bytes: 11 FF 38
+0103H   INX  D        ; DE = 38FFH + 1 = 3900H       bytes: 13
+```
+
+| After         | `PC`    | `D`   | `E`   |
+|---------------|---------|-------|-------|
+| `LXI D,38FFH` | `0103H` | `38H` | `FFH` |
+| `INX D`       | `0104H` | `39H` | `00H` |
+
+### DCX: decrement a register pair
+
+`DCX rp` · opcode `00 rp1 011` · 1 byte · 5 cycles · flags: none
+
+`DCX` subtracts 1 from a register pair. `0000H` wraps to `FFFFH`.
+
+| Instruction | Opcode |
+|-------------|--------|
+| `DCX B`     | `0BH`  |
+| `DCX D`     | `1BH`  |
+| `DCX H`     | `2BH`  |
+| `DCX SP`    | `3BH`  |
+
+Like `INX`, `DCX` sets no flags. A loop that counts a 16-bit pair down to 0
+can't jump on `Z` after `DCX B`. It has to test the two halves itself,
+for example with `MOV A,B` and `ORA C`.
+
+The first `DCX H` repeats the example from the Intel manual.
+
+```asm
+0100H   LXI  H,9800H  ; HL = 9800H                   bytes: 21 00 98
+0103H   DCX  H        ; HL = 9800H - 1 = 97FFH       bytes: 2B
+0104H   LXI  B,0001H  ; BC = 0001H                   bytes: 01 01 00
+0107H   DCX  B        ; BC = 0000H, Z stays 0        bytes: 0B
+```
+
+| After         | `PC`    | `BC`    | `HL`    | `Z` |
+|---------------|---------|---------|---------|-----|
+| `LXI H,9800H` | `0103H` | `0000H` | `9800H` | 0   |
+| `DCX H`       | `0104H` | `0000H` | `97FFH` | 0   |
+| `LXI B,0001H` | `0107H` | `0001H` | `97FFH` | 0   |
+| `DCX B`       | `0108H` | `0000H` | `97FFH` | 0   |
+
+### DAD: add a register pair to HL
+
+`DAD rp` · opcode `00 rp1 001` · 1 byte · 10 cycles · flags: CY
+
+`DAD` adds a register pair to `HL` and keeps the low 16 bits of the sum in
+`HL`. It sets `CY` when the sum needs 17 bits and leaves the other flags
+alone. `DAD H` doubles `HL`, which shifts it left by one bit, so programs
+use it to multiply.
+
+| Instruction | Opcode |
+|-------------|--------|
+| `DAD B`     | `09H`  |
+| `DAD D`     | `19H`  |
+| `DAD H`     | `29H`  |
+| `DAD SP`    | `39H`  |
+
+The `DAD B` below repeats the example from the Intel manual.
+
+```asm
+0100H   LXI  B,339FH  ; BC = 339FH                   bytes: 01 9F 33
+0103H   LXI  H,0A17BH ; HL = A17BH                   bytes: 21 7B A1
+0106H   DAD  B        ; HL = A17BH + 339FH = D51AH   bytes: 09
+0107H   DAD  H        ; D51AH + D51AH = 1AA34H       bytes: 29
+```
+
+| After          | `PC`    | `BC`    | `HL`    | `CY` |
+|----------------|---------|---------|---------|------|
+| `LXI B,339FH`  | `0103H` | `339FH` | `0000H` | 0    |
+| `LXI H,0A17BH` | `0106H` | `339FH` | `A17BH` | 0    |
+| `DAD B`        | `0107H` | `339FH` | `D51AH` | 0    |
+| `DAD H`        | `0108H` | `339FH` | `AA34H` | 1    |
+
+In `DAD H`, the sum `1AA34H` needs 17 bits. `HL` keeps `AA34H` and `CY`
+takes the 17th bit.
+
+### DAA: decimal adjust A
+
+`DAA` · opcode `27H` · 1 byte · 4 cycles · flags: S Z AC P CY
+
+`DAA` turns the binary sum of two BCD bytes into a BCD byte. In BCD
+(binary-coded decimal) each 4-bit half of a byte holds one decimal digit
+from 0 to 9: `42H` means 42. Programs that show numbers on 7-segment
+displays, such as calculators and clocks, kept them in BCD.
+
+`ADD` knows nothing about BCD. `15H + 27H` gives `3CH`, and `C` isn't a
+decimal digit. `DAA` fixes the sum in two steps:
+
+1. If the low digit is above 9, or `AC = 1` because it overflowed, `DAA`
+   adds `06H`. Adding 6 skips the six values `AH` to `FH`.
+2. If the high digit is above 9, or `CY = 1`, `DAA` adds `60H` and sets
+   `CY` to 1. `CY = 1` then means the sum passed 99.
+
+`DAA` sets `S`, `Z`, `AC` and `P` from the result of that correction. On
+the 8080 it works only after an addition: the CPU keeps no flag that
+remembers a subtraction. The Z80 added one for that.
+
+The last `DAA` below repeats the example from the Intel manual.
+
+```asm
+0100H   MVI  A,15H   ; A = 15H, BCD for 15            bytes: 3E 15
+0102H   ADI  27H     ; A = 15H + 27H = 3CH            bytes: C6 27
+0104H   DAA          ; A = 3CH + 06H = 42H, BCD 42    bytes: 27
+0106H   ADI  59H     ; A = 42H + 59H = 9BH            bytes: C6 59
+0108H   DAA          ; A = 9BH + 66H = 01H, CY = 1    bytes: 27
+```
+
+| After       | `PC`    | `A`   | `S` | `Z` | `AC` | `P` | `CY` |
+|-------------|---------|-------|-----|-----|------|-----|------|
+| `MVI A,15H` | `0102H` | `15H` | 0   | 0   | 0    | 0   | 0    |
+| `ADI 27H`   | `0104H` | `3CH` | 0   | 0   | 0    | 1   | 0    |
+| `DAA`       | `0105H` | `42H` | 0   | 0   | 1    | 1   | 0    |
+| `ADI 59H`   | `0107H` | `9BH` | 1   | 0   | 0    | 0   | 0    |
+| `DAA`       | `0108H` | `01H` | 0   | 0   | 1    | 0   | 1    |
+
+The second `DAA` adds `06H` because the low digit `B` is above 9, and `60H`
+because the high digit becomes `A` after that. `42 + 59 = 101`: `A` holds
+the last two digits, `01`, and `CY` holds the hundred.
 
 ### ANA: AND with the accumulator
 
@@ -562,425 +984,6 @@ Both `CMP E` below repeat the examples from the Intel manual.
 | `MVI A,02H` | `0107H` | `02H` | `05H` | 0   | 0   | 1    | 1   | 0    |
 | `CMP E`     | `0108H` | `02H` | `05H` | 1   | 0   | 0    | 0   | 1    |
 
-### ADI, ACI, SUI, SBI, ANI, XRI, ORI, CPI: arithmetic and logic with a constant
-
-`ADI n` and the rest · opcode `11 yyy 110` · 2 bytes · 7 cycles ·
-flags: S Z AC P CY
-
-Each of these does what its register twin does, with the byte after the
-opcode in place of `src`. `ADI 03H` adds 3 to `A` the way `ADD B` adds `B`,
-and the flags follow the same rules. The CPU reads the opcode and the
-constant in two memory reads, so each takes 7 cycles, like `MVI`.
-
-| Instruction | Opcode | What it does                       | Register twin                                   |
-|-------------|--------|------------------------------------|-------------------------------------------------|
-| `ADI n`     | `C6H`  | `A = A + n`                        | [`ADD`](#add-add-to-the-accumulator)            |
-| `ACI n`     | `CEH`  | `A = A + n + CY`                   | [`ADC`](#adc-add-with-carry)                    |
-| `SUI n`     | `D6H`  | `A = A - n`                        | [`SUB`](#sub-subtract-from-the-accumulator)     |
-| `SBI n`     | `DEH`  | `A = A - n - CY`                   | [`SBB`](#sbb-subtract-with-borrow)              |
-| `ANI n`     | `E6H`  | `A = A AND n`                      | [`ANA`](#ana-and-with-the-accumulator)          |
-| `XRI n`     | `EEH`  | `A = A XOR n`                      | [`XRA`](#xra-exclusive-or-with-the-accumulator) |
-| `ORI n`     | `F6H`  | `A = A OR n`                       | [`ORA`](#ora-or-with-the-accumulator)           |
-| `CPI n`     | `FEH`  | Sets flags from `A - n`, keeps `A` | [`CMP`](#cmp-compare-with-the-accumulator)      |
-
-The 3 bits `yyy` pick the operation in the same order as in `10 yyy sss`:
-`ADD` is `000`, `CMP` is `111`. That is why the opcodes go up in steps of 8.
-
-Three of them need a closer look:
-
-- `ACI` and `SBI` read `CY` left by the instruction before them. Chained
-  after `ADI` or `SUI`, they add and subtract numbers wider than 8 bits.
-- `CPI` subtracts and throws the difference away. `A` keeps its value, and
-  the flags read the same way as after `CMP`: `Z = 1` means `A` equals `n`,
-  `CY = 1` means `A` is less than `n`.
-- `ANI` sets `AC` to bit 3 of `A OR n`, like `ANA`. Some Intel manuals say
-  `ANI` clears `AC`; the 8080 does not, and 8080EXM checks for that.
-
-The program below runs all eight. Watch `CY` pass from `SUI` to `ACI` and
-from `ACI` to `SBI`.
-
-```asm
-0100H   MVI  A,0AH   ; A = 0AH                           bytes: 3E 0A
-0102H   ADI  03H     ; A = 0AH + 03H = 0DH               bytes: C6 03
-0104H   SUI  0EH     ; A = 0DH - 0EH = FFH, borrow       bytes: D6 0E
-0106H   ACI  01H     ; A = FFH + 01H + CY = 101H: 01H    bytes: CE 01
-0108H   SBI  00H     ; A = 01H - 00H - CY = 00H          bytes: DE 00
-010AH   ORI  0F0H    ; A = 00H OR F0H = F0H              bytes: F6 F0
-010CH   ANI  3CH     ; A = F0H AND 3CH = 30H             bytes: E6 3C
-010EH   XRI  33H     ; A = 30H XOR 33H = 03H             bytes: EE 33
-0110H   CPI  03H     ; A stays 03H, Z = 1: equal         bytes: FE 03
-```
-
-| After       | `PC`    | `A`   | `S` | `Z` | `AC` | `P` | `CY` |
-|-------------|---------|-------|-----|-----|------|-----|------|
-| `MVI A,0AH` | `0102H` | `0AH` | 0   | 0   | 0    | 0   | 0    |
-| `ADI 03H`   | `0104H` | `0DH` | 0   | 0   | 0    | 0   | 0    |
-| `SUI 0EH`   | `0106H` | `FFH` | 1   | 0   | 0    | 1   | 1    |
-| `ACI 01H`   | `0108H` | `01H` | 0   | 0   | 1    | 0   | 1    |
-| `SBI 00H`   | `010AH` | `00H` | 0   | 1   | 1    | 1   | 0    |
-| `ORI 0F0H`  | `010CH` | `F0H` | 1   | 0   | 0    | 1   | 0    |
-| `ANI 3CH`   | `010EH` | `30H` | 0   | 0   | 1    | 1   | 0    |
-| `XRI 33H`   | `0110H` | `03H` | 0   | 0   | 0    | 1   | 0    |
-| `CPI 03H`   | `0112H` | `03H` | 0   | 1   | 1    | 1   | 0    |
-
-### INR: increment
-
-`INR dst` · opcode `00 ddd 100` · 1 byte · 5 cycles (10 with `M`) ·
-flags: S Z AC P
-
-`INR` adds 1 to a register or to `M`, the memory byte at the address in
-`HL`. `FFH` wraps to `00H`. With `M`, the CPU reads the byte, adds 1 and
-writes it back, so it takes 5 more cycles.
-
-| Instruction | Opcode | Instruction | Opcode |
-|-------------|--------|-------------|--------|
-| `INR B`     | `04H`  | `INR H`     | `24H`  |
-| `INR C`     | `0CH`  | `INR L`     | `2CH`  |
-| `INR D`     | `14H`  | `INR M`     | `34H`  |
-| `INR E`     | `1CH`  | `INR A`     | `3CH`  |
-
-`INR` sets `S`, `Z`, `AC` and `P` the way `ADD` with 1 would, and leaves
-`CY` as it was. A loop can count in one register while `CY` carries a
-multi-byte sum from one pass to the next.
-
-The `INR C` below repeats the example from the Intel manual. `INR A` wraps
-`FFH` to `00H` and still leaves `CY` at 0.
-
-```asm
-0100H   MVI  C,99H   ; C = 99H                       bytes: 0E 99
-0102H   INR  C       ; C = 99H + 1 = 9AH             bytes: 0C
-0103H   MVI  A,0FFH  ; A = FFH                       bytes: 3E FF
-0105H   INR  A       ; A = 00H, CY stays 0           bytes: 3C
-```
-
-| After        | `PC`    | `A`   | `C`   | `S` | `Z` | `AC` | `P` | `CY` |
-|--------------|---------|-------|-------|-----|-----|------|-----|------|
-| `MVI C,99H`  | `0102H` | `00H` | `99H` | 0   | 0   | 0    | 0   | 0    |
-| `INR C`      | `0103H` | `00H` | `9AH` | 1   | 0   | 0    | 1   | 0    |
-| `MVI A,0FFH` | `0105H` | `FFH` | `9AH` | 1   | 0   | 0    | 1   | 0    |
-| `INR A`      | `0106H` | `00H` | `9AH` | 0   | 1   | 1    | 1   | 0    |
-
-### DCR: decrement
-
-`DCR dst` · opcode `00 ddd 101` · 1 byte · 5 cycles (10 with `M`) ·
-flags: S Z AC P
-
-`DCR` subtracts 1 from a register or from `M`. `00H` wraps to `FFH`. It sets
-`S`, `Z`, `AC` and `P` the way `SUB` with 1 would, and leaves `CY` as it
-was. `AC = 0` means the low 4 bits borrowed, as after `SUB`: `10H` drops to
-`0FH` with `AC = 0`.
-
-| Instruction | Opcode | Instruction | Opcode |
-|-------------|--------|-------------|--------|
-| `DCR B`     | `05H`  | `DCR H`     | `25H`  |
-| `DCR C`     | `0DH`  | `DCR L`     | `2DH`  |
-| `DCR D`     | `15H`  | `DCR M`     | `35H`  |
-| `DCR E`     | `1DH`  | `DCR A`     | `3DH`  |
-
-Programs count loops down with `DCR`: load a counter, run the loop body,
-`DCR` the counter and jump back while `Z = 0`. The jump comes with `JNZ`
-later.
-
-The `DCR M` below repeats the example from the Intel manual.
-
-```asm
-0100H   MVI  H,3AH   ; H = 3AH                       bytes: 26 3A
-0102H   MVI  L,7CH   ; L = 7CH, so HL = 3A7CH        bytes: 2E 7C
-0104H   MVI  M,40H   ; memory[3A7CH] = 40H           bytes: 36 40
-0106H   DCR  M       ; memory[3A7CH] = 40H - 1 = 3FH bytes: 35
-0107H   DCR  A       ; A = 00H - 1 = FFH, CY stays 0 bytes: 3D
-```
-
-| After       | `PC`    | `A`   | `HL`    | `memory[3A7CH]` | `S` | `Z` | `AC` | `P` | `CY` |
-|-------------|---------|-------|---------|-----------------|-----|-----|------|-----|------|
-| `MVI H,3AH` | `0102H` | `00H` | `3A00H` | `00H`           | 0   | 0   | 0    | 0   | 0    |
-| `MVI L,7CH` | `0104H` | `00H` | `3A7CH` | `00H`           | 0   | 0   | 0    | 0   | 0    |
-| `MVI M,40H` | `0106H` | `00H` | `3A7CH` | `40H`           | 0   | 0   | 0    | 0   | 0    |
-| `DCR M`     | `0107H` | `00H` | `3A7CH` | `3FH`           | 0   | 0   | 0    | 1   | 0    |
-| `DCR A`     | `0108H` | `FFH` | `3A7CH` | `3FH`           | 1   | 0   | 0    | 1   | 0    |
-
-### LXI: load a register pair
-
-`LXI rp,nn` · opcode `00 rp0 001` · 3 bytes · 10 cycles · flags: none
-
-`LXI` loads the 16-bit constant after the opcode into a register pair. The
-constant sits in memory low byte first: `LXI H,2000H` assembles to
-`21 00 20`. Programs use `LXI H` to point `HL` at data before working on it
-through `M`, and `LXI SP` to set up the stack.
-
-| Instruction | Opcode |
-|-------------|--------|
-| `LXI B,nn`  | `01H`  |
-| `LXI D,nn`  | `11H`  |
-| `LXI H,nn`  | `21H`  |
-| `LXI SP,nn` | `31H`  |
-
-The 2 bits `rp` pick the pair: `00` is `BC`, `01` `DE`, `10` `HL` and `11`
-`SP`. Intel assembler names a pair by its first register, so `LXI B` loads
-`BC`.
-
-```asm
-0100H   LXI  H,2000H   ; HL = 2000H                  bytes: 21 00 20
-0103H   LXI  SP,0F000H ; SP = F000H                  bytes: 31 00 F0
-0106H   MVI  M,42H     ; memory[2000H] = 42H         bytes: 36 42
-```
-
-| After           | `PC`    | `HL`    | `SP`    | `memory[2000H]` |
-|-----------------|---------|---------|---------|-----------------|
-| `LXI H,2000H`   | `0103H` | `2000H` | `0000H` | `00H`           |
-| `LXI SP,0F000H` | `0106H` | `2000H` | `F000H` | `00H`           |
-| `MVI M,42H`     | `0108H` | `2000H` | `F000H` | `42H`           |
-
-### INX: increment a register pair
-
-`INX rp` · opcode `00 rp0 011` · 1 byte · 5 cycles · flags: none
-
-`INX` adds 1 to a register pair. `FFFFH` wraps to `0000H`. Programs step
-`HL` through a block of memory with `INX H`.
-
-| Instruction | Opcode |
-|-------------|--------|
-| `INX B`     | `03H`  |
-| `INX D`     | `13H`  |
-| `INX H`     | `23H`  |
-| `INX SP`    | `33H`  |
-
-`INX` sets no flags, even when the pair wraps to `0000H`. A program can't
-test `Z` after it.
-
-The example repeats the one from the Intel manual: the carry from `E`
-moves into `D`.
-
-```asm
-0100H   LXI  D,38FFH  ; DE = 38FFH                   bytes: 11 FF 38
-0103H   INX  D        ; DE = 38FFH + 1 = 3900H       bytes: 13
-```
-
-| After         | `PC`    | `D`   | `E`   |
-|---------------|---------|-------|-------|
-| `LXI D,38FFH` | `0103H` | `38H` | `FFH` |
-| `INX D`       | `0104H` | `39H` | `00H` |
-
-### DCX: decrement a register pair
-
-`DCX rp` · opcode `00 rp1 011` · 1 byte · 5 cycles · flags: none
-
-`DCX` subtracts 1 from a register pair. `0000H` wraps to `FFFFH`.
-
-| Instruction | Opcode |
-|-------------|--------|
-| `DCX B`     | `0BH`  |
-| `DCX D`     | `1BH`  |
-| `DCX H`     | `2BH`  |
-| `DCX SP`    | `3BH`  |
-
-Like `INX`, `DCX` sets no flags. A loop that counts a 16-bit pair down to 0
-can't jump on `Z` after `DCX B`. It has to test the two halves itself,
-for example with `MOV A,B` and `ORA C`.
-
-The first `DCX H` repeats the example from the Intel manual.
-
-```asm
-0100H   LXI  H,9800H  ; HL = 9800H                   bytes: 21 00 98
-0103H   DCX  H        ; HL = 9800H - 1 = 97FFH       bytes: 2B
-0104H   LXI  B,0001H  ; BC = 0001H                   bytes: 01 01 00
-0107H   DCX  B        ; BC = 0000H, Z stays 0        bytes: 0B
-```
-
-| After         | `PC`    | `BC`    | `HL`    | `Z` |
-|---------------|---------|---------|---------|-----|
-| `LXI H,9800H` | `0103H` | `0000H` | `9800H` | 0   |
-| `DCX H`       | `0104H` | `0000H` | `97FFH` | 0   |
-| `LXI B,0001H` | `0107H` | `0001H` | `97FFH` | 0   |
-| `DCX B`       | `0108H` | `0000H` | `97FFH` | 0   |
-
-### DAD: add a register pair to HL
-
-`DAD rp` · opcode `00 rp1 001` · 1 byte · 10 cycles · flags: CY
-
-`DAD` adds a register pair to `HL` and keeps the low 16 bits of the sum in
-`HL`. It sets `CY` when the sum needs 17 bits and leaves the other flags
-alone. `DAD H` doubles `HL`, which shifts it left by one bit, so programs
-use it to multiply.
-
-| Instruction | Opcode |
-|-------------|--------|
-| `DAD B`     | `09H`  |
-| `DAD D`     | `19H`  |
-| `DAD H`     | `29H`  |
-| `DAD SP`    | `39H`  |
-
-The `DAD B` below repeats the example from the Intel manual.
-
-```asm
-0100H   LXI  B,339FH  ; BC = 339FH                   bytes: 01 9F 33
-0103H   LXI  H,0A17BH ; HL = A17BH                   bytes: 21 7B A1
-0106H   DAD  B        ; HL = A17BH + 339FH = D51AH   bytes: 09
-0107H   DAD  H        ; D51AH + D51AH = 1AA34H       bytes: 29
-```
-
-| After          | `PC`    | `BC`    | `HL`    | `CY` |
-|----------------|---------|---------|---------|------|
-| `LXI B,339FH`  | `0103H` | `339FH` | `0000H` | 0    |
-| `LXI H,0A17BH` | `0106H` | `339FH` | `A17BH` | 0    |
-| `DAD B`        | `0107H` | `339FH` | `D51AH` | 0    |
-| `DAD H`        | `0108H` | `339FH` | `AA34H` | 1    |
-
-In `DAD H`, the sum `1AA34H` needs 17 bits. `HL` keeps `AA34H` and `CY`
-takes the 17th bit.
-
-### STAX: store A through BC or DE
-
-`STAX rp` · opcode `00 rp0 010` · 1 byte · 7 cycles · flags: none
-
-`STAX` stores `A` at the address in `BC` or `DE`. It works like `MOV M,A`,
-with another pair in place of `HL`.
-
-| Instruction | Opcode |
-|-------------|--------|
-| `STAX B`    | `02H`  |
-| `STAX D`    | `12H`  |
-
-`STAX H` and `STAX SP` don't exist: `MOV M,A` covers `HL`, and their slots
-hold `SHLD` and `STA`.
-
-The example repeats the one from the Intel manual.
-
-```asm
-0100H   MVI  A,42H    ; A = 42H                      bytes: 3E 42
-0102H   LXI  B,3F16H  ; BC = 3F16H                   bytes: 01 16 3F
-0105H   STAX B        ; memory[3F16H] = A = 42H      bytes: 02
-```
-
-| After         | `PC`    | `A`   | `BC`    | `memory[3F16H]` |
-|---------------|---------|-------|---------|-----------------|
-| `MVI A,42H`   | `0102H` | `42H` | `0000H` | `00H`           |
-| `LXI B,3F16H` | `0105H` | `42H` | `3F16H` | `00H`           |
-| `STAX B`      | `0106H` | `42H` | `3F16H` | `42H`           |
-
-### LDAX: load A through BC or DE
-
-`LDAX rp` · opcode `00 rp1 010` · 1 byte · 7 cycles · flags: none
-
-`LDAX` loads `A` from the address in `BC` or `DE`. It works like `MOV A,M`,
-with another pair in place of `HL`. A copy loop can read through `DE` with
-`LDAX D` and write through `HL` with `MOV M,A`.
-
-| Instruction | Opcode |
-|-------------|--------|
-| `LDAX B`    | `0AH`  |
-| `LDAX D`    | `1AH`  |
-
-The example repeats the one from the Intel manual. Memory at `938BH` holds
-`77H` before the program runs.
-
-```asm
-0100H   LXI  D,938BH  ; DE = 938BH                   bytes: 11 8B 93
-0103H   LDAX D        ; A = memory[938BH] = 77H      bytes: 1A
-```
-
-| After         | `PC`    | `A`   | `DE`    |
-|---------------|---------|-------|---------|
-| `LXI D,938BH` | `0103H` | `00H` | `938BH` |
-| `LDAX D`      | `0104H` | `77H` | `938BH` |
-
-### SHLD: store HL at an address
-
-`SHLD nn` · opcode `22H` · 3 bytes · 16 cycles · flags: none
-
-`SHLD` stores `L` at address `nn` and `H` at `nn + 1`. The low byte goes
-first, the same order the 8080 uses for 16-bit constants in code.
-
-The example repeats the one from the Intel manual.
-
-```asm
-0100H   LXI  H,0AE29H ; HL = AE29H                   bytes: 21 29 AE
-0103H   SHLD 010AH    ; memory[010AH] = L = 29H,     bytes: 22 0A 01
-                      ; memory[010BH] = H = AEH
-```
-
-| After          | `PC`    | `HL`    | `memory[010AH]` | `memory[010BH]` |
-|----------------|---------|---------|-----------------|-----------------|
-| `LXI H,0AE29H` | `0103H` | `AE29H` | `00H`           | `00H`           |
-| `SHLD 010AH`   | `0106H` | `AE29H` | `29H`           | `AEH`           |
-
-### LHLD: load HL from an address
-
-`LHLD nn` · opcode `2AH` · 3 bytes · 16 cycles · flags: none
-
-`LHLD` loads `L` from address `nn` and `H` from `nn + 1`. Programs keep
-16-bit variables in memory and pair `LHLD` with `SHLD` to read and write
-them.
-
-The example repeats the one from the Intel manual. Memory at `025BH` holds
-`FFH` and at `025CH` holds `03H` before the program runs.
-
-```asm
-0100H   LHLD 025BH    ; L = FFH, H = 03H             bytes: 2A 5B 02
-```
-
-| After        | `PC`    | `H`   | `L`   |
-|--------------|---------|-------|-------|
-| `LHLD 025BH` | `0103H` | `03H` | `FFH` |
-
-### STA: store A at an address
-
-`STA nn` · opcode `32H` · 3 bytes · 13 cycles · flags: none
-
-`STA` stores `A` at address `nn`. Unlike `MOV M,A`, it needs no pair set up
-first, and it costs 13 cycles instead of 7.
-
-The example repeats the one from the Intel manual.
-
-```asm
-0100H   MVI  A,42H    ; A = 42H                      bytes: 3E 42
-0102H   STA  05B3H    ; memory[05B3H] = A = 42H      bytes: 32 B3 05
-```
-
-| After       | `PC`    | `A`   | `memory[05B3H]` |
-|-------------|---------|-------|-----------------|
-| `MVI A,42H` | `0102H` | `42H` | `00H`           |
-| `STA 05B3H` | `0105H` | `42H` | `42H`           |
-
-### LDA: load A from an address
-
-`LDA nn` · opcode `3AH` · 3 bytes · 13 cycles · flags: none
-
-`LDA` loads `A` from address `nn`.
-
-The example repeats the one from the Intel manual. Memory at `0300H` holds
-`77H` before the program runs.
-
-```asm
-0100H   LDA  0300H    ; A = memory[0300H] = 77H      bytes: 3A 00 03
-```
-
-| After       | `PC`    | `A`   |
-|-------------|---------|-------|
-| `LDA 0300H` | `0103H` | `77H` |
-
-### XCHG: swap HL and DE
-
-`XCHG` · opcode `EBH` · 1 byte · 4 cycles · flags: none
-
-`XCHG` swaps `H` with `D` and `L` with `E`. Only `HL` works with `M`, `DAD`
-and `SHLD`, so programs swap a pointer into `HL`, use it there and swap it
-back.
-
-The example repeats the one from the Intel manual.
-
-```asm
-0100H   LXI  D,3355H  ; DE = 3355H                   bytes: 11 55 33
-0103H   LXI  H,00FFH  ; HL = 00FFH                   bytes: 21 FF 00
-0106H   XCHG          ; DE = 00FFH, HL = 3355H       bytes: EB
-```
-
-| After         | `PC`    | `DE`    | `HL`    |
-|---------------|---------|---------|---------|
-| `LXI D,3355H` | `0103H` | `3355H` | `0000H` |
-| `LXI H,00FFH` | `0106H` | `3355H` | `00FFH` |
-| `XCHG`        | `0107H` | `00FFH` | `3355H` |
-
 ### RLC, RRC, RAL, RAR: rotate A
 
 `RLC` and the rest · opcode `00 0yy 111` · 1 byte · 4 cycles · flags: CY
@@ -1047,6 +1050,22 @@ The example repeats the one from the Intel manual.
 | `MVI A,51H` | `0102H` | `51H` | `0101 0001`   |
 | `CMA`       | `0103H` | `AEH` | `1010 1110`   |
 
+### CMC: complement carry
+
+`CMC` · opcode `3FH` · 1 byte · 4 cycles · flags: CY
+
+`CMC` inverts `CY` and leaves everything else alone.
+
+```asm
+0100H   CMC          ; CY = 0 → 1                     bytes: 3F
+0101H   CMC          ; CY = 1 → 0                     bytes: 3F
+```
+
+| After        | `PC`    | `CY` |
+|--------------|---------|------|
+| first `CMC`  | `0101H` | 1    |
+| second `CMC` | `0102H` | 0    |
+
 ### STC: set carry
 
 `STC` · opcode `37H` · 1 byte · 4 cycles · flags: CY
@@ -1064,65 +1083,6 @@ or `ORA A`, which clears `CY` and sets the other flags from `A`.
 |-------|---------|------|
 | `STC` | `0101H` | 1    |
 | `CMC` | `0102H` | 0    |
-
-### CMC: complement carry
-
-`CMC` · opcode `3FH` · 1 byte · 4 cycles · flags: CY
-
-`CMC` inverts `CY` and leaves everything else alone.
-
-```asm
-0100H   CMC          ; CY = 0 → 1                     bytes: 3F
-0101H   CMC          ; CY = 1 → 0                     bytes: 3F
-```
-
-| After        | `PC`    | `CY` |
-|--------------|---------|------|
-| first `CMC`  | `0101H` | 1    |
-| second `CMC` | `0102H` | 0    |
-
-### DAA: decimal adjust A
-
-`DAA` · opcode `27H` · 1 byte · 4 cycles · flags: S Z AC P CY
-
-`DAA` turns the binary sum of two BCD bytes into a BCD byte. In BCD 
-(binary-coded decimal) each 4-bit half of a byte holds one decimal digit,
-0 to 9: `42H` means 42. Programs that show numbers on 7-segment displays,
-such as calculators and clocks, kept them in BCD.
-
-`ADD` knows nothing about BCD. `15H + 27H` gives `3CH`, and `C` isn't a
-decimal digit. `DAA` fixes the sum in two steps:
-
-1. If the low digit is above 9, or `AC = 1` because it overflowed, `DAA`
-   adds `06H`. Adding 6 skips the six values `AH` to `FH`.
-2. If the high digit is above 9, or `CY = 1`, `DAA` adds `60H` and sets
-   `CY` to 1. `CY = 1` then means the sum passed 99.
-
-`DAA` sets `S`, `Z`, `AC` and `P` from the result of that correction. On
-the 8080 it works only after an addition: the CPU keeps no flag that
-remembers a subtraction. The Z80 added one for that.
-
-The last `DAA` below repeats the example from the Intel manual.
-
-```asm
-0100H   MVI  A,15H   ; A = 15H, BCD for 15            bytes: 3E 15
-0102H   ADI  27H     ; A = 15H + 27H = 3CH            bytes: C6 27
-0104H   DAA          ; A = 3CH + 06H = 42H, BCD 42    bytes: 27
-0106H   ADI  59H     ; A = 42H + 59H = 9BH            bytes: C6 59
-0108H   DAA          ; A = 9BH + 66H = 01H, CY = 1    bytes: 27
-```
-
-| After       | `PC`    | `A`   | `S` | `Z` | `AC` | `P` | `CY` |
-|-------------|---------|-------|-----|-----|------|-----|------|
-| `MVI A,15H` | `0102H` | `15H` | 0   | 0   | 0    | 0   | 0    |
-| `ADI 27H`   | `0104H` | `3CH` | 0   | 0   | 0    | 1   | 0    |
-| `DAA`       | `0105H` | `42H` | 0   | 0   | 1    | 1   | 0    |
-| `ADI 59H`   | `0107H` | `9BH` | 1   | 0   | 0    | 0   | 0    |
-| `DAA`       | `0108H` | `01H` | 0   | 0   | 1    | 0   | 1    |
-
-The second `DAA` adds `06H` because the low digit `B` is above 9, and `60H`
-because the high digit becomes `A` after that. `42 + 59 = 101`: `A` holds
-the last two digits, `01`, and `CY` holds the hundred.
 
 ### JMP: jump
 
@@ -1192,149 +1152,6 @@ times, so `A` ends at `0FH`, 15:
 | `HLT`       | `010BH` | `0FH` | `00H` | 1   |
 
 The third `DCR B` sets `Z`, so the last `JNZ` falls through to `HLT`.
-
-### PCHL: jump to the address in HL
-
-`PCHL` · opcode `E9H` · 1 byte · 5 cycles · flags: none
-
-`PCHL` copies `HL` into `PC`. A program can compute the address in `HL`
-first, for example to pick an entry from a table of jump targets.
-
-The example repeats the one from the Intel manual.
-
-```asm
-0100H   LXI  H,413EH ; HL = 413EH                     bytes: 21 3E 41
-0103H   PCHL         ; PC = HL = 413EH                bytes: E9
-```
-
-| After         | `PC`    | `HL`    |
-|---------------|---------|---------|
-| `LXI H,413EH` | `0103H` | `413EH` |
-| `PCHL`        | `413EH` | `413EH` |
-
-### PUSH: push onto the stack
-
-`PUSH rp` · opcode `11 rp0 101` · 1 byte · 11 cycles · flags: none
-
-The stack is a region of memory that `SP` points into. It grows down:
-`PUSH` lowers `SP` by 2 and stores a register pair in the two bytes there,
-the high byte at `SP + 1` and the low byte at `SP`. Programs set `SP` once
-with `LXI SP` and then save registers with `PUSH` and restore them with
-`POP`.
-
-| Instruction | Opcode | Stores                   |
-|-------------|--------|--------------------------|
-| `PUSH B`    | `C5H`  | `B`, then `C`            |
-| `PUSH D`    | `D5H`  | `D`, then `E`            |
-| `PUSH H`    | `E5H`  | `H`, then `L`            |
-| `PUSH PSW`  | `F5H`  | `A`, then the flags byte |
-
-Code `11` means `PSW` here, the program status word: `A` and the flags.
-`PUSH SP` doesn't exist. The flags byte packs the five flags like this:
-
-| Bit  | 7   | 6   | 5 | 4    | 3 | 2   | 1 | 0    |
-|------|-----|-----|---|------|---|-----|---|------|
-| Flag | `S` | `Z` | 0 | `AC` | 0 | `P` | 1 | `CY` |
-
-Bits 5 and 3 are always 0 and bit 1 is always 1. With `Z`, `AC`, `P` and
-`CY` at 1, the flags byte is `57H`.
-
-The example repeats the one from the Intel manual and then pops the value
-into another pair.
-
-```asm
-0100H   LXI  SP,3A2CH ; SP = 3A2CH                    bytes: 31 2C 3A
-0103H   LXI  D,8F9DH  ; DE = 8F9DH                    bytes: 11 9D 8F
-0106H   PUSH D        ; memory[3A2BH] = D = 8FH,      bytes: D5
-                      ; memory[3A2AH] = E = 9DH
-0107H   POP  B        ; BC = 8F9DH                    bytes: C1
-```
-
-| After          | `PC`    | `SP`    | `BC`    | `DE`    | `memory[3A2AH]` | `memory[3A2BH]` |
-|----------------|---------|---------|---------|---------|-----------------|-----------------|
-| `LXI SP,3A2CH` | `0103H` | `3A2CH` | `0000H` | `0000H` | `00H`           | `00H`           |
-| `LXI D,8F9DH`  | `0106H` | `3A2CH` | `0000H` | `8F9DH` | `00H`           | `00H`           |
-| `PUSH D`       | `0107H` | `3A2AH` | `0000H` | `8F9DH` | `9DH`           | `8FH`           |
-| `POP B`        | `0108H` | `3A2CH` | `8F9DH` | `8F9DH` | `9DH`           | `8FH`           |
-
-`POP` leaves the bytes in memory. Only `SP` moves.
-
-### POP: pop from the stack
-
-`POP rp` · opcode `11 rp0 001` · 1 byte · 10 cycles · flags: all, for
-`POP PSW`
-
-`POP` loads a register pair from the two bytes at `SP`, the low byte from
-`SP` and the high byte from `SP + 1`, and raises `SP` by 2. It undoes a
-`PUSH`.
-
-| Instruction | Opcode | Loads                    |
-|-------------|--------|--------------------------|
-| `POP B`     | `C1H`  | `C`, then `B`            |
-| `POP D`     | `D1H`  | `E`, then `D`            |
-| `POP H`     | `E1H`  | `L`, then `H`            |
-| `POP PSW`   | `F1H`  | the flags byte, then `A` |
-
-`POP PSW` sets all five flags from the flags byte and ignores bits 5, 3
-and 1.
-
-The example repeats the one from the Intel manual. Memory at `1239H` holds
-`3DH` and at `123AH` holds `93H` before the program runs.
-
-```asm
-0100H   LXI  SP,1239H ; SP = 1239H                    bytes: 31 39 12
-0103H   POP  H        ; L = 3DH, H = 93H              bytes: E1
-```
-
-| After          | `PC`    | `SP`    | `HL`    |
-|----------------|---------|---------|---------|
-| `LXI SP,1239H` | `0103H` | `1239H` | `0000H` |
-| `POP H`        | `0104H` | `123BH` | `933DH` |
-
-`POP PSW` on the same bytes would load `A = 93H` and the flags from
-`3DH = 0011 1101`: `AC`, `P` and `CY` at 1, `S` and `Z` at 0.
-
-### XTHL: swap HL with the top of the stack
-
-`XTHL` · opcode `E3H` · 1 byte · 18 cycles · flags: none
-
-`XTHL` swaps `L` with the byte at `SP` and `H` with the byte at `SP + 1`.
-`SP` stays as it was. It takes 18 cycles, the most of any 8080
-instruction, for two memory reads and two writes.
-
-The example repeats the one from the Intel manual. Memory at `10ADH` holds
-`F0H` and at `10AEH` holds `0DH` before the program runs.
-
-```asm
-0100H   LXI  SP,10ADH ; SP = 10ADH                    bytes: 31 AD 10
-0103H   LXI  H,0B3CH  ; HL = 0B3CH                    bytes: 21 3C 0B
-0106H   XTHL          ; HL = 0DF0H, stack = 3CH 0BH   bytes: E3
-```
-
-| After          | `PC`    | `SP`    | `HL`    | `memory[10ADH]` | `memory[10AEH]` |
-|----------------|---------|---------|---------|-----------------|-----------------|
-| `LXI SP,10ADH` | `0103H` | `10ADH` | `0000H` | `F0H`           | `0DH`           |
-| `LXI H,0B3CH`  | `0106H` | `10ADH` | `0B3CH` | `F0H`           | `0DH`           |
-| `XTHL`         | `0107H` | `10ADH` | `0DF0H` | `3CH`           | `0BH`           |
-
-### SPHL: copy HL into SP
-
-`SPHL` · opcode `F9H` · 1 byte · 5 cycles · flags: none
-
-`SPHL` copies `HL` into `SP`. A program can compute where its stack goes,
-for example at the top of the RAM it found, and move `SP` there.
-
-The example repeats the one from the Intel manual.
-
-```asm
-0100H   LXI  H,506CH  ; HL = 506CH                    bytes: 21 6C 50
-0103H   SPHL          ; SP = HL = 506CH               bytes: F9
-```
-
-| After         | `PC`    | `SP`    | `HL`    |
-|---------------|---------|---------|---------|
-| `LXI H,506CH` | `0103H` | `0000H` | `506CH` |
-| `SPHL`        | `0104H` | `506CH` | `506CH` |
 
 ### CALL: call a subroutine
 
@@ -1494,3 +1311,286 @@ addresses. `RST 0` jumps to `0000H`, where the CPU starts after a reset.
 |-----------------|---------|---------|-----------------|-----------------|
 | `LXI SP,0F000H` | `0103H` | `F000H` | `00H`           | `00H`           |
 | `RST 3`         | `0018H` | `EFFEH` | `04H`           | `01H`           |
+
+### PCHL: jump to the address in HL
+
+`PCHL` · opcode `E9H` · 1 byte · 5 cycles · flags: none
+
+`PCHL` copies `HL` into `PC`. A program can compute the address in `HL`
+first, for example to pick an entry from a table of jump targets.
+
+The example repeats the one from the Intel manual.
+
+```asm
+0100H   LXI  H,413EH ; HL = 413EH                     bytes: 21 3E 41
+0103H   PCHL         ; PC = HL = 413EH                bytes: E9
+```
+
+| After         | `PC`    | `HL`    |
+|---------------|---------|---------|
+| `LXI H,413EH` | `0103H` | `413EH` |
+| `PCHL`        | `413EH` | `413EH` |
+
+### PUSH: push onto the stack
+
+`PUSH rp` · opcode `11 rp0 101` · 1 byte · 11 cycles · flags: none
+
+The stack is a region of memory that `SP` points into. It grows down:
+`PUSH` lowers `SP` by 2 and stores a register pair in the two bytes there,
+the high byte at `SP + 1` and the low byte at `SP`. Programs set `SP` once
+with `LXI SP` and then save registers with `PUSH` and restore them with
+`POP`.
+
+| Instruction | Opcode | Stores                   |
+|-------------|--------|--------------------------|
+| `PUSH B`    | `C5H`  | `B`, then `C`            |
+| `PUSH D`    | `D5H`  | `D`, then `E`            |
+| `PUSH H`    | `E5H`  | `H`, then `L`            |
+| `PUSH PSW`  | `F5H`  | `A`, then the flags byte |
+
+Code `11` means `PSW` here, the program status word: `A` and the flags.
+`PUSH SP` doesn't exist. The flags byte packs the five flags like this:
+
+| Bit  | 7   | 6   | 5 | 4    | 3 | 2   | 1 | 0    |
+|------|-----|-----|---|------|---|-----|---|------|
+| Flag | `S` | `Z` | 0 | `AC` | 0 | `P` | 1 | `CY` |
+
+Bits 5 and 3 are always 0 and bit 1 is always 1. With `Z`, `AC`, `P` and
+`CY` at 1, the flags byte is `57H`.
+
+The example repeats the one from the Intel manual and then pops the value
+into another pair.
+
+```asm
+0100H   LXI  SP,3A2CH ; SP = 3A2CH                    bytes: 31 2C 3A
+0103H   LXI  D,8F9DH  ; DE = 8F9DH                    bytes: 11 9D 8F
+0106H   PUSH D        ; memory[3A2BH] = D = 8FH,      bytes: D5
+                      ; memory[3A2AH] = E = 9DH
+0107H   POP  B        ; BC = 8F9DH                    bytes: C1
+```
+
+| After          | `PC`    | `SP`    | `BC`    | `DE`    | `memory[3A2AH]` | `memory[3A2BH]` |
+|----------------|---------|---------|---------|---------|-----------------|-----------------|
+| `LXI SP,3A2CH` | `0103H` | `3A2CH` | `0000H` | `0000H` | `00H`           | `00H`           |
+| `LXI D,8F9DH`  | `0106H` | `3A2CH` | `0000H` | `8F9DH` | `00H`           | `00H`           |
+| `PUSH D`       | `0107H` | `3A2AH` | `0000H` | `8F9DH` | `9DH`           | `8FH`           |
+| `POP B`        | `0108H` | `3A2CH` | `8F9DH` | `8F9DH` | `9DH`           | `8FH`           |
+
+`POP` leaves the bytes in memory. Only `SP` moves.
+
+### POP: pop from the stack
+
+`POP rp` · opcode `11 rp0 001` · 1 byte · 10 cycles · flags: all, for
+`POP PSW`
+
+`POP` loads a register pair from the two bytes at `SP`, the low byte from
+`SP` and the high byte from `SP + 1`, and raises `SP` by 2. It undoes a
+`PUSH`.
+
+| Instruction | Opcode | Loads                    |
+|-------------|--------|--------------------------|
+| `POP B`     | `C1H`  | `C`, then `B`            |
+| `POP D`     | `D1H`  | `E`, then `D`            |
+| `POP H`     | `E1H`  | `L`, then `H`            |
+| `POP PSW`   | `F1H`  | the flags byte, then `A` |
+
+`POP PSW` sets all five flags from the flags byte and ignores bits 5, 3
+and 1.
+
+The example repeats the one from the Intel manual. Memory at `1239H` holds
+`3DH` and at `123AH` holds `93H` before the program runs.
+
+```asm
+0100H   LXI  SP,1239H ; SP = 1239H                    bytes: 31 39 12
+0103H   POP  H        ; L = 3DH, H = 93H              bytes: E1
+```
+
+| After          | `PC`    | `SP`    | `HL`    |
+|----------------|---------|---------|---------|
+| `LXI SP,1239H` | `0103H` | `1239H` | `0000H` |
+| `POP H`        | `0104H` | `123BH` | `933DH` |
+
+`POP PSW` on the same bytes would load `A = 93H` and the flags from
+`3DH = 0011 1101`: `AC`, `P` and `CY` at 1, `S` and `Z` at 0.
+
+### XTHL: swap HL with the top of the stack
+
+`XTHL` · opcode `E3H` · 1 byte · 18 cycles · flags: none
+
+`XTHL` swaps `L` with the byte at `SP` and `H` with the byte at `SP + 1`.
+`SP` stays as it was. It takes 18 cycles, the most of any 8080
+instruction, for two memory reads and two writes.
+
+The example repeats the one from the Intel manual. Memory at `10ADH` holds
+`F0H` and at `10AEH` holds `0DH` before the program runs.
+
+```asm
+0100H   LXI  SP,10ADH ; SP = 10ADH                    bytes: 31 AD 10
+0103H   LXI  H,0B3CH  ; HL = 0B3CH                    bytes: 21 3C 0B
+0106H   XTHL          ; HL = 0DF0H, stack = 3CH 0BH   bytes: E3
+```
+
+| After          | `PC`    | `SP`    | `HL`    | `memory[10ADH]` | `memory[10AEH]` |
+|----------------|---------|---------|---------|-----------------|-----------------|
+| `LXI SP,10ADH` | `0103H` | `10ADH` | `0000H` | `F0H`           | `0DH`           |
+| `LXI H,0B3CH`  | `0106H` | `10ADH` | `0B3CH` | `F0H`           | `0DH`           |
+| `XTHL`         | `0107H` | `10ADH` | `0DF0H` | `3CH`           | `0BH`           |
+
+### SPHL: copy HL into SP
+
+`SPHL` · opcode `F9H` · 1 byte · 5 cycles · flags: none
+
+`SPHL` copies `HL` into `SP`. A program can compute where its stack goes,
+for example at the top of the RAM it found, and move `SP` there.
+
+The example repeats the one from the Intel manual.
+
+```asm
+0100H   LXI  H,506CH  ; HL = 506CH                    bytes: 21 6C 50
+0103H   SPHL          ; SP = HL = 506CH               bytes: F9
+```
+
+| After         | `PC`    | `SP`    | `HL`    |
+|---------------|---------|---------|---------|
+| `LXI H,506CH` | `0103H` | `0000H` | `506CH` |
+| `SPHL`        | `0104H` | `506CH` | `506CH` |
+
+### IN: read an I/O port
+
+`IN n` · opcode `DBH` · 2 bytes · 10 cycles · flags: none
+
+`IN` reads one byte from I/O port `n` into `A`. The 8080 has 256 ports,
+separate from memory, and the byte after the opcode picks one. The machine
+decides what sits behind each port: on the Altair, the 88-2SIO serial card
+answers at ports `10H` (status) and `11H` (data).
+
+The program below waits for a key from the terminal. It reads the status
+port until bit 0, "data ready", turns 1, and then reads the key from the
+data port. The table assumes the key `A` (`41H`) arrives between the first
+and second status read.
+
+```asm
+0100H   IN   10H     ; A = serial status              bytes: DB 10
+0102H   ANI  01H     ; keep bit 0, Z = 1 if no key    bytes: E6 01
+0104H   JZ   0100H   ; no key yet: read status again  bytes: CA 00 01
+0107H   IN   11H     ; A = the key                    bytes: DB 11
+```
+
+| After       | `PC`    | `A`   | `Z` |
+|-------------|---------|-------|-----|
+| `IN 10H`    | `0102H` | `00H` | 0   |
+| `ANI 01H`   | `0104H` | `00H` | 1   |
+| `JZ 0100H`  | `0100H` | `00H` | 1   |
+| `IN 10H`    | `0102H` | `01H` | 1   |
+| `ANI 01H`   | `0104H` | `01H` | 0   |
+| `JZ 0100H`  | `0107H` | `01H` | 0   |
+| `IN 11H`    | `0109H` | `41H` | 0   |
+
+### OUT: write an I/O port
+
+`OUT n` · opcode `D3H` · 2 bytes · 10 cycles · flags: none
+
+`OUT` writes `A` to I/O port `n`. On the Altair, a byte written to port
+`11H` goes out of the 88-2SIO serial card to the terminal.
+
+```asm
+0100H   MVI  A,41H   ; A = 41H, the character "A"     bytes: 3E 41
+0102H   OUT  11H     ; send A to the terminal         bytes: D3 11
+```
+
+| After       | `PC`    | `A`   | Written to port `11H` |
+|-------------|---------|-------|-----------------------|
+| `MVI A,41H` | `0102H` | `41H` | nothing               |
+| `OUT 11H`   | `0104H` | `41H` | `41H`                 |
+
+### EI: enable interrupts
+
+`EI` · opcode `FBH` · 1 byte · 4 cycles · flags: none
+
+`EI` turns on the CPU's interrupt enable, which the 8080 shows on its INTE
+pin. With interrupts enabled, a device can stop the running program, make
+the CPU run an `RST` and so call a handler. The CPU turns interrupts off
+when it accepts one, and the handler ends with `EI` and `RET` to turn them
+back on. The real 8080 waits one more instruction before it accepts an
+interrupt after `EI`, so the handler's `RET` runs first.
+
+The 8080 starts with interrupts disabled.
+
+```asm
+0100H   EI           ; interrupts on                  bytes: FB
+0101H   DI           ; interrupts off                 bytes: F3
+```
+
+| After | `PC`    | Interrupts |
+|-------|---------|------------|
+| `EI`  | `0101H` | enabled    |
+| `DI`  | `0102H` | disabled   |
+
+**Emulator status:** nothing delivers interrupts yet, so the
+one-instruction wait after `EI` makes no difference yet.
+
+### DI: disable interrupts
+
+`DI` · opcode `F3H` · 1 byte · 4 cycles · flags: none
+
+`DI` turns the interrupt enable off. Devices can still ask for an interrupt,
+but the CPU ignores them until the next `EI`. A program uses `DI` around
+code that an interrupt handler must not break into, such as an update of a
+value the handler also reads. The section on [`EI`](#ei-enable-interrupts)
+shows both.
+
+### HLT: stop the CPU
+
+`HLT` · opcode `76H` · 1 byte · 7 cycles · flags: none
+
+`HLT` stops the CPU. `PC` points past the `HLT`, and the CPU fetches nothing
+more until an interrupt or a reset arrives. After an interrupt, the CPU runs
+the interrupt handler and then continues with the instruction after `HLT`.
+On the Altair, the HLTA light on the front panel shows the halted state.
+
+Intel placed `HLT` in the slot where `MOV M,M` would sit, `01 110 110`.
+
+```asm
+0100H   MVI  A,07H   ; A = 07H                    bytes: 3E 07
+0102H   HLT          ; stop                       bytes: 76
+0103H   MVI  A,08H   ; never runs                 bytes: 3E 08
+```
+
+| After       | `PC`    | `A`   | Halted |
+|-------------|---------|-------|--------|
+| `MVI A,07H` | `0102H` | `07H` | no     |
+| `HLT`       | `0103H` | `07H` | yes    |
+| next step   | `0103H` | `07H` | yes    |
+
+**Emulator status:** nothing wakes the CPU yet. Interrupts come later.
+
+### NOP: do nothing
+
+`NOP` · opcode `00H` · 1 byte · 4 cycles · flags: none
+
+`NOP` changes no register, flag or memory byte. The CPU spends 4 cycles
+fetching it and moves `PC` to the next byte. Programmers used it to fill
+space, reserve bytes for a later patch or wait a few microseconds.
+
+Zeroed memory reads as `NOP`, so a CPU running through empty RAM executes
+`NOP` after `NOP` until it reaches something else.
+
+Intel documents only `00H`. The 8080 also runs `08H`, `10H`, `18H`, `20H`,
+`28H`, `30H` and `38H` as `NOP`: they share the `00 yyy 000` column, and
+the CPU ignores `yyy` there. The emulator does the same.
+
+A program that leaves room for a later fix:
+
+```asm
+0100H   MVI  B,05H   ; B = 05H
+0102H   NOP          ; two spare bytes: a later patch can put
+0103H   NOP          ; MVI C,n here without moving the code below
+0104H   MVI  A,01H   ; runs right after the NOPs
+```
+
+| After       | `PC`    | `A`   | `B`   |
+|-------------|---------|-------|-------|
+| `MVI B,05H` | `0102H` | `00H` | `05H` |
+| `NOP`       | `0103H` | `00H` | `05H` |
+| `NOP`       | `0104H` | `00H` | `05H` |
+| `MVI A,01H` | `0106H` | `01H` | `05H` |

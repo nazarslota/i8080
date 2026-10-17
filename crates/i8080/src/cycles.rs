@@ -168,8 +168,14 @@ pub(crate) const CALL: u32 = 17;
 /// `ACI n`: opcode fetch plus one read for the constant.
 pub(crate) const ACI: u32 = 7;
 
+/// `OUT n`: opcode fetch, one read for the port, one write to it.
+pub(crate) const OUT: u32 = 10;
+
 /// `SUI n`: opcode fetch plus one read for the constant.
 pub(crate) const SUI: u32 = 7;
+
+/// `IN n`: opcode fetch, one read for the port, one read from it.
+pub(crate) const IN: u32 = 10;
 
 /// `SBI n`: opcode fetch plus one read for the constant.
 pub(crate) const SBI: u32 = 7;
@@ -189,11 +195,17 @@ pub(crate) const XCHG: u32 = 4;
 /// `XRI n`: opcode fetch plus one read for the constant.
 pub(crate) const XRI: u32 = 7;
 
+/// `DI`.
+pub(crate) const DI: u32 = 4;
+
 /// `ORI n`: opcode fetch plus one read for the constant.
 pub(crate) const ORI: u32 = 7;
 
 /// `SPHL`.
 pub(crate) const SPHL: u32 = 5;
+
+/// `EI`.
+pub(crate) const EI: u32 = 4;
 
 /// `CPI n`: opcode fetch plus one read for the constant.
 pub(crate) const CPI: u32 = 7;

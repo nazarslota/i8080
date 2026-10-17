@@ -94,15 +94,14 @@ port in a loop, sees the bit and reads the key with `IN 0x11`.
   tests without devices pass `Unconnected`, whose ports read `0xFF` like
   unconnected ports on real hardware.
 - **The machine lends the buses to the CPU.** `step` borrows the memory bus
-  for one instruction and doesn't keep it. It will borrow the I/O bus the
-  same way once `IN` and `OUT` exist. We need no shared ownership
-  (`Rc<RefCell<…>>`), and Rust resolves every bus call at compile time. A
-  machine that keeps memory and devices in separate fields can lend both at
-  once.
+  and the I/O bus for one instruction and keeps neither. We need no shared
+  ownership (`Rc<RefCell<…>>`), and Rust resolves every bus call at compile
+  time. A machine that keeps memory and devices in separate fields can lend
+  both at once.
 - **Decode first, then execute.** `step` turns the bytes at `PC` into an
   `Instruction` value and then executes that value. Decoding depends on the
-  bytes alone, so the same code drives the disassembler (`impl Display for
-  Instruction`) and execution traces.
+  bytes alone, so the same code will drive the disassembler (`impl Display
+  for Instruction`) and execution traces.
 - **The execute step is a dispatch table.** The `match` in `step` has one
   line per instruction. An instruction with any logic gets its own method,
   named after it (`mvi`, `mov`), which does the work and returns the cycle
@@ -113,6 +112,22 @@ port in a loop, sees the bit and reads the key with `IN 0x11`.
 - **Each step reports clock cycles.** A machine needs the count to run at the
   original speed and to time interrupts. Conditional `CALL` and `RET` take
   longer when the condition holds, so the count depends on the flags too.
+
+What works and what's left:
+
+- [x] All 256 opcodes decode and execute, with cycle counts from the Intel
+  manual. [instructions.md](instructions.md) describes each instruction.
+- [ ] **Interrupts.** `EI` and `DI` switch the interrupt enable, but the CPU
+  can't accept an interrupt yet: a device can't make it run an `RST`, and
+  `EI` doesn't wait one instruction before interrupts take effect. The
+  Altair runs without interrupts. Space Invaders needs them.
+- [ ] **Diagnostics.** TST8080, 8080PRE, CPUTEST and 8080EXM test every
+  instruction and flag against a real 8080. They run under CP/M, so they
+  need the `cpm` crate first. The unit tests check the CPU against the
+  manual; the diagnostics check it against the chip.
+- [ ] **Disassembler.** `impl Display for Instruction`, so a trace shows
+  `MVI A,42H` and not raw bytes. It helps to find the instruction where a
+  diagnostic fails.
 
 ## Altair (planned)
 

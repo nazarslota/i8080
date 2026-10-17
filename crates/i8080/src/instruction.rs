@@ -91,8 +91,12 @@ pub(crate) enum Instruction {
     Call { address: u16 },
     /// `ACI value`: adds a constant and the carry flag to `A`.
     Aci { value: u8 },
+    /// `OUT port`: writes `A` to `port`.
+    Out { port: u8 },
     /// `SUI value`: subtracts a constant from `A`.
     Sui { value: u8 },
+    /// `IN port`: reads `port` into `A`.
+    In { port: u8 },
     /// `SBI value`: subtracts a constant and the carry flag from `A`.
     Sbi { value: u8 },
     /// `XTHL`: swaps `HL` with the two bytes on top of the stack.
@@ -105,10 +109,14 @@ pub(crate) enum Instruction {
     Xchg,
     /// `XRI value`: `A = A XOR value`.
     Xri { value: u8 },
+    /// `DI`: disables interrupts.
+    Di,
     /// `ORI value`: `A = A OR value`.
     Ori { value: u8 },
     /// `SPHL`: copies `HL` into `SP`.
     Sphl,
+    /// `EI`: enables interrupts.
+    Ei,
     /// `CPI value`: sets the flags from `A - value` and leaves `A` as it
     /// was.
     Cpi { value: u8 },
@@ -121,10 +129,8 @@ impl Instruction {
     /// Decoding calls it once for each byte the instruction has, the way the
     /// 8080 reads an instruction one byte at a time.
     ///
-    /// # Panics
-    ///
-    /// Panics on opcodes the emulator doesn't support yet. Once all 256
-    /// opcodes are in, decoding can't fail.
+    /// Decoding can't fail: the 8080 runs all 256 opcodes, and the `match`
+    /// below lists each of them. The compiler checks that none is missing.
     pub(crate) fn decode(mut next_byte: impl FnMut() -> u8) -> Self {
         let opcode = next_byte();
 
@@ -223,17 +229,20 @@ impl Instruction {
                 address: next_word(&mut next_byte),
             },
             0xCE => Self::Aci { value: next_byte() },
+            0xD3 => Self::Out { port: next_byte() },
             0xD6 => Self::Sui { value: next_byte() },
+            0xDB => Self::In { port: next_byte() },
             0xDE => Self::Sbi { value: next_byte() },
             0xE3 => Self::Xthl,
             0xE6 => Self::Ani { value: next_byte() },
             0xE9 => Self::Pchl,
             0xEB => Self::Xchg,
             0xEE => Self::Xri { value: next_byte() },
+            0xF3 => Self::Di,
             0xF6 => Self::Ori { value: next_byte() },
             0xF9 => Self::Sphl,
+            0xFB => Self::Ei,
             0xFE => Self::Cpi { value: next_byte() },
-            _ => unimplemented!("opcode {opcode:#04X} is not supported yet"),
         }
     }
 }

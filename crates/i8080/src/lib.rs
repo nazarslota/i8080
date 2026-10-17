@@ -20,8 +20,9 @@
 //!
 //! # Status
 //!
-//! Work in progress: the [instruction catalog] marks each instruction the
-//! CPU runs. The CPU panics on every other opcode.
+//! Work in progress: the CPU runs all 256 opcodes, and the [instruction
+//! catalog] describes each instruction. Interrupts come next: `EI` and `DI`
+//! switch the interrupt enable, but nothing delivers an interrupt yet.
 //!
 //! [instruction catalog]: https://github.com/nazarslota/i8080/blob/main/docs/instructions.md
 
