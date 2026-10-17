@@ -68,6 +68,9 @@ pub(crate) const RAL: u32 = 4;
 /// `RAR`.
 pub(crate) const RAR: u32 = 4;
 
+/// `DAA`.
+pub(crate) const DAA: u32 = 4;
+
 /// `CMA`.
 pub(crate) const CMA: u32 = 4;
 

@@ -78,6 +78,7 @@ impl Cpu {
             Instruction::Rrc => self.rrc(),
             Instruction::Ral => self.ral(),
             Instruction::Rar => self.rar(),
+            Instruction::Daa => self.daa(),
             Instruction::Cma => self.cma(),
             Instruction::Stc => self.stc(),
             Instruction::Cmc => self.cmc(),
@@ -247,6 +248,14 @@ impl Cpu {
         self.registers.a = (a >> 1) | (u8::from(carry) << 7);
         self.registers.flags.carry = a & 0x01 != 0;
         cycles::RAR
+    }
+
+    /// `DAA`: adjusts `A` to two decimal digits after a BCD addition.
+    fn daa(&mut self) -> u32 {
+        let flags = self.registers.flags;
+        (self.registers.a, self.registers.flags) =
+            alu::decimal_adjust(self.registers.a, flags.aux_carry, flags.carry);
+        cycles::DAA
     }
 
     /// `CMA`: inverts every bit of `A`. Sets no flags.
@@ -1193,7 +1202,7 @@ mod tests {
     }
 
     #[test]
-    fn rotates_and_carry_ops_change_a() {
+    fn accumulator_ops_change_a() {
         // Each case: an opcode, the carry flag before the step, the value it
         // should leave in A and its cycle count. A starts at 0AH, 0000 1010.
         let cases = [
@@ -1201,6 +1210,7 @@ mod tests {
             (0x0F, false, 0x05, cycles::RRC), // RRC: 0000 0101
             (0x17, true, 0x15, cycles::RAL),  // RAL: 0001 0101, old CY in bit 0
             (0x1F, true, 0x85, cycles::RAR),  // RAR: 1000 0101, old CY in bit 7
+            (0x27, false, 0x10, cycles::DAA), // DAA: 0AH is not BCD, 0AH + 06H
             (0x2F, false, 0xF5, cycles::CMA), // CMA: 1111 0101
             (0x37, false, 0x0A, cycles::STC), // STC: A stays
             (0x3F, false, 0x0A, cycles::CMC), // CMC: A stays
@@ -1244,6 +1254,98 @@ mod tests {
             };
 
             assert_alu_flags(&[opcode], registers, result, flags);
+        }
+    }
+
+    #[test]
+    fn daa_adjusts_a_to_two_decimal_digits() {
+        // Each case: A, AC and CY that an addition left, then A and the
+        // flags DAA should leave behind.
+        let none = Flags::default();
+        let cases = [
+            // The DAA example from the Intel manual: 9BH turns into 01H
+            // with CY = 1.
+            (
+                0x9B,
+                none,
+                0x01,
+                Flags {
+                    aux_carry: true,
+                    carry: true,
+                    ..none
+                },
+            ),
+            // 15H + 27H = 3CH: the low digit is above 9.
+            (
+                0x3C,
+                none,
+                0x42,
+                Flags {
+                    aux_carry: true,
+                    parity: true,
+                    ..none
+                },
+            ),
+            // 19H + 28H = 41H with AC = 1: the low digit overflowed.
+            (
+                0x41,
+                Flags {
+                    aux_carry: true,
+                    ..none
+                },
+                0x47,
+                Flags {
+                    parity: true,
+                    ..none
+                },
+            ),
+            // 90H + 90H = 20H with CY = 1: the high digit overflowed.
+            (
+                0x20,
+                Flags {
+                    carry: true,
+                    ..none
+                },
+                0x80,
+                Flags {
+                    sign: true,
+                    carry: true,
+                    ..none
+                },
+            ),
+            // 99H + 01H = 9AH: both digits roll over, 99 + 1 = 100.
+            (
+                0x9A,
+                none,
+                0x00,
+                Flags {
+                    zero: true,
+                    aux_carry: true,
+                    parity: true,
+                    carry: true,
+                    ..none
+                },
+            ),
+            // 42H is already BCD, so DAA adds nothing.
+            (
+                0x42,
+                none,
+                0x42,
+                Flags {
+                    parity: true,
+                    ..none
+                },
+            ),
+        ];
+
+        for (a, before, result, flags) in cases {
+            let registers = Registers {
+                a,
+                flags: before,
+                ..distinct_registers()
+            };
+
+            assert_alu_flags(&[0x27], registers, result, flags); // DAA
         }
     }
 
@@ -2102,8 +2204,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "opcode 0x27 is not supported yet")]
+    #[should_panic(expected = "opcode 0xC3 is not supported yet")]
     fn unsupported_opcode_panics() {
-        run(&[0x27], distinct_registers()); // DAA, not implemented yet
+        run(&[0xC3, 0x00, 0x00], distinct_registers()); // JMP 0000H, not implemented yet
     }
 }

@@ -61,7 +61,7 @@ applies when the condition holds.
 | `INX rp`    | 1     | 5      | none        | `rp = rp + 1`                           | ✅     |
 | `DCX rp`    | 1     | 5      | none        | `rp = rp - 1`                           | ✅     |
 | `DAD rp`    | 1     | 10     | CY          | `HL = HL + rp`                          | ✅     |
-| `DAA`       | 1     | 4      | S Z AC P CY | Adjusts `A` to two decimal digits (BCD) | ⬜     |
+| `DAA`       | 1     | 4      | S Z AC P CY | Adjusts `A` to two decimal digits (BCD) | ✅     |
 
 ### Logical
 
@@ -1076,3 +1076,46 @@ or `ORA A`, which clears `CY` and sets the other flags from `A`.
 |--------------|---------|------|
 | first `CMC`  | `0101H` | 1    |
 | second `CMC` | `0102H` | 0    |
+
+### DAA: decimal adjust A
+
+`DAA` · opcode `27H` · 1 byte · 4 cycles · flags: S Z AC P CY
+
+`DAA` turns the binary sum of two BCD bytes into a BCD byte. In BCD
+(binary-coded decimal) each 4-bit half of a byte holds one decimal digit,
+0 to 9: `42H` means 42. Programs that show numbers on 7-segment displays,
+such as calculators and clocks, kept them in BCD.
+
+`ADD` knows nothing about BCD. `15H + 27H` gives `3CH`, and `C` isn't a
+decimal digit. `DAA` fixes the sum in two steps:
+
+1. If the low digit is above 9, or `AC = 1` because it overflowed, `DAA`
+   adds `06H`. Adding 6 skips the six values `AH` to `FH`.
+2. If the high digit is above 9, or `CY = 1`, `DAA` adds `60H` and sets
+   `CY` to 1. `CY = 1` then means the sum passed 99.
+
+`DAA` sets `S`, `Z`, `AC` and `P` from the result of that correction. On
+the 8080 it works only after an addition: the CPU keeps no flag that
+remembers a subtraction. The Z80 added one for that.
+
+The last `DAA` below repeats the example from the Intel manual.
+
+```asm
+0100H   MVI  A,15H   ; A = 15H, BCD for 15            bytes: 3E 15
+0102H   ADI  27H     ; A = 15H + 27H = 3CH            bytes: C6 27
+0104H   DAA          ; A = 3CH + 06H = 42H, BCD 42    bytes: 27
+0106H   ADI  59H     ; A = 42H + 59H = 9BH            bytes: C6 59
+0108H   DAA          ; A = 9BH + 66H = 01H, CY = 1    bytes: 27
+```
+
+| After       | `PC`    | `A`   | `S` | `Z` | `AC` | `P` | `CY` |
+|-------------|---------|-------|-----|-----|------|-----|------|
+| `MVI A,15H` | `0102H` | `15H` | 0   | 0   | 0    | 0   | 0    |
+| `ADI 27H`   | `0104H` | `3CH` | 0   | 0   | 0    | 1   | 0    |
+| `DAA`       | `0105H` | `42H` | 0   | 0   | 1    | 1   | 0    |
+| `ADI 59H`   | `0107H` | `9BH` | 1   | 0   | 0    | 0   | 0    |
+| `DAA`       | `0108H` | `01H` | 0   | 0   | 1    | 0   | 1    |
+
+The second `DAA` adds `06H` because the low digit `B` is above 9, and `60H`
+because the high digit becomes `A` after that. `42 + 59 = 101`: `A` holds
+the last two digits, `01`, and `CY` holds the hundred.

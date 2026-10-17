@@ -29,6 +29,37 @@ pub(crate) const fn subtract(a: u8, value: u8, borrow_in: bool) -> (u8, Flags) {
     (result, flags)
 }
 
+/// Adjusts `a` to two decimal digits after `ADD` or `ADC` summed two BCD
+/// bytes. `aux_carry` and `carry` are the flags that addition left.
+///
+/// Each 4-bit half of a BCD byte holds one decimal digit, 0 to 9. A binary
+/// sum can leave a half above 9 or carry out of it, and adding 6 to that
+/// half skips the six values from AH to FH. `CY` stays 1 once it is 1, and
+/// turns 1 when the high digit overflows.
+pub(crate) const fn decimal_adjust(a: u8, aux_carry: bool, carry: bool) -> (u8, Flags) {
+    let low = a & 0x0F;
+    let high = a >> 4;
+
+    let mut correction = 0;
+    let mut carry_out = carry;
+    if aux_carry || low > 9 {
+        correction |= 0x06;
+    }
+    if carry || high > 9 || (high == 9 && low > 9) {
+        correction |= 0x60;
+        carry_out = true;
+    }
+
+    let (result, flags) = add(a, correction, false);
+    (
+        result,
+        Flags {
+            carry: carry_out,
+            ..flags
+        },
+    )
+}
+
 /// `a AND value`. Clears `CY`.
 ///
 /// The 8080 sets `AC` to bit 3 of `a OR value`. The Intel 8085 sets it to 1

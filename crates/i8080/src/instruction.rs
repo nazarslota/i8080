@@ -38,6 +38,8 @@ pub(crate) enum Instruction {
     Ral,
     /// `RAR`: rotates `A` right through `CY`.
     Rar,
+    /// `DAA`: adjusts `A` to two decimal digits after a BCD addition.
+    Daa,
     /// `CMA`: inverts every bit of `A`.
     Cma,
     /// `STC`: sets `CY` to 1.
@@ -180,6 +182,8 @@ impl Instruction {
             (0b00, 0b010, 0b111) => Self::Ral,
             // RAR: 00 011 111
             (0b00, 0b011, 0b111) => Self::Rar,
+            // DAA: 00 100 111
+            (0b00, 0b100, 0b111) => Self::Daa,
             // CMA: 00 101 111
             (0b00, 0b101, 0b111) => Self::Cma,
             // STC: 00 110 111
