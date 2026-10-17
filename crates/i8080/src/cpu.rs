@@ -295,6 +295,39 @@ mod tests {
         (cpu, cycles)
     }
 
+    /// Runs a one-byte ALU `opcode` on [`distinct_registers`] with the
+    /// carry flag at `carry`. Checks that A ends up at `a`, PC moves one byte
+    /// and the step takes `cycles`.
+    #[track_caller]
+    fn assert_alu_result(opcode: u8, carry: bool, a: u8, cycles: u32) {
+        let registers = Registers {
+            flags: Flags {
+                carry,
+                ..Flags::default()
+            },
+            ..distinct_registers()
+        };
+
+        let (cpu, actual_cycles) = run(&[opcode], registers);
+
+        assert_eq!(cpu.registers.a, a, "opcode {opcode:#04X}");
+        assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
+        assert_eq!(actual_cycles, cycles, "opcode {opcode:#04X}");
+    }
+
+    /// Runs a one-byte ALU `opcode` with `registers`. Checks that A ends up
+    /// at `a` and the flags at `flags`.
+    #[track_caller]
+    fn assert_alu_flags(opcode: u8, registers: Registers, a: u8, flags: Flags) {
+        let (cpu, _) = run(&[opcode], registers);
+
+        assert_eq!(cpu.registers.a, a, "opcode {opcode:#04X}, {registers:?}");
+        assert_eq!(
+            cpu.registers.flags, flags,
+            "opcode {opcode:#04X}, {registers:?}"
+        );
+    }
+
     #[test]
     fn nop_changes_nothing_but_pc() {
         let before = distinct_registers();
@@ -529,11 +562,7 @@ mod tests {
         ];
 
         for (opcode, sum) in cases {
-            let (cpu, cycles) = run(&[opcode], distinct_registers());
-
-            assert_eq!(cpu.registers.a, sum, "opcode {opcode:#04X}");
-            assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
-            assert_eq!(cycles, cycles::ADD, "opcode {opcode:#04X}");
+            assert_alu_result(opcode, false, sum, cycles::ADD);
         }
     }
 
@@ -596,10 +625,7 @@ mod tests {
                 ..distinct_registers()
             };
 
-            let (cpu, _) = run(&[0x80], registers); // ADD B
-
-            assert_eq!(cpu.registers.a, sum, "{a:#04X} + {b:#04X}");
-            assert_eq!(cpu.registers.flags, flags, "{a:#04X} + {b:#04X}");
+            assert_alu_flags(0x80, registers, sum, flags); // ADD B
         }
     }
 
@@ -618,14 +644,7 @@ mod tests {
         ];
 
         for (opcode, carry, sum) in cases {
-            let mut registers = distinct_registers();
-            registers.flags.carry = carry;
-
-            let (cpu, cycles) = run(&[opcode], registers);
-
-            assert_eq!(cpu.registers.a, sum, "opcode {opcode:#04X}");
-            assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
-            assert_eq!(cycles, cycles::ADC, "opcode {opcode:#04X}");
+            assert_alu_result(opcode, carry, sum, cycles::ADC);
         }
     }
 
@@ -684,10 +703,7 @@ mod tests {
                 ..distinct_registers()
             };
 
-            let (cpu, _) = run(&[0x88], registers); // ADC B
-
-            assert_eq!(cpu.registers.a, sum, "{a:#04X} + {b:#04X} + {carry}");
-            assert_eq!(cpu.registers.flags, flags, "{a:#04X} + {b:#04X} + {carry}");
+            assert_alu_flags(0x88, registers, sum, flags); // ADC B
         }
     }
 
@@ -706,11 +722,7 @@ mod tests {
         ];
 
         for (opcode, difference) in cases {
-            let (cpu, cycles) = run(&[opcode], distinct_registers());
-
-            assert_eq!(cpu.registers.a, difference, "opcode {opcode:#04X}");
-            assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
-            assert_eq!(cycles, cycles::SUB, "opcode {opcode:#04X}");
+            assert_alu_result(opcode, false, difference, cycles::SUB);
         }
     }
 
@@ -776,10 +788,7 @@ mod tests {
                 ..distinct_registers()
             };
 
-            let (cpu, _) = run(&[0x90], registers); // SUB B
-
-            assert_eq!(cpu.registers.a, difference, "{a:#04X} - {b:#04X}");
-            assert_eq!(cpu.registers.flags, flags, "{a:#04X} - {b:#04X}");
+            assert_alu_flags(0x90, registers, difference, flags); // SUB B
         }
     }
 
@@ -798,14 +807,7 @@ mod tests {
         ];
 
         for (opcode, carry, difference) in cases {
-            let mut registers = distinct_registers();
-            registers.flags.carry = carry;
-
-            let (cpu, cycles) = run(&[opcode], registers);
-
-            assert_eq!(cpu.registers.a, difference, "opcode {opcode:#04X}");
-            assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
-            assert_eq!(cycles, cycles::SBB, "opcode {opcode:#04X}");
+            assert_alu_result(opcode, carry, difference, cycles::SBB);
         }
     }
 
@@ -849,10 +851,7 @@ mod tests {
                 ..distinct_registers()
             };
 
-            let (cpu, _) = run(&[0x9D], registers); // SBB L
-
-            assert_eq!(cpu.registers.a, difference, "{a:#04X} - {l:#04X} - {carry}");
-            assert_eq!(cpu.registers.flags, flags, "{a:#04X} - {l:#04X} - {carry}");
+            assert_alu_flags(0x9D, registers, difference, flags); // SBB L
         }
     }
 
@@ -905,11 +904,7 @@ mod tests {
         ];
 
         for (opcode, result) in cases {
-            let (cpu, cycles) = run(&[opcode], distinct_registers());
-
-            assert_eq!(cpu.registers.a, result, "opcode {opcode:#04X}");
-            assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
-            assert_eq!(cycles, cycles::ANA, "opcode {opcode:#04X}");
+            assert_alu_result(opcode, false, result, cycles::ANA);
         }
     }
 
@@ -954,10 +949,7 @@ mod tests {
                 ..distinct_registers()
             };
 
-            let (cpu, _) = run(&[0xA0], registers); // ANA B
-
-            assert_eq!(cpu.registers.a, result, "{a:#04X} ANA {b:#04X}");
-            assert_eq!(cpu.registers.flags, flags, "{a:#04X} ANA {b:#04X}");
+            assert_alu_flags(0xA0, registers, result, flags); // ANA B
         }
     }
 
@@ -976,11 +968,7 @@ mod tests {
         ];
 
         for (opcode, result) in cases {
-            let (cpu, cycles) = run(&[opcode], distinct_registers());
-
-            assert_eq!(cpu.registers.a, result, "opcode {opcode:#04X}");
-            assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
-            assert_eq!(cycles, cycles::XRA, "opcode {opcode:#04X}");
+            assert_alu_result(opcode, false, result, cycles::XRA);
         }
     }
 
@@ -1032,10 +1020,7 @@ mod tests {
                 ..distinct_registers()
             };
 
-            let (cpu, _) = run(&[0xA8], registers); // XRA B
-
-            assert_eq!(cpu.registers.a, result, "{a:#04X} XRA {b:#04X}");
-            assert_eq!(cpu.registers.flags, flags, "{a:#04X} XRA {b:#04X}");
+            assert_alu_flags(0xA8, registers, result, flags); // XRA B
         }
     }
 
@@ -1054,11 +1039,7 @@ mod tests {
         ];
 
         for (opcode, result) in cases {
-            let (cpu, cycles) = run(&[opcode], distinct_registers());
-
-            assert_eq!(cpu.registers.a, result, "opcode {opcode:#04X}");
-            assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
-            assert_eq!(cycles, cycles::ORA, "opcode {opcode:#04X}");
+            assert_alu_result(opcode, false, result, cycles::ORA);
         }
     }
 
@@ -1118,10 +1099,7 @@ mod tests {
                 ..distinct_registers()
             };
 
-            let (cpu, _) = run(&[0xB0], registers); // ORA B
-
-            assert_eq!(cpu.registers.a, result, "{a:#04X} ORA {b:#04X}");
-            assert_eq!(cpu.registers.flags, flags, "{a:#04X} ORA {b:#04X}");
+            assert_alu_flags(0xB0, registers, result, flags); // ORA B
         }
     }
 
@@ -1193,10 +1171,7 @@ mod tests {
                 ..distinct_registers()
             };
 
-            let (cpu, _) = run(&[0xBB], registers); // CMP E
-
-            assert_eq!(cpu.registers.a, a, "{a:#04X} CMP {e:#04X}");
-            assert_eq!(cpu.registers.flags, flags, "{a:#04X} CMP {e:#04X}");
+            assert_alu_flags(0xBB, registers, a, flags); // CMP E
         }
     }
 
