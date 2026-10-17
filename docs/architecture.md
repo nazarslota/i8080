@@ -47,10 +47,11 @@ or beside it, and the compiler enforces this: `altair/Cargo.toml` doesn't list
 
 ### 1. The processor knows nothing about the machine
 
-The CPU reads and writes memory and I/O ports through the `Bus` trait. The
-machine implements `Bus` and decides what each address means: RAM, ROM, a
-device register or nothing at all. To add a new machine, you implement `Bus`
-and leave `i8080` alone.
+The 8080 has two address spaces: 64 KB of memory and 256 I/O ports. The CPU
+reaches them through two traits, `MemoryBus` and `IoBus`. Each machine crate
+implements both and maps every address and port to RAM, ROM, a device
+register or nothing at all. To add a new machine, you implement the two
+traits and leave `i8080` alone.
 
 ### 2. We emulate hardware and run original software
 
@@ -76,7 +77,7 @@ the terminal:
 
 1. BASIC loads `0x41` (the ASCII code for `A`) into register A and executes
    `OUT 0x11`.
-2. `i8080` decodes the instruction and calls `bus.output(0x11, 0x41)`.
+2. `i8080` decodes the instruction and calls `io.output(0x11, 0x41)`.
 3. The `altair` backplane finds the card that claims port `0x11`: the 88-2SIO
    serial card. The card puts the byte in its transmit buffer.
 4. After each batch of instructions, `app` takes the bytes from the serial
@@ -86,12 +87,17 @@ A keystroke travels the other way. `app` hands the key to the serial card,
 and the card sets the "data ready" bit in its status port. BASIC reads that
 port in a loop, sees the bit and reads the key with `IN 0x11`.
 
-## CPU core (planned)
+## CPU core (in progress)
 
-- **The machine lends the bus to the CPU.** `Cpu::step(&mut self, bus: &mut
-  impl Bus)` borrows the bus for one instruction and doesn't keep it. We need
-  no shared ownership (`Rc<RefCell<…>>`), and Rust resolves every bus call at
-  compile time.
+- **Two buses, one per address space.** `MemoryBus` covers memory and `IoBus`
+  covers ports, so code that needs only memory never sees ports. Machines and
+  tests without devices pass `Unconnected`, whose ports read `0xFF` like
+  unconnected ports on real hardware.
+- **The machine lends the buses to the CPU.** `step` borrows both buses for
+  one instruction and doesn't keep them. We need no shared ownership
+  (`Rc<RefCell<…>>`), and Rust resolves every bus call at compile time. A
+  machine that keeps memory and devices in separate fields can lend both at
+  once.
 - **Decode first, then execute.** `step` turns the bytes at `PC` into an
   `Instruction` value and then executes that value. Decoding depends on the
   bytes alone, so the same code drives the disassembler (`impl Display for
@@ -111,17 +117,19 @@ controller. The code follows the same shape:
 
 - Each card implements the `Device` trait and claims a range of memory
   addresses or I/O ports.
-- The `Backplane` implements the CPU's `Bus` trait. On each access it finds
-  the card that claims the address and forwards the access to it. An address
-  that no card claims reads as `0xFF`, like an empty slot on the real bus.
+- The `Backplane` implements `MemoryBus` and `IoBus`. On each access it finds
+  the card that claims the address or port and forwards the access to it,
+  like the address decoder on each real card. An address that no card claims
+  reads as `0xFF`, like an empty slot on the real bus.
 
 To add hardware, you write a new card and plug it into the backplane. The CPU
 and the other cards stay as they are.
 
 ## Glossary
 
-**Bus.** The wires between the processor and everything else. In code, a
-trait with four methods: read a byte, write a byte, read a port, write a port.
+**Bus.** The wires between the processor and everything else. In code, two
+traits: `MemoryBus` reads and writes memory bytes, `IoBus` reads and writes
+ports.
 
 **I/O port.** A numbered channel, 0 to 255 on the 8080. The processor talks
 to devices through ports with the `IN` and `OUT` instructions.
