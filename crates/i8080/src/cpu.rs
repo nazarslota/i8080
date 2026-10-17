@@ -74,6 +74,13 @@ impl Cpu {
             Instruction::Inr { dst } => self.inr(memory, dst),
             Instruction::Dcr { dst } => self.dcr(memory, dst),
             Instruction::Mvi { dst, value } => self.mvi(memory, dst, value),
+            Instruction::Rlc => self.rlc(),
+            Instruction::Rrc => self.rrc(),
+            Instruction::Ral => self.ral(),
+            Instruction::Rar => self.rar(),
+            Instruction::Cma => self.cma(),
+            Instruction::Stc => self.stc(),
+            Instruction::Cmc => self.cmc(),
             Instruction::Hlt => self.hlt(),
             Instruction::Mov { dst, src } => self.mov(memory, dst, src),
             Instruction::Add { src } => self.add(memory, src),
@@ -204,6 +211,60 @@ impl Cpu {
         } else {
             cycles::MVI
         }
+    }
+
+    /// `RLC`: rotates `A` left. Bit 7 goes to bit 0 and to `CY`.
+    fn rlc(&mut self) -> u32 {
+        let a = self.registers.a;
+        self.registers.a = a.rotate_left(1);
+        self.registers.flags.carry = a & 0x80 != 0;
+        cycles::RLC
+    }
+
+    /// `RRC`: rotates `A` right. Bit 0 goes to bit 7 and to `CY`.
+    fn rrc(&mut self) -> u32 {
+        let a = self.registers.a;
+        self.registers.a = a.rotate_right(1);
+        self.registers.flags.carry = a & 0x01 != 0;
+        cycles::RRC
+    }
+
+    /// `RAL`: rotates `A` left through `CY`. Bit 7 goes to `CY`, and the
+    /// old `CY` goes to bit 0.
+    fn ral(&mut self) -> u32 {
+        let a = self.registers.a;
+        let carry = self.registers.flags.carry;
+        self.registers.a = (a << 1) | u8::from(carry);
+        self.registers.flags.carry = a & 0x80 != 0;
+        cycles::RAL
+    }
+
+    /// `RAR`: rotates `A` right through `CY`. Bit 0 goes to `CY`, and the
+    /// old `CY` goes to bit 7.
+    fn rar(&mut self) -> u32 {
+        let a = self.registers.a;
+        let carry = self.registers.flags.carry;
+        self.registers.a = (a >> 1) | (u8::from(carry) << 7);
+        self.registers.flags.carry = a & 0x01 != 0;
+        cycles::RAR
+    }
+
+    /// `CMA`: inverts every bit of `A`. Sets no flags.
+    fn cma(&mut self) -> u32 {
+        self.registers.a = !self.registers.a;
+        cycles::CMA
+    }
+
+    /// `STC`: sets `CY` to 1.
+    fn stc(&mut self) -> u32 {
+        self.registers.flags.carry = true;
+        cycles::STC
+    }
+
+    /// `CMC`: inverts `CY`.
+    fn cmc(&mut self) -> u32 {
+        self.registers.flags.carry = !self.registers.flags.carry;
+        cycles::CMC
     }
 
     /// `HLT`: stops the CPU. Later steps execute nothing.
@@ -1132,6 +1193,61 @@ mod tests {
     }
 
     #[test]
+    fn rotates_and_carry_ops_change_a() {
+        // Each case: an opcode, the carry flag before the step, the value it
+        // should leave in A and its cycle count. A starts at 0AH, 0000 1010.
+        let cases = [
+            (0x07, false, 0x14, cycles::RLC), // RLC: 0001 0100
+            (0x0F, false, 0x05, cycles::RRC), // RRC: 0000 0101
+            (0x17, true, 0x15, cycles::RAL),  // RAL: 0001 0101, old CY in bit 0
+            (0x1F, true, 0x85, cycles::RAR),  // RAR: 1000 0101, old CY in bit 7
+            (0x2F, false, 0xF5, cycles::CMA), // CMA: 1111 0101
+            (0x37, false, 0x0A, cycles::STC), // STC: A stays
+            (0x3F, false, 0x0A, cycles::CMC), // CMC: A stays
+        ];
+
+        for (opcode, carry, result, cycles) in cases {
+            assert_alu_result(&[opcode], carry, result, cycles);
+        }
+    }
+
+    #[test]
+    fn rotates_and_carry_ops_set_only_carry() {
+        // Each case: an opcode, A and CY before the step, then A and CY
+        // after it. The other flags start at 1 and stay there. The first
+        // case for each rotate repeats the example from the Intel manual.
+        let cases = [
+            (0x07, 0xF2, false, 0xE5, true),  // RLC
+            (0x07, 0x01, true, 0x02, false),  // RLC ignores the old CY
+            (0x0F, 0xF2, false, 0x79, false), // RRC
+            (0x0F, 0x01, false, 0x80, true),  // RRC
+            (0x17, 0xB5, false, 0x6A, true),  // RAL
+            (0x17, 0x00, true, 0x01, false),  // RAL moves the old CY into bit 0
+            (0x1F, 0x6A, true, 0xB5, false),  // RAR
+            (0x1F, 0x01, false, 0x00, true),  // RAR
+            (0x2F, 0x51, false, 0xAE, false), // CMA leaves CY alone
+            (0x37, 0x0A, false, 0x0A, true),  // STC
+            (0x37, 0x0A, true, 0x0A, true),   // STC
+            (0x3F, 0x0A, false, 0x0A, true),  // CMC
+            (0x3F, 0x0A, true, 0x0A, false),  // CMC
+        ];
+
+        for (opcode, a, carry, result, carry_out) in cases {
+            let registers = Registers {
+                a,
+                flags: Flags { carry, ..ALL_FLAGS },
+                ..distinct_registers()
+            };
+            let flags = Flags {
+                carry: carry_out,
+                ..ALL_FLAGS
+            };
+
+            assert_alu_flags(&[opcode], registers, result, flags);
+        }
+    }
+
+    #[test]
     fn hlt_halts_cpu() {
         let before = distinct_registers();
 
@@ -1986,8 +2102,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "opcode 0x07 is not supported yet")]
+    #[should_panic(expected = "opcode 0x27 is not supported yet")]
     fn unsupported_opcode_panics() {
-        run(&[0x07], distinct_registers()); // RLC, not implemented yet
+        run(&[0x27], distinct_registers()); // DAA, not implemented yet
     }
 }

@@ -30,6 +30,20 @@ pub(crate) enum Instruction {
     Dcr { dst: Operand8 },
     /// `MVI dst,value`: loads the byte that follows the opcode into `dst`.
     Mvi { dst: Operand8, value: u8 },
+    /// `RLC`: rotates `A` left. Bit 7 goes to bit 0 and to `CY`.
+    Rlc,
+    /// `RRC`: rotates `A` right. Bit 0 goes to bit 7 and to `CY`.
+    Rrc,
+    /// `RAL`: rotates `A` left through `CY`.
+    Ral,
+    /// `RAR`: rotates `A` right through `CY`.
+    Rar,
+    /// `CMA`: inverts every bit of `A`.
+    Cma,
+    /// `STC`: sets `CY` to 1.
+    Stc,
+    /// `CMC`: inverts `CY`.
+    Cmc,
     /// `HLT`: stops the CPU until an interrupt or a reset.
     Hlt,
     /// `MOV dst,src`: copies `src` into `dst`.
@@ -158,6 +172,20 @@ impl Instruction {
                 dst: Operand8::from_code(ddd),
                 value: next_byte(),
             },
+            // RLC: 00 000 111
+            (0b00, 0b000, 0b111) => Self::Rlc,
+            // RRC: 00 001 111
+            (0b00, 0b001, 0b111) => Self::Rrc,
+            // RAL: 00 010 111
+            (0b00, 0b010, 0b111) => Self::Ral,
+            // RAR: 00 011 111
+            (0b00, 0b011, 0b111) => Self::Rar,
+            // CMA: 00 101 111
+            (0b00, 0b101, 0b111) => Self::Cma,
+            // STC: 00 110 111
+            (0b00, 0b110, 0b111) => Self::Stc,
+            // CMC: 00 111 111
+            (0b00, 0b111, 0b111) => Self::Cmc,
             // HLT: 01 110 110, the slot where MOV M,M would be. It comes
             // before the MOV pattern, so `match` picks it first.
             (0b01, 0b110, 0b110) => Self::Hlt,

@@ -56,6 +56,27 @@ pub(crate) const MVI: u32 = 7;
 /// `MVI M,n`: `MVI` plus a write to memory.
 pub(crate) const MVI_M: u32 = 10;
 
+/// `RLC`.
+pub(crate) const RLC: u32 = 4;
+
+/// `RRC`.
+pub(crate) const RRC: u32 = 4;
+
+/// `RAL`.
+pub(crate) const RAL: u32 = 4;
+
+/// `RAR`.
+pub(crate) const RAR: u32 = 4;
+
+/// `CMA`.
+pub(crate) const CMA: u32 = 4;
+
+/// `STC`.
+pub(crate) const STC: u32 = 4;
+
+/// `CMC`.
+pub(crate) const CMC: u32 = 4;
+
 /// `HLT`.
 pub(crate) const HLT: u32 = 7;
 

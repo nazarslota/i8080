@@ -75,13 +75,13 @@ applies when the condition holds.
 | `ORI n`     | 2     | 7      | S Z AC P CY | `A = A OR n`                       | ✅     |
 | `CMP r`     | 1     | 4 / 7  | S Z AC P CY | Sets flags from `A - r`, keeps `A` | ✅     |
 | `CPI n`     | 2     | 7      | S Z AC P CY | Sets flags from `A - n`, keeps `A` | ✅     |
-| `RLC`       | 1     | 4      | CY          | Rotates `A` left, bit 7 into `CY`  | ⬜     |
-| `RRC`       | 1     | 4      | CY          | Rotates `A` right, bit 0 into `CY` | ⬜     |
-| `RAL`       | 1     | 4      | CY          | Rotates `A` left through `CY`      | ⬜     |
-| `RAR`       | 1     | 4      | CY          | Rotates `A` right through `CY`     | ⬜     |
-| `CMA`       | 1     | 4      | none        | Inverts every bit of `A`           | ⬜     |
-| `CMC`       | 1     | 4      | CY          | Inverts `CY`                       | ⬜     |
-| `STC`       | 1     | 4      | CY          | Sets `CY` to 1                     | ⬜     |
+| `RLC`       | 1     | 4      | CY          | Rotates `A` left, bit 7 into `CY`  | ✅     |
+| `RRC`       | 1     | 4      | CY          | Rotates `A` right, bit 0 into `CY` | ✅     |
+| `RAL`       | 1     | 4      | CY          | Rotates `A` left through `CY`      | ✅     |
+| `RAR`       | 1     | 4      | CY          | Rotates `A` right through `CY`     | ✅     |
+| `CMA`       | 1     | 4      | none        | Inverts every bit of `A`           | ✅     |
+| `CMC`       | 1     | 4      | CY          | Inverts `CY`                       | ✅     |
+| `STC`       | 1     | 4      | CY          | Sets `CY` to 1                     | ✅     |
 
 ### Branch
 
@@ -976,3 +976,103 @@ The example repeats the one from the Intel manual.
 | `LXI D,3355H` | `0103H` | `3355H` | `0000H` |
 | `LXI H,00FFH` | `0106H` | `3355H` | `00FFH` |
 | `XCHG`        | `0107H` | `00FFH` | `3355H` |
+
+### RLC, RRC, RAL, RAR: rotate A
+
+`RLC` and the rest · opcode `00 0yy 111` · 1 byte · 4 cycles · flags: CY
+
+Each rotate shifts `A` by one bit. The bit that falls off one end lands in
+`CY`. The four differ in what enters the other end:
+
+| Instruction | Opcode | Direction | Bit that enters              |
+|-------------|--------|-----------|------------------------------|
+| `RLC`       | `07H`  | left      | bit 7, the one that fell off |
+| `RRC`       | `0FH`  | right     | bit 0, the one that fell off |
+| `RAL`       | `17H`  | left      | the old `CY`                 |
+| `RAR`       | `1FH`  | right     | the old `CY`                 |
+
+```
+RLC:   CY ← b7 ← b6 … b1 ← b0 ← b7       RAL:   CY ← b7 ← b6 … b1 ← b0 ← old CY
+RRC:   b0 → b7 → b6 … b1 → b0 → CY       RAR:   old CY → b7 → b6 … b1 → b0 → CY
+```
+
+`RLC` and `RRC` rotate the 8 bits of `A` among themselves. `RAL` and `RAR`
+rotate 9 bits, `A` and `CY` together, so a chain of them shifts a number
+wider than 8 bits one byte at a time. The rotates leave `S`, `Z`, `AC` and
+`P` alone.
+
+The Intel manual gives one example for each: `RLC` turns `F2H` into `E5H`
+with `CY = 1`, `RRC` turns `F2H` into `79H` with `CY = 0`. The program below
+runs all four on one value.
+
+```asm
+0100H   MVI  A,81H   ; A = 1000 0001, CY = 0          bytes: 3E 81
+0102H   RLC          ; A = 0000 0011, CY = 1          bytes: 07
+0103H   RAL          ; A = 0000 0111, CY = 0          bytes: 17
+0104H   RRC          ; A = 1000 0011, CY = 1          bytes: 0F
+0105H   RAR          ; A = 1100 0001, CY = 1          bytes: 1F
+```
+
+| After       | `PC`    | `A`   | `A` in binary | `CY` |
+|-------------|---------|-------|---------------|------|
+| `MVI A,81H` | `0102H` | `81H` | `1000 0001`   | 0    |
+| `RLC`       | `0103H` | `03H` | `0000 0011`   | 1    |
+| `RAL`       | `0104H` | `07H` | `0000 0111`   | 0    |
+| `RRC`       | `0105H` | `83H` | `1000 0011`   | 1    |
+| `RAR`       | `0106H` | `C1H` | `1100 0001`   | 1    |
+
+In `RAL`, bit 7 of `03H` is 0, so `CY` drops to 0, and the old `CY = 1`
+fills bit 0. In `RAR`, the old `CY = 1` fills bit 7.
+
+### CMA: complement A
+
+`CMA` · opcode `2FH` · 1 byte · 4 cycles · flags: none
+
+`CMA` inverts every bit of `A`, the same as `XRI 0FFH` but without touching
+the flags. `CMA` followed by `INR A` negates `A` in two's complement.
+
+The example repeats the one from the Intel manual.
+
+```asm
+0100H   MVI  A,51H   ; A = 0101 0001                  bytes: 3E 51
+0102H   CMA          ; A = 1010 1110 = AEH            bytes: 2F
+```
+
+| After       | `PC`    | `A`   | `A` in binary |
+|-------------|---------|-------|---------------|
+| `MVI A,51H` | `0102H` | `51H` | `0101 0001`   |
+| `CMA`       | `0103H` | `AEH` | `1010 1110`   |
+
+### STC: set carry
+
+`STC` · opcode `37H` · 1 byte · 4 cycles · flags: CY
+
+`STC` sets `CY` to 1 and leaves everything else alone. The 8080 has no
+instruction that clears `CY` alone. Programs use `STC` followed by `CMC`,
+or `ORA A`, which clears `CY` and sets the other flags from `A`.
+
+```asm
+0100H   STC          ; CY = 1                         bytes: 37
+0101H   CMC          ; CY = 0                         bytes: 3F
+```
+
+| After | `PC`    | `CY` |
+|-------|---------|------|
+| `STC` | `0101H` | 1    |
+| `CMC` | `0102H` | 0    |
+
+### CMC: complement carry
+
+`CMC` · opcode `3FH` · 1 byte · 4 cycles · flags: CY
+
+`CMC` inverts `CY` and leaves everything else alone.
+
+```asm
+0100H   CMC          ; CY = 0 → 1                     bytes: 3F
+0101H   CMC          ; CY = 1 → 0                     bytes: 3F
+```
+
+| After        | `PC`    | `CY` |
+|--------------|---------|------|
+| first `CMC`  | `0101H` | 1    |
+| second `CMC` | `0102H` | 0    |
