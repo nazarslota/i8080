@@ -66,12 +66,6 @@ impl Cpu {
         }
     }
 
-    /// `HLT`: stops the CPU. Later steps execute nothing.
-    fn hlt(&mut self) -> u32 {
-        self.halted = true;
-        cycles::HLT
-    }
-
     /// `MVI dst,value`: loads a constant byte into a register or `M`.
     fn mvi(&mut self, memory: &mut impl MemoryBus, dst: Operand, value: u8) -> u32 {
         self.write_operand(memory, dst, value);
@@ -91,6 +85,12 @@ impl Cpu {
         } else {
             cycles::MOV
         }
+    }
+
+    /// `HLT`: stops the CPU. Later steps execute nothing.
+    fn hlt(&mut self) -> u32 {
+        self.halted = true;
+        cycles::HLT
     }
 
     /// Reads an 8-bit operand. `M` reads memory at the address in `HL`.
