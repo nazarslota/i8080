@@ -1,4 +1,5 @@
 use crate::alu;
+use crate::condition::Condition;
 use crate::cycles::{self, HALTED_STEP_CYCLES};
 use crate::instruction::{Instruction, Operand8, Operand16};
 use crate::{Flags, MemoryBus, Registers};
@@ -62,25 +63,25 @@ impl Cpu {
         match instruction {
             Instruction::Nop => cycles::NOP,
             Instruction::Lxi { dst, value } => self.lxi(dst, value),
-            Instruction::Dad { src } => self.dad(src),
             Instruction::Stax { dst } => self.stax(memory, dst),
-            Instruction::Ldax { src } => self.ldax(memory, src),
-            Instruction::Shld { address } => self.shld(memory, address),
-            Instruction::Lhld { address } => self.lhld(memory, address),
-            Instruction::Sta { address } => self.sta(memory, address),
-            Instruction::Lda { address } => self.lda(memory, address),
             Instruction::Inx { pair } => self.inx(pair),
-            Instruction::Dcx { pair } => self.dcx(pair),
             Instruction::Inr { dst } => self.inr(memory, dst),
             Instruction::Dcr { dst } => self.dcr(memory, dst),
             Instruction::Mvi { dst, value } => self.mvi(memory, dst, value),
             Instruction::Rlc => self.rlc(),
+            Instruction::Dad { src } => self.dad(src),
+            Instruction::Ldax { src } => self.ldax(memory, src),
+            Instruction::Dcx { pair } => self.dcx(pair),
             Instruction::Rrc => self.rrc(),
             Instruction::Ral => self.ral(),
             Instruction::Rar => self.rar(),
+            Instruction::Shld { address } => self.shld(memory, address),
             Instruction::Daa => self.daa(),
+            Instruction::Lhld { address } => self.lhld(memory, address),
             Instruction::Cma => self.cma(),
+            Instruction::Sta { address } => self.sta(memory, address),
             Instruction::Stc => self.stc(),
+            Instruction::Lda { address } => self.lda(memory, address),
             Instruction::Cmc => self.cmc(),
             Instruction::Hlt => self.hlt(),
             Instruction::Mov { dst, src } => self.mov(memory, dst, src),
@@ -92,12 +93,15 @@ impl Cpu {
             Instruction::Xra { src } => self.xra(memory, src),
             Instruction::Ora { src } => self.ora(memory, src),
             Instruction::Cmp { src } => self.cmp(memory, src),
-            Instruction::Xchg => self.xchg(),
+            Instruction::Jcc { condition, address } => self.jcc(condition, address),
+            Instruction::Jmp { address } => self.jmp(address),
             Instruction::Adi { value } => self.adi(value),
             Instruction::Aci { value } => self.aci(value),
             Instruction::Sui { value } => self.sui(value),
             Instruction::Sbi { value } => self.sbi(value),
             Instruction::Ani { value } => self.ani(value),
+            Instruction::Pchl => self.pchl(),
+            Instruction::Xchg => self.xchg(),
             Instruction::Xri { value } => self.xri(value),
             Instruction::Ori { value } => self.ori(value),
             Instruction::Cpi { value } => self.cpi(value),
@@ -110,51 +114,10 @@ impl Cpu {
         cycles::LXI
     }
 
-    /// `DAD src`: adds a register pair to `HL`. Sets `CY` and no other flag.
-    fn dad(&mut self, src: Operand16) -> u32 {
-        let value = self.read_pair(src);
-        let (sum, carry) = self.registers.hl().overflowing_add(value);
-        self.registers.set_hl(sum);
-        self.registers.flags.carry = carry;
-        cycles::DAD
-    }
-
     /// `STAX dst`: stores `A` at the address in `BC` or `DE`.
     fn stax(&mut self, memory: &mut impl MemoryBus, dst: Operand16) -> u32 {
         memory.write(self.read_pair(dst), self.registers.a);
         cycles::STAX
-    }
-
-    /// `LDAX src`: loads `A` from the address in `BC` or `DE`.
-    fn ldax(&mut self, memory: &mut impl MemoryBus, src: Operand16) -> u32 {
-        self.registers.a = memory.read(self.read_pair(src));
-        cycles::LDAX
-    }
-
-    /// `SHLD address`: stores `L` at `address` and `H` at the next byte.
-    fn shld(&mut self, memory: &mut impl MemoryBus, address: u16) -> u32 {
-        memory.write(address, self.registers.l);
-        memory.write(address.wrapping_add(1), self.registers.h);
-        cycles::SHLD
-    }
-
-    /// `LHLD address`: loads `L` from `address` and `H` from the next byte.
-    fn lhld(&mut self, memory: &mut impl MemoryBus, address: u16) -> u32 {
-        self.registers.l = memory.read(address);
-        self.registers.h = memory.read(address.wrapping_add(1));
-        cycles::LHLD
-    }
-
-    /// `STA address`: stores `A` at `address`.
-    fn sta(&mut self, memory: &mut impl MemoryBus, address: u16) -> u32 {
-        memory.write(address, self.registers.a);
-        cycles::STA
-    }
-
-    /// `LDA address`: loads `A` from `address`.
-    fn lda(&mut self, memory: &mut impl MemoryBus, address: u16) -> u32 {
-        self.registers.a = memory.read(address);
-        cycles::LDA
     }
 
     /// `INX pair`: adds 1 to a register pair. Sets no flags.
@@ -162,13 +125,6 @@ impl Cpu {
         let value = self.read_pair(pair);
         self.write_pair(pair, value.wrapping_add(1));
         cycles::INX
-    }
-
-    /// `DCX pair`: subtracts 1 from a register pair. Sets no flags.
-    fn dcx(&mut self, pair: Operand16) -> u32 {
-        let value = self.read_pair(pair);
-        self.write_pair(pair, value.wrapping_sub(1));
-        cycles::DCX
     }
 
     /// `INR dst`: adds 1 to a register or `M`. Sets every flag but `CY`.
@@ -222,6 +178,28 @@ impl Cpu {
         cycles::RLC
     }
 
+    /// `DAD src`: adds a register pair to `HL`. Sets `CY` and no other flag.
+    fn dad(&mut self, src: Operand16) -> u32 {
+        let value = self.read_pair(src);
+        let (sum, carry) = self.registers.hl().overflowing_add(value);
+        self.registers.set_hl(sum);
+        self.registers.flags.carry = carry;
+        cycles::DAD
+    }
+
+    /// `LDAX src`: loads `A` from the address in `BC` or `DE`.
+    fn ldax(&mut self, memory: &mut impl MemoryBus, src: Operand16) -> u32 {
+        self.registers.a = memory.read(self.read_pair(src));
+        cycles::LDAX
+    }
+
+    /// `DCX pair`: subtracts 1 from a register pair. Sets no flags.
+    fn dcx(&mut self, pair: Operand16) -> u32 {
+        let value = self.read_pair(pair);
+        self.write_pair(pair, value.wrapping_sub(1));
+        cycles::DCX
+    }
+
     /// `RRC`: rotates `A` right. Bit 0 goes to bit 7 and to `CY`.
     fn rrc(&mut self) -> u32 {
         let a = self.registers.a;
@@ -250,6 +228,13 @@ impl Cpu {
         cycles::RAR
     }
 
+    /// `SHLD address`: stores `L` at `address` and `H` at the next byte.
+    fn shld(&mut self, memory: &mut impl MemoryBus, address: u16) -> u32 {
+        memory.write(address, self.registers.l);
+        memory.write(address.wrapping_add(1), self.registers.h);
+        cycles::SHLD
+    }
+
     /// `DAA`: adjusts `A` to two decimal digits after a BCD addition.
     fn daa(&mut self) -> u32 {
         let flags = self.registers.flags;
@@ -258,16 +243,35 @@ impl Cpu {
         cycles::DAA
     }
 
+    /// `LHLD address`: loads `L` from `address` and `H` from the next byte.
+    fn lhld(&mut self, memory: &mut impl MemoryBus, address: u16) -> u32 {
+        self.registers.l = memory.read(address);
+        self.registers.h = memory.read(address.wrapping_add(1));
+        cycles::LHLD
+    }
+
     /// `CMA`: inverts every bit of `A`. Sets no flags.
     fn cma(&mut self) -> u32 {
         self.registers.a = !self.registers.a;
         cycles::CMA
     }
 
+    /// `STA address`: stores `A` at `address`.
+    fn sta(&mut self, memory: &mut impl MemoryBus, address: u16) -> u32 {
+        memory.write(address, self.registers.a);
+        cycles::STA
+    }
+
     /// `STC`: sets `CY` to 1.
     fn stc(&mut self) -> u32 {
         self.registers.flags.carry = true;
         cycles::STC
+    }
+
+    /// `LDA address`: loads `A` from `address`.
+    fn lda(&mut self, memory: &mut impl MemoryBus, address: u16) -> u32 {
+        self.registers.a = memory.read(address);
+        cycles::LDA
     }
 
     /// `CMC`: inverts `CY`.
@@ -391,12 +395,19 @@ impl Cpu {
         }
     }
 
-    /// `XCHG`: swaps `HL` and `DE`.
-    fn xchg(&mut self) -> u32 {
-        let r = &mut self.registers;
-        core::mem::swap(&mut r.h, &mut r.d);
-        core::mem::swap(&mut r.l, &mut r.e);
-        cycles::XCHG
+    /// `Jcc address`: jumps to `address` if `condition` holds. Otherwise
+    /// the CPU goes on to the next instruction.
+    fn jcc(&mut self, condition: Condition, address: u16) -> u32 {
+        if condition.holds(self.registers.flags) {
+            self.registers.pc = address;
+        }
+        cycles::JCC
+    }
+
+    /// `JMP address`: jumps to `address`.
+    fn jmp(&mut self, address: u16) -> u32 {
+        self.registers.pc = address;
+        cycles::JMP
     }
 
     /// `ADI value`: adds a constant to `A`.
@@ -429,6 +440,20 @@ impl Cpu {
     fn ani(&mut self, value: u8) -> u32 {
         (self.registers.a, self.registers.flags) = alu::and(self.registers.a, value);
         cycles::ANI
+    }
+
+    /// `PCHL`: jumps to the address in `HL`.
+    fn pchl(&mut self) -> u32 {
+        self.registers.pc = self.registers.hl();
+        cycles::PCHL
+    }
+
+    /// `XCHG`: swaps `HL` and `DE`.
+    fn xchg(&mut self) -> u32 {
+        let r = &mut self.registers;
+        core::mem::swap(&mut r.h, &mut r.d);
+        core::mem::swap(&mut r.l, &mut r.e);
+        cycles::XCHG
     }
 
     /// `XRI value`: `A = A XOR value`.
@@ -647,6 +672,21 @@ mod tests {
     }
 
     #[test]
+    fn undocumented_nops_do_nothing() {
+        // The 8080 runs the other seven opcodes of the NOP column as NOP.
+        // Intel never documented them.
+        let before = distinct_registers();
+        let after = Registers {
+            pc: 0x0101,
+            ..before
+        };
+
+        for opcode in [0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38] {
+            assert_registers(&[opcode], before, after, cycles::NOP);
+        }
+    }
+
+    #[test]
     fn pc_wraps_from_ffff_to_0000() {
         let registers = Registers {
             pc: 0xFFFF,
@@ -707,54 +747,6 @@ mod tests {
     }
 
     #[test]
-    fn dad_adds_pair_to_hl() {
-        // Opcodes from the Intel manual, each with the HL it should leave
-        // behind. HL starts at 0102H.
-        let cases = [
-            (0x09, 0x0C0E), // DAD B: 0102H + 0B0CH
-            (0x19, 0x0E10), // DAD D: 0102H + 0D0EH
-            (0x29, 0x0204), // DAD H: 0102H + 0102H
-            (0x39, 0xF102), // DAD SP: 0102H + F000H
-        ];
-
-        for (opcode, hl) in cases {
-            let (cpu, cycles) = run(&[opcode], distinct_registers());
-
-            assert_eq!(cpu.registers.hl(), hl, "opcode {opcode:#04X}");
-            assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
-            assert_eq!(cycles, cycles::DAD, "opcode {opcode:#04X}");
-        }
-    }
-
-    #[test]
-    fn dad_sets_only_carry() {
-        // Each case: HL, BC and the flags before DAD B, then HL and the
-        // flags after. Only CY changes.
-        let no_carry = Flags {
-            carry: false,
-            ..ALL_FLAGS
-        };
-        let cases = [
-            // The DAD example from the Intel manual: A17BH + 339FH = D51AH.
-            (0xA17B, 0x339F, ALL_FLAGS, 0xD51A, no_carry),
-            // FFFFH + 0001H needs 17 bits, so CY is 1.
-            (0xFFFF, 0x0001, no_carry, 0x0000, ALL_FLAGS),
-        ];
-
-        for (hl, bc, before, expected_hl, expected_flags) in cases {
-            let mut registers = distinct_registers();
-            registers.set_hl(hl);
-            registers.set_bc(bc);
-            registers.flags = before;
-
-            let (cpu, _) = run(&[0x09], registers); // DAD B
-
-            assert_eq!(cpu.registers.hl(), expected_hl, "{hl:#06X} + {bc:#06X}");
-            assert_eq!(cpu.registers.flags, expected_flags, "{hl:#06X} + {bc:#06X}");
-        }
-    }
-
-    #[test]
     fn stax_stores_a_at_pair_address() {
         // Each case: an opcode and the address its pair holds. A holds 0AH.
         let cases = [
@@ -776,106 +768,6 @@ mod tests {
             assert_eq!(cpu.registers, after, "opcode {opcode:#04X}");
             assert_eq!(cycles, cycles::STAX, "opcode {opcode:#04X}");
         }
-    }
-
-    #[test]
-    fn ldax_loads_a_from_pair_address() {
-        // Each case: an opcode and the byte at the address its pair holds.
-        let cases = [
-            (0x0A, 0x11), // LDAX B: memory[0B0CH]
-            (0x1A, 0x22), // LDAX D: memory[0D0EH]
-        ];
-
-        for (opcode, value) in cases {
-            let mut memory = [0u8; 0x10000];
-            memory[0x0B0C] = 0x11;
-            memory[0x0D0E] = 0x22;
-
-            let (cpu, cycles) = run_with_memory(&mut memory, &[opcode], distinct_registers());
-
-            assert_eq!(cpu.registers.a, value, "opcode {opcode:#04X}");
-            assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
-            assert_eq!(cycles, cycles::LDAX, "opcode {opcode:#04X}");
-        }
-    }
-
-    #[test]
-    fn shld_stores_l_then_h() {
-        // The SHLD example from the Intel manual: HL = AE29H, SHLD 010AH.
-        let mut memory = [0u8; 0x10000];
-        let mut before = distinct_registers();
-        before.set_hl(0xAE29);
-
-        let (cpu, cycles) = run_with_memory(&mut memory, &[0x22, 0x0A, 0x01], before);
-
-        assert_eq!(memory[0x010A..0x010C], [0x29, 0xAE]);
-        assert_eq!(
-            cpu.registers,
-            Registers {
-                pc: 0x0103,
-                ..before
-            }
-        );
-        assert_eq!(cycles, cycles::SHLD);
-    }
-
-    #[test]
-    fn lhld_loads_l_then_h() {
-        // The LHLD example from the Intel manual: memory at 025BH holds
-        // FFH 03H, so LHLD 025BH loads HL = 03FFH.
-        let mut memory = [0u8; 0x10000];
-        memory[0x025B..0x025D].copy_from_slice(&[0xFF, 0x03]);
-        let before = distinct_registers();
-
-        let (cpu, cycles) = run_with_memory(&mut memory, &[0x2A, 0x5B, 0x02], before);
-
-        assert_eq!(
-            cpu.registers,
-            Registers {
-                h: 0x03,
-                l: 0xFF,
-                pc: 0x0103,
-                ..before
-            }
-        );
-        assert_eq!(cycles, cycles::LHLD);
-    }
-
-    #[test]
-    fn sta_stores_a_at_address() {
-        let mut memory = [0u8; 0x10000];
-        let before = distinct_registers();
-
-        let (cpu, cycles) = run_with_memory(&mut memory, &[0x32, 0x00, 0x20], before); // STA 2000H
-
-        assert_eq!(memory[0x2000], 0x0A);
-        assert_eq!(
-            cpu.registers,
-            Registers {
-                pc: 0x0103,
-                ..before
-            }
-        );
-        assert_eq!(cycles, cycles::STA);
-    }
-
-    #[test]
-    fn lda_loads_a_from_address() {
-        let mut memory = [0u8; 0x10000];
-        memory[0x2000] = 0x99;
-        let before = distinct_registers();
-
-        let (cpu, cycles) = run_with_memory(&mut memory, &[0x3A, 0x00, 0x20], before); // LDA 2000H
-
-        assert_eq!(
-            cpu.registers,
-            Registers {
-                a: 0x99,
-                pc: 0x0103,
-                ..before
-            }
-        );
-        assert_eq!(cycles, cycles::LDA);
     }
 
     #[test]
@@ -902,57 +794,6 @@ mod tests {
 
         for (opcode, expected) in cases {
             assert_registers(&[opcode], before, expected, cycles::INX);
-        }
-    }
-
-    #[test]
-    fn dcx_decrements_pair() {
-        // Opcodes from the Intel manual, each with the registers it should
-        // leave behind: the pair shrank by 1 and PC moved 1 byte.
-        let before = distinct_registers();
-        let after = Registers {
-            pc: 0x0101,
-            ..before
-        };
-        let cases = [
-            (0x0B, Registers { c: 0x0B, ..after }), // DCX B: 0B0CH - 1
-            (0x1B, Registers { e: 0x0D, ..after }), // DCX D: 0D0EH - 1
-            (0x2B, Registers { l: 0x01, ..after }), // DCX H: 0102H - 1
-            (
-                0x3B,
-                Registers {
-                    sp: 0xEFFF,
-                    ..after
-                },
-            ), // DCX SP: F000H - 1
-        ];
-
-        for (opcode, expected) in cases {
-            assert_registers(&[opcode], before, expected, cycles::DCX);
-        }
-    }
-
-    #[test]
-    fn inx_and_dcx_wrap_and_set_no_flags() {
-        // Each case: an opcode, HL before and after. HL wraps around, and
-        // the flags stay at 0 even when HL reaches 0000H.
-        let cases = [
-            (0x23, 0xFFFF, 0x0000), // INX H
-            (0x2B, 0x0000, 0xFFFF), // DCX H
-        ];
-
-        for (opcode, hl, expected) in cases {
-            let mut registers = distinct_registers();
-            registers.set_hl(hl);
-
-            let (cpu, _) = run(&[opcode], registers);
-
-            assert_eq!(cpu.registers.hl(), expected, "opcode {opcode:#04X}");
-            assert_eq!(
-                cpu.registers.flags,
-                Flags::default(),
-                "opcode {opcode:#04X}"
-            );
         }
     }
 
@@ -1258,6 +1099,146 @@ mod tests {
     }
 
     #[test]
+    fn dad_adds_pair_to_hl() {
+        // Opcodes from the Intel manual, each with the HL it should leave
+        // behind. HL starts at 0102H.
+        let cases = [
+            (0x09, 0x0C0E), // DAD B: 0102H + 0B0CH
+            (0x19, 0x0E10), // DAD D: 0102H + 0D0EH
+            (0x29, 0x0204), // DAD H: 0102H + 0102H
+            (0x39, 0xF102), // DAD SP: 0102H + F000H
+        ];
+
+        for (opcode, hl) in cases {
+            let (cpu, cycles) = run(&[opcode], distinct_registers());
+
+            assert_eq!(cpu.registers.hl(), hl, "opcode {opcode:#04X}");
+            assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
+            assert_eq!(cycles, cycles::DAD, "opcode {opcode:#04X}");
+        }
+    }
+
+    #[test]
+    fn dad_sets_only_carry() {
+        // Each case: HL, BC and the flags before DAD B, then HL and the
+        // flags after. Only CY changes.
+        let no_carry = Flags {
+            carry: false,
+            ..ALL_FLAGS
+        };
+        let cases = [
+            // The DAD example from the Intel manual: A17BH + 339FH = D51AH.
+            (0xA17B, 0x339F, ALL_FLAGS, 0xD51A, no_carry),
+            // FFFFH + 0001H needs 17 bits, so CY is 1.
+            (0xFFFF, 0x0001, no_carry, 0x0000, ALL_FLAGS),
+        ];
+
+        for (hl, bc, before, expected_hl, expected_flags) in cases {
+            let mut registers = distinct_registers();
+            registers.set_hl(hl);
+            registers.set_bc(bc);
+            registers.flags = before;
+
+            let (cpu, _) = run(&[0x09], registers); // DAD B
+
+            assert_eq!(cpu.registers.hl(), expected_hl, "{hl:#06X} + {bc:#06X}");
+            assert_eq!(cpu.registers.flags, expected_flags, "{hl:#06X} + {bc:#06X}");
+        }
+    }
+
+    #[test]
+    fn ldax_loads_a_from_pair_address() {
+        // Each case: an opcode and the byte at the address its pair holds.
+        let cases = [
+            (0x0A, 0x11), // LDAX B: memory[0B0CH]
+            (0x1A, 0x22), // LDAX D: memory[0D0EH]
+        ];
+
+        for (opcode, value) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0x0B0C] = 0x11;
+            memory[0x0D0E] = 0x22;
+
+            let (cpu, cycles) = run_with_memory(&mut memory, &[opcode], distinct_registers());
+
+            assert_eq!(cpu.registers.a, value, "opcode {opcode:#04X}");
+            assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
+            assert_eq!(cycles, cycles::LDAX, "opcode {opcode:#04X}");
+        }
+    }
+
+    #[test]
+    fn dcx_decrements_pair() {
+        // Opcodes from the Intel manual, each with the registers it should
+        // leave behind: the pair shrank by 1 and PC moved 1 byte.
+        let before = distinct_registers();
+        let after = Registers {
+            pc: 0x0101,
+            ..before
+        };
+        let cases = [
+            (0x0B, Registers { c: 0x0B, ..after }), // DCX B: 0B0CH - 1
+            (0x1B, Registers { e: 0x0D, ..after }), // DCX D: 0D0EH - 1
+            (0x2B, Registers { l: 0x01, ..after }), // DCX H: 0102H - 1
+            (
+                0x3B,
+                Registers {
+                    sp: 0xEFFF,
+                    ..after
+                },
+            ), // DCX SP: F000H - 1
+        ];
+
+        for (opcode, expected) in cases {
+            assert_registers(&[opcode], before, expected, cycles::DCX);
+        }
+    }
+
+    #[test]
+    fn inx_and_dcx_wrap_and_set_no_flags() {
+        // Each case: an opcode, HL before and after. HL wraps around, and
+        // the flags stay at 0 even when HL reaches 0000H.
+        let cases = [
+            (0x23, 0xFFFF, 0x0000), // INX H
+            (0x2B, 0x0000, 0xFFFF), // DCX H
+        ];
+
+        for (opcode, hl, expected) in cases {
+            let mut registers = distinct_registers();
+            registers.set_hl(hl);
+
+            let (cpu, _) = run(&[opcode], registers);
+
+            assert_eq!(cpu.registers.hl(), expected, "opcode {opcode:#04X}");
+            assert_eq!(
+                cpu.registers.flags,
+                Flags::default(),
+                "opcode {opcode:#04X}"
+            );
+        }
+    }
+
+    #[test]
+    fn shld_stores_l_then_h() {
+        // The SHLD example from the Intel manual: HL = AE29H, SHLD 010AH.
+        let mut memory = [0u8; 0x10000];
+        let mut before = distinct_registers();
+        before.set_hl(0xAE29);
+
+        let (cpu, cycles) = run_with_memory(&mut memory, &[0x22, 0x0A, 0x01], before);
+
+        assert_eq!(memory[0x010A..0x010C], [0x29, 0xAE]);
+        assert_eq!(
+            cpu.registers,
+            Registers {
+                pc: 0x0103,
+                ..before
+            }
+        );
+        assert_eq!(cycles, cycles::SHLD);
+    }
+
+    #[test]
     fn daa_adjusts_a_to_two_decimal_digits() {
         // Each case: A, AC and CY that an addition left, then A and the
         // flags DAA should leave behind.
@@ -1347,6 +1328,65 @@ mod tests {
 
             assert_alu_flags(&[0x27], registers, result, flags); // DAA
         }
+    }
+
+    #[test]
+    fn lhld_loads_l_then_h() {
+        // The LHLD example from the Intel manual: memory at 025BH holds
+        // FFH 03H, so LHLD 025BH loads HL = 03FFH.
+        let mut memory = [0u8; 0x10000];
+        memory[0x025B..0x025D].copy_from_slice(&[0xFF, 0x03]);
+        let before = distinct_registers();
+
+        let (cpu, cycles) = run_with_memory(&mut memory, &[0x2A, 0x5B, 0x02], before);
+
+        assert_eq!(
+            cpu.registers,
+            Registers {
+                h: 0x03,
+                l: 0xFF,
+                pc: 0x0103,
+                ..before
+            }
+        );
+        assert_eq!(cycles, cycles::LHLD);
+    }
+
+    #[test]
+    fn sta_stores_a_at_address() {
+        let mut memory = [0u8; 0x10000];
+        let before = distinct_registers();
+
+        let (cpu, cycles) = run_with_memory(&mut memory, &[0x32, 0x00, 0x20], before); // STA 2000H
+
+        assert_eq!(memory[0x2000], 0x0A);
+        assert_eq!(
+            cpu.registers,
+            Registers {
+                pc: 0x0103,
+                ..before
+            }
+        );
+        assert_eq!(cycles, cycles::STA);
+    }
+
+    #[test]
+    fn lda_loads_a_from_address() {
+        let mut memory = [0u8; 0x10000];
+        memory[0x2000] = 0x99;
+        let before = distinct_registers();
+
+        let (cpu, cycles) = run_with_memory(&mut memory, &[0x3A, 0x00, 0x20], before); // LDA 2000H
+
+        assert_eq!(
+            cpu.registers,
+            Registers {
+                a: 0x99,
+                pc: 0x0103,
+                ..before
+            }
+        );
+        assert_eq!(cycles, cycles::LDA);
     }
 
     #[test]
@@ -2117,23 +2157,42 @@ mod tests {
     }
 
     #[test]
-    fn xchg_swaps_hl_and_de() {
-        let before = distinct_registers();
+    fn jcc_jumps_only_when_condition_holds() {
+        // Each case: an opcode followed by 2000H, the flags before the step
+        // and whether the CPU should jump. Without the jump, PC moves past
+        // the 3 bytes of the instruction. Condition tests every condition
+        // against the flags, so this test checks only the jump itself.
+        let none = Flags::default();
+        let cases = [
+            (0xCA, Flags { zero: true, ..none }, true), // JZ, Z = 1
+            (0xCA, none, false),                        // JZ, Z = 0
+            (0xFA, Flags { sign: true, ..none }, true), // JM, S = 1
+            (0xFA, none, false),                        // JM, S = 0
+        ];
 
-        let (cpu, cycles) = run(&[0xEB], before); // XCHG
-
-        assert_eq!(
-            cpu.registers,
-            Registers {
-                d: before.h,
-                e: before.l,
-                h: before.d,
-                l: before.e,
-                pc: 0x0101,
+        for (opcode, flags, jumps) in cases {
+            let before = Registers {
+                flags,
+                ..distinct_registers()
+            };
+            let after = Registers {
+                pc: if jumps { 0x2000 } else { 0x0103 },
                 ..before
-            }
-        );
-        assert_eq!(cycles, cycles::XCHG);
+            };
+
+            assert_registers(&[opcode, 0x00, 0x20], before, after, cycles::JCC);
+        }
+    }
+
+    #[test]
+    fn jmp_jumps_to_address() {
+        let before = distinct_registers();
+        let after = Registers {
+            pc: 0x2000,
+            ..before
+        };
+
+        assert_registers(&[0xC3, 0x00, 0x20], before, after, cycles::JMP); // JMP 2000H
     }
 
     #[test]
@@ -2155,6 +2214,39 @@ mod tests {
         for (opcode, result, cycles) in cases {
             assert_alu_result(&[opcode, 0x03], true, result, cycles);
         }
+    }
+
+    #[test]
+    fn pchl_jumps_to_hl() {
+        // The PCHL example from the Intel manual: HL = 413EH.
+        let mut before = distinct_registers();
+        before.set_hl(0x413E);
+        let after = Registers {
+            pc: 0x413E,
+            ..before
+        };
+
+        assert_registers(&[0xE9], before, after, cycles::PCHL); // PCHL
+    }
+
+    #[test]
+    fn xchg_swaps_hl_and_de() {
+        let before = distinct_registers();
+
+        let (cpu, cycles) = run(&[0xEB], before); // XCHG
+
+        assert_eq!(
+            cpu.registers,
+            Registers {
+                d: before.h,
+                e: before.l,
+                h: before.d,
+                l: before.e,
+                pc: 0x0101,
+                ..before
+            }
+        );
+        assert_eq!(cycles, cycles::XCHG);
     }
 
     #[test]
@@ -2204,8 +2296,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "opcode 0xC3 is not supported yet")]
+    #[should_panic(expected = "opcode 0xC5 is not supported yet")]
     fn unsupported_opcode_panics() {
-        run(&[0xC3, 0x00, 0x00], distinct_registers()); // JMP 0000H, not implemented yet
+        run(&[0xC5], distinct_registers()); // PUSH B, not implemented yet
     }
 }

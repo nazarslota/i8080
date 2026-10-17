@@ -14,32 +14,11 @@ pub(crate) const NOP: u32 = 4;
 /// `LXI rp,nn`: opcode fetch plus two reads for the constant.
 pub(crate) const LXI: u32 = 10;
 
-/// `DAD rp`.
-pub(crate) const DAD: u32 = 10;
-
 /// `STAX rp`: opcode fetch plus a memory write.
 pub(crate) const STAX: u32 = 7;
 
-/// `LDAX rp`: opcode fetch plus a memory read.
-pub(crate) const LDAX: u32 = 7;
-
-/// `SHLD nn`: opcode fetch, two reads for the address, two writes.
-pub(crate) const SHLD: u32 = 16;
-
-/// `LHLD nn`: opcode fetch, two reads for the address, two reads.
-pub(crate) const LHLD: u32 = 16;
-
-/// `STA nn`: opcode fetch, two reads for the address, one write.
-pub(crate) const STA: u32 = 13;
-
-/// `LDA nn`: opcode fetch, two reads for the address, one read.
-pub(crate) const LDA: u32 = 13;
-
 /// `INX rp`.
 pub(crate) const INX: u32 = 5;
-
-/// `DCX rp`.
-pub(crate) const DCX: u32 = 5;
 
 /// `INR r`.
 pub(crate) const INR: u32 = 5;
@@ -59,6 +38,15 @@ pub(crate) const MVI_M: u32 = 10;
 /// `RLC`.
 pub(crate) const RLC: u32 = 4;
 
+/// `DAD rp`.
+pub(crate) const DAD: u32 = 10;
+
+/// `LDAX rp`: opcode fetch plus a memory read.
+pub(crate) const LDAX: u32 = 7;
+
+/// `DCX rp`.
+pub(crate) const DCX: u32 = 5;
+
 /// `RRC`.
 pub(crate) const RRC: u32 = 4;
 
@@ -68,14 +56,26 @@ pub(crate) const RAL: u32 = 4;
 /// `RAR`.
 pub(crate) const RAR: u32 = 4;
 
+/// `SHLD nn`: opcode fetch, two reads for the address, two writes.
+pub(crate) const SHLD: u32 = 16;
+
 /// `DAA`.
 pub(crate) const DAA: u32 = 4;
+
+/// `LHLD nn`: opcode fetch, two reads for the address, two reads.
+pub(crate) const LHLD: u32 = 16;
 
 /// `CMA`.
 pub(crate) const CMA: u32 = 4;
 
+/// `STA nn`: opcode fetch, two reads for the address, one write.
+pub(crate) const STA: u32 = 13;
+
 /// `STC`.
 pub(crate) const STC: u32 = 4;
+
+/// `LDA nn`: opcode fetch, two reads for the address, one read.
+pub(crate) const LDA: u32 = 13;
 
 /// `CMC`.
 pub(crate) const CMC: u32 = 4;
@@ -129,8 +129,11 @@ pub(crate) const CMP: u32 = 4;
 /// `CMP M`: `CMP` plus a memory read.
 pub(crate) const CMP_M: u32 = 7;
 
-/// `XCHG`.
-pub(crate) const XCHG: u32 = 4;
+/// `Jcc nn`: the same whether the jump happens or not.
+pub(crate) const JCC: u32 = 10;
+
+/// `JMP nn`: opcode fetch plus two reads for the address.
+pub(crate) const JMP: u32 = 10;
 
 /// `ADI n`: opcode fetch plus one read for the constant.
 pub(crate) const ADI: u32 = 7;
@@ -146,6 +149,12 @@ pub(crate) const SBI: u32 = 7;
 
 /// `ANI n`: opcode fetch plus one read for the constant.
 pub(crate) const ANI: u32 = 7;
+
+/// `PCHL`.
+pub(crate) const PCHL: u32 = 5;
+
+/// `XCHG`.
+pub(crate) const XCHG: u32 = 4;
 
 /// `XRI n`: opcode fetch plus one read for the constant.
 pub(crate) const XRI: u32 = 7;

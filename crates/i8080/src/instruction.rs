@@ -1,3 +1,5 @@
+use crate::condition::Condition;
+
 /// One decoded 8080 instruction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Instruction {
@@ -6,24 +8,10 @@ pub(crate) enum Instruction {
     /// `LXI dst,value`: loads the 16-bit constant that follows the opcode
     /// into `dst`.
     Lxi { dst: Operand16, value: u16 },
-    /// `DAD src`: adds `src` to `HL`.
-    Dad { src: Operand16 },
     /// `STAX dst`: stores `A` at the address in `dst`, `BC` or `DE`.
     Stax { dst: Operand16 },
-    /// `LDAX src`: loads `A` from the address in `src`, `BC` or `DE`.
-    Ldax { src: Operand16 },
-    /// `SHLD address`: stores `L` at `address` and `H` at `address + 1`.
-    Shld { address: u16 },
-    /// `LHLD address`: loads `L` from `address` and `H` from `address + 1`.
-    Lhld { address: u16 },
-    /// `STA address`: stores `A` at `address`.
-    Sta { address: u16 },
-    /// `LDA address`: loads `A` from `address`.
-    Lda { address: u16 },
     /// `INX pair`: adds 1 to `pair`.
     Inx { pair: Operand16 },
-    /// `DCX pair`: subtracts 1 from `pair`.
-    Dcx { pair: Operand16 },
     /// `INR dst`: adds 1 to `dst` and leaves the carry flag alone.
     Inr { dst: Operand8 },
     /// `DCR dst`: subtracts 1 from `dst` and leaves the carry flag alone.
@@ -32,18 +20,32 @@ pub(crate) enum Instruction {
     Mvi { dst: Operand8, value: u8 },
     /// `RLC`: rotates `A` left. Bit 7 goes to bit 0 and to `CY`.
     Rlc,
+    /// `DAD src`: adds `src` to `HL`.
+    Dad { src: Operand16 },
+    /// `LDAX src`: loads `A` from the address in `src`, `BC` or `DE`.
+    Ldax { src: Operand16 },
+    /// `DCX pair`: subtracts 1 from `pair`.
+    Dcx { pair: Operand16 },
     /// `RRC`: rotates `A` right. Bit 0 goes to bit 7 and to `CY`.
     Rrc,
     /// `RAL`: rotates `A` left through `CY`.
     Ral,
     /// `RAR`: rotates `A` right through `CY`.
     Rar,
+    /// `SHLD address`: stores `L` at `address` and `H` at `address + 1`.
+    Shld { address: u16 },
     /// `DAA`: adjusts `A` to two decimal digits after a BCD addition.
     Daa,
+    /// `LHLD address`: loads `L` from `address` and `H` from `address + 1`.
+    Lhld { address: u16 },
     /// `CMA`: inverts every bit of `A`.
     Cma,
+    /// `STA address`: stores `A` at `address`.
+    Sta { address: u16 },
     /// `STC`: sets `CY` to 1.
     Stc,
+    /// `LDA address`: loads `A` from `address`.
+    Lda { address: u16 },
     /// `CMC`: inverts `CY`.
     Cmc,
     /// `HLT`: stops the CPU until an interrupt or a reset.
@@ -66,8 +68,10 @@ pub(crate) enum Instruction {
     Ora { src: Operand8 },
     /// `CMP src`: sets the flags from `A - src` and leaves `A` as it was.
     Cmp { src: Operand8 },
-    /// `XCHG`: swaps `HL` and `DE`.
-    Xchg,
+    /// `Jcc address`: jumps to `address` if `condition` holds.
+    Jcc { condition: Condition, address: u16 },
+    /// `JMP address`: jumps to `address`.
+    Jmp { address: u16 },
     /// `ADI value`: adds a constant to `A`.
     Adi { value: u8 },
     /// `ACI value`: adds a constant and the carry flag to `A`.
@@ -78,6 +82,10 @@ pub(crate) enum Instruction {
     Sbi { value: u8 },
     /// `ANI value`: `A = A AND value`.
     Ani { value: u8 },
+    /// `PCHL`: jumps to the address in `HL`.
+    Pchl,
+    /// `XCHG`: swaps `HL` and `DE`.
+    Xchg,
     /// `XRI value`: `A = A XOR value`.
     Xri { value: u8 },
     /// `ORI value`: `A = A OR value`.
@@ -101,147 +109,86 @@ impl Instruction {
     pub(crate) fn decode(mut next_byte: impl FnMut() -> u8) -> Self {
         let opcode = next_byte();
 
-        // Split the opcode into three bit fields, xx yyy zzz. The Intel
-        // manual calls yyy `ddd` when it names a destination operand and
-        // zzz `sss` when it names a source operand.
+        // Many opcodes carry their operand in a bit field. The Intel manual
+        // names the fields `ddd` (destination, bits 5-3), `sss` (source,
+        // bits 2-0), `rp` (register pair, bits 5-4) and `ccc` (condition,
+        // bits 5-3). Each `from_code` keeps the low bits after the shift.
         //
-        //   MVI A,n = 3EH = 00 111 110
-        //                   xx yyy zzz   x = 00, y = 111 (A), z = 110
-        //
-        // Shifting right drops the bits below a field, and `& 0b111` keeps
-        // the three lowest bits that remain.
-        let x = opcode >> 6;
-        let y = (opcode >> 3) & 0b111;
-        let z = opcode & 0b111;
+        //   MVI A,n  = 3EH = 00 111 110   ddd = 111, A
+        //   LXI H,nn = 21H = 00 10 0001   rp  = 10, HL
+        let ddd = Operand8::from_code(opcode >> 3);
+        let sss = Operand8::from_code(opcode);
+        let rp = Operand16::from_code(opcode >> 4);
+        let ccc = Condition::from_code(opcode >> 3);
 
-        match (x, y, z) {
-            // NOP: 00 000 000
-            (0b00, 0b000, 0b000) => Self::Nop,
-            // LXI rp,nn: 00 rp0 001. The two bits rp sit above bit 3, so
-            // `y >> 1` picks them and bit 3 tells LXI from DAD.
-            (0b00, y, 0b001) if y & 1 == 0 => Self::Lxi {
-                dst: Operand16::from_code(y >> 1),
+        match opcode {
+            // Intel documents only 00H. The 8080 runs the other seven as
+            // NOP too.
+            0x00 | 0x08 | 0x10 | 0x18 | 0x20 | 0x28 | 0x30 | 0x38 => Self::Nop,
+            0x01 | 0x11 | 0x21 | 0x31 => Self::Lxi {
+                dst: rp,
                 value: next_word(&mut next_byte),
             },
-            // DAD rp: 00 rp1 001
-            (0b00, y, 0b001) => Self::Dad {
-                src: Operand16::from_code(y >> 1),
-            },
-            // STAX rp: 00 rp0 010, for BC and DE only
-            (0b00, y @ (0b000 | 0b010), 0b010) => Self::Stax {
-                dst: Operand16::from_code(y >> 1),
-            },
-            // LDAX rp: 00 rp1 010, for BC and DE only
-            (0b00, y @ (0b001 | 0b011), 0b010) => Self::Ldax {
-                src: Operand16::from_code(y >> 1),
-            },
-            // The slots STAX H, LDAX H, STAX SP and LDAX SP would take
-            // hold the instructions with a 16-bit address instead.
-            // SHLD nn: 00 100 010
-            (0b00, 0b100, 0b010) => Self::Shld {
-                address: next_word(&mut next_byte),
-            },
-            // LHLD nn: 00 101 010
-            (0b00, 0b101, 0b010) => Self::Lhld {
-                address: next_word(&mut next_byte),
-            },
-            // STA nn: 00 110 010
-            (0b00, 0b110, 0b010) => Self::Sta {
-                address: next_word(&mut next_byte),
-            },
-            // LDA nn: 00 111 010
-            (0b00, 0b111, 0b010) => Self::Lda {
-                address: next_word(&mut next_byte),
-            },
-            // INX rp: 00 rp0 011
-            (0b00, y, 0b011) if y & 1 == 0 => Self::Inx {
-                pair: Operand16::from_code(y >> 1),
-            },
-            // DCX rp: 00 rp1 011
-            (0b00, y, 0b011) => Self::Dcx {
-                pair: Operand16::from_code(y >> 1),
-            },
-            // INR ddd: 00 ddd 100
-            (0b00, ddd, 0b100) => Self::Inr {
-                dst: Operand8::from_code(ddd),
-            },
-            // DCR ddd: 00 ddd 101
-            (0b00, ddd, 0b101) => Self::Dcr {
-                dst: Operand8::from_code(ddd),
-            },
-            // MVI ddd,n: 00 ddd 110
-            (0b00, ddd, 0b110) => Self::Mvi {
-                dst: Operand8::from_code(ddd),
+            0x02 | 0x12 => Self::Stax { dst: rp },
+            0x03 | 0x13 | 0x23 | 0x33 => Self::Inx { pair: rp },
+            0x04 | 0x0C | 0x14 | 0x1C | 0x24 | 0x2C | 0x34 | 0x3C => Self::Inr { dst: ddd },
+            0x05 | 0x0D | 0x15 | 0x1D | 0x25 | 0x2D | 0x35 | 0x3D => Self::Dcr { dst: ddd },
+            0x06 | 0x0E | 0x16 | 0x1E | 0x26 | 0x2E | 0x36 | 0x3E => Self::Mvi {
+                dst: ddd,
                 value: next_byte(),
             },
-            // RLC: 00 000 111
-            (0b00, 0b000, 0b111) => Self::Rlc,
-            // RRC: 00 001 111
-            (0b00, 0b001, 0b111) => Self::Rrc,
-            // RAL: 00 010 111
-            (0b00, 0b010, 0b111) => Self::Ral,
-            // RAR: 00 011 111
-            (0b00, 0b011, 0b111) => Self::Rar,
-            // DAA: 00 100 111
-            (0b00, 0b100, 0b111) => Self::Daa,
-            // CMA: 00 101 111
-            (0b00, 0b101, 0b111) => Self::Cma,
-            // STC: 00 110 111
-            (0b00, 0b110, 0b111) => Self::Stc,
-            // CMC: 00 111 111
-            (0b00, 0b111, 0b111) => Self::Cmc,
-            // HLT: 01 110 110, the slot where MOV M,M would be. It comes
-            // before the MOV pattern, so `match` picks it first.
-            (0b01, 0b110, 0b110) => Self::Hlt,
-            // MOV ddd,sss: 01 ddd sss
-            (0b01, ddd, sss) => Self::Mov {
-                dst: Operand8::from_code(ddd),
-                src: Operand8::from_code(sss),
+            0x07 => Self::Rlc,
+            0x09 | 0x19 | 0x29 | 0x39 => Self::Dad { src: rp },
+            0x0A | 0x1A => Self::Ldax { src: rp },
+            0x0B | 0x1B | 0x2B | 0x3B => Self::Dcx { pair: rp },
+            0x0F => Self::Rrc,
+            0x17 => Self::Ral,
+            0x1F => Self::Rar,
+            0x22 => Self::Shld {
+                address: next_word(&mut next_byte),
             },
-            // ADD sss: 10 000 sss
-            (0b10, 0b000, sss) => Self::Add {
-                src: Operand8::from_code(sss),
+            0x27 => Self::Daa,
+            0x2A => Self::Lhld {
+                address: next_word(&mut next_byte),
             },
-            // ADC sss: 10 001 sss
-            (0b10, 0b001, sss) => Self::Adc {
-                src: Operand8::from_code(sss),
+            0x2F => Self::Cma,
+            0x32 => Self::Sta {
+                address: next_word(&mut next_byte),
             },
-            // SUB sss: 10 010 sss
-            (0b10, 0b010, sss) => Self::Sub {
-                src: Operand8::from_code(sss),
+            0x37 => Self::Stc,
+            0x3A => Self::Lda {
+                address: next_word(&mut next_byte),
             },
-            // SBB sss: 10 011 sss
-            (0b10, 0b011, sss) => Self::Sbb {
-                src: Operand8::from_code(sss),
+            0x3F => Self::Cmc,
+            // HLT takes the slot where MOV M,M would be, so it comes before
+            // the MOV range.
+            0x76 => Self::Hlt,
+            0x40..=0x7F => Self::Mov { dst: ddd, src: sss },
+            0x80..=0x87 => Self::Add { src: sss },
+            0x88..=0x8F => Self::Adc { src: sss },
+            0x90..=0x97 => Self::Sub { src: sss },
+            0x98..=0x9F => Self::Sbb { src: sss },
+            0xA0..=0xA7 => Self::Ana { src: sss },
+            0xA8..=0xAF => Self::Xra { src: sss },
+            0xB0..=0xB7 => Self::Ora { src: sss },
+            0xB8..=0xBF => Self::Cmp { src: sss },
+            0xC2 | 0xCA | 0xD2 | 0xDA | 0xE2 | 0xEA | 0xF2 | 0xFA => Self::Jcc {
+                condition: ccc,
+                address: next_word(&mut next_byte),
             },
-            // ANA sss: 10 100 sss
-            (0b10, 0b100, sss) => Self::Ana {
-                src: Operand8::from_code(sss),
+            0xC3 => Self::Jmp {
+                address: next_word(&mut next_byte),
             },
-            // XRA sss: 10 101 sss
-            (0b10, 0b101, sss) => Self::Xra {
-                src: Operand8::from_code(sss),
-            },
-            // ORA sss: 10 110 sss
-            (0b10, 0b110, sss) => Self::Ora {
-                src: Operand8::from_code(sss),
-            },
-            // CMP sss: 10 111 sss
-            (0b10, 0b111, sss) => Self::Cmp {
-                src: Operand8::from_code(sss),
-            },
-            // XCHG: 11 101 011
-            (0b11, 0b101, 0b011) => Self::Xchg,
-            // The same eight operations with a constant byte after the
-            // opcode: 11 yyy 110.
-            (0b11, 0b000, 0b110) => Self::Adi { value: next_byte() },
-            (0b11, 0b001, 0b110) => Self::Aci { value: next_byte() },
-            (0b11, 0b010, 0b110) => Self::Sui { value: next_byte() },
-            (0b11, 0b011, 0b110) => Self::Sbi { value: next_byte() },
-            (0b11, 0b100, 0b110) => Self::Ani { value: next_byte() },
-            (0b11, 0b101, 0b110) => Self::Xri { value: next_byte() },
-            (0b11, 0b110, 0b110) => Self::Ori { value: next_byte() },
-            (0b11, 0b111, 0b110) => Self::Cpi { value: next_byte() },
+            0xC6 => Self::Adi { value: next_byte() },
+            0xCE => Self::Aci { value: next_byte() },
+            0xD6 => Self::Sui { value: next_byte() },
+            0xDE => Self::Sbi { value: next_byte() },
+            0xE6 => Self::Ani { value: next_byte() },
+            0xE9 => Self::Pchl,
+            0xEB => Self::Xchg,
+            0xEE => Self::Xri { value: next_byte() },
+            0xF6 => Self::Ori { value: next_byte() },
+            0xFE => Self::Cpi { value: next_byte() },
             _ => unimplemented!("opcode {opcode:#04X} is not supported yet"),
         }
     }

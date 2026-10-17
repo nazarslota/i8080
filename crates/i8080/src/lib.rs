@@ -26,6 +26,7 @@
 
 mod alu;
 mod bus;
+mod condition;
 mod cpu;
 mod cycles;
 mod flags;

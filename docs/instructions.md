@@ -87,14 +87,14 @@ applies when the condition holds.
 
 | Instruction | Bytes | Cycles  | Flags | What it does                               | Status |
 |-------------|-------|---------|-------|--------------------------------------------|--------|
-| `JMP nn`    | 3     | 10      | none  | Jumps to `nn`                              | ⬜     |
-| `Jcc nn`    | 3     | 10      | none  | Jumps to `nn` if condition `cc` holds      | ⬜     |
+| `JMP nn`    | 3     | 10      | none  | Jumps to `nn`                              | ✅     |
+| `Jcc nn`    | 3     | 10      | none  | Jumps to `nn` if condition `cc` holds      | ✅     |
 | `CALL nn`   | 3     | 17      | none  | Pushes `PC` and jumps to `nn`              | ⬜     |
 | `Ccc nn`    | 3     | 17 / 11 | none  | Calls `nn` if condition `cc` holds         | ⬜     |
 | `RET`       | 1     | 10      | none  | Pops `PC`, returning from a call           | ⬜     |
 | `Rcc`       | 1     | 11 / 5  | none  | Returns if condition `cc` holds            | ⬜     |
 | `RST n`     | 1     | 11      | none  | Calls address `8 × n`, for `n` from 0 to 7 | ⬜     |
-| `PCHL`      | 1     | 5       | none  | Jumps to the address in `HL`               | ⬜     |
+| `PCHL`      | 1     | 5       | none  | Jumps to the address in `HL`               | ✅     |
 
 ### Stack, I/O and machine control
 
@@ -123,6 +123,10 @@ space, reserve bytes for a later patch or wait a few microseconds.
 
 Zeroed memory reads as `NOP`, so a CPU running through empty RAM executes
 `NOP` after `NOP` until it reaches something else.
+
+Intel documents only `00H`. The 8080 also runs `08H`, `10H`, `18H`, `20H`,
+`28H`, `30H` and `38H` as `NOP`: they share the `00 yyy 000` column, and
+the CPU ignores `yyy` there. The emulator does the same.
 
 A program that leaves room for a later fix:
 
@@ -1119,3 +1123,89 @@ The last `DAA` below repeats the example from the Intel manual.
 The second `DAA` adds `06H` because the low digit `B` is above 9, and `60H`
 because the high digit becomes `A` after that. `42 + 59 = 101`: `A` holds
 the last two digits, `01`, and `CY` holds the hundred.
+
+### JMP: jump
+
+`JMP nn` · opcode `C3H` · 3 bytes · 10 cycles · flags: none
+
+`JMP` loads `nn` into `PC`, so the CPU fetches its next instruction from
+there. The address follows the opcode low byte first: `JMP 0110H`
+assembles to `C3 10 01`.
+
+```asm
+0100H   JMP  0110H   ; PC = 0110H                     bytes: C3 10 01
+0103H   MVI  A,01H   ; skipped                        bytes: 3E 01
+        ...
+0110H   MVI  A,02H   ; A = 02H                        bytes: 3E 02
+```
+
+| After       | `PC`    | `A`   |
+|-------------|---------|-------|
+| `JMP 0110H` | `0110H` | `00H` |
+| `MVI A,02H` | `0112H` | `02H` |
+
+### Jcc: jump if a condition holds
+
+`Jcc nn` · opcode `11 ccc 010` · 3 bytes · 10 cycles · flags: none
+
+`Jcc` jumps to `nn` if condition `cc` holds. Otherwise the CPU goes on to
+the instruction after it. Each condition tests one flag. It takes 10 cycles
+either way, since the CPU reads the address before it checks the flag.
+
+| Instruction | Opcode | Jumps when | Instruction | Opcode | Jumps when |
+|-------------|--------|------------|-------------|--------|------------|
+| `JNZ nn`    | `C2H`  | `Z = 0`    | `JPO nn`    | `E2H`  | `P = 0`    |
+| `JZ nn`     | `CAH`  | `Z = 1`    | `JPE nn`    | `EAH`  | `P = 1`    |
+| `JNC nn`    | `D2H`  | `CY = 0`   | `JP nn`     | `F2H`  | `S = 0`    |
+| `JC nn`     | `DAH`  | `CY = 1`   | `JM nn`     | `FAH`  | `S = 1`    |
+
+The 3 bits `ccc` pick the condition. The same codes come back in the
+conditional calls and returns.
+
+`JNZ` after `DCR` makes a counted loop. The program below adds 5 three
+times, so `A` ends at `0FH`, 15:
+
+```asm
+0100H   MVI  B,03H   ; B = 3, the loop counter        bytes: 06 03
+0102H   MVI  A,00H   ; A = 0                          bytes: 3E 00
+0104H   ADI  05H     ; A = A + 5                      bytes: C6 05
+0106H   DCR  B       ; B = B - 1, Z = 1 when B is 0   bytes: 05
+0107H   JNZ  0104H   ; back to ADI while B isn't 0    bytes: C2 04 01
+010AH   HLT          ; stop                           bytes: 76
+```
+
+| After       | `PC`    | `A`   | `B`   | `Z` |
+|-------------|---------|-------|-------|-----|
+| `MVI B,03H` | `0102H` | `00H` | `03H` | 0   |
+| `MVI A,00H` | `0104H` | `00H` | `03H` | 0   |
+| `ADI 05H`   | `0106H` | `05H` | `03H` | 0   |
+| `DCR B`     | `0107H` | `05H` | `02H` | 0   |
+| `JNZ 0104H` | `0104H` | `05H` | `02H` | 0   |
+| `ADI 05H`   | `0106H` | `0AH` | `02H` | 0   |
+| `DCR B`     | `0107H` | `0AH` | `01H` | 0   |
+| `JNZ 0104H` | `0104H` | `0AH` | `01H` | 0   |
+| `ADI 05H`   | `0106H` | `0FH` | `01H` | 0   |
+| `DCR B`     | `0107H` | `0FH` | `00H` | 1   |
+| `JNZ 0104H` | `010AH` | `0FH` | `00H` | 1   |
+| `HLT`       | `010BH` | `0FH` | `00H` | 1   |
+
+The third `DCR B` sets `Z`, so the last `JNZ` falls through to `HLT`.
+
+### PCHL: jump to the address in HL
+
+`PCHL` · opcode `E9H` · 1 byte · 5 cycles · flags: none
+
+`PCHL` copies `HL` into `PC`. A program can compute the address in `HL`
+first, for example to pick an entry from a table of jump targets.
+
+The example repeats the one from the Intel manual.
+
+```asm
+0100H   LXI  H,413EH ; HL = 413EH                     bytes: 21 3E 41
+0103H   PCHL         ; PC = HL = 413EH                bytes: E9
+```
+
+| After         | `PC`    | `HL`    |
+|---------------|---------|---------|
+| `LXI H,413EH` | `0103H` | `413EH` |
+| `PCHL`        | `413EH` | `413EH` |
