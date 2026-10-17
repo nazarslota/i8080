@@ -3,28 +3,41 @@
 pub(crate) enum Instruction {
     /// `NOP`: does nothing.
     Nop,
+    /// `LXI dst,value`: loads the 16-bit constant that follows the opcode
+    /// into `dst`.
+    Lxi { dst: Operand16, value: u16 },
+    /// `DAD src`: adds `src` to `HL`.
+    Dad { src: Operand16 },
+    /// `INX pair`: adds 1 to `pair`.
+    Inx { pair: Operand16 },
+    /// `DCX pair`: subtracts 1 from `pair`.
+    Dcx { pair: Operand16 },
+    /// `INR dst`: adds 1 to `dst` and leaves the carry flag alone.
+    Inr { dst: Operand8 },
+    /// `DCR dst`: subtracts 1 from `dst` and leaves the carry flag alone.
+    Dcr { dst: Operand8 },
     /// `MVI dst,value`: loads the byte that follows the opcode into `dst`.
-    Mvi { dst: Operand, value: u8 },
-    /// `MOV dst,src`: copies `src` into `dst`.
-    Mov { dst: Operand, src: Operand },
+    Mvi { dst: Operand8, value: u8 },
     /// `HLT`: stops the CPU until an interrupt or a reset.
     Hlt,
+    /// `MOV dst,src`: copies `src` into `dst`.
+    Mov { dst: Operand8, src: Operand8 },
     /// `ADD src`: adds `src` to `A`.
-    Add { src: Operand },
+    Add { src: Operand8 },
     /// `ADC src`: adds `src` and the carry flag to `A`.
-    Adc { src: Operand },
+    Adc { src: Operand8 },
     /// `SUB src`: subtracts `src` from `A`.
-    Sub { src: Operand },
+    Sub { src: Operand8 },
     /// `SBB src`: subtracts `src` and the carry flag from `A`.
-    Sbb { src: Operand },
+    Sbb { src: Operand8 },
     /// `ANA src`: `A = A AND src`.
-    Ana { src: Operand },
+    Ana { src: Operand8 },
     /// `XRA src`: `A = A XOR src`.
-    Xra { src: Operand },
+    Xra { src: Operand8 },
     /// `ORA src`: `A = A OR src`.
-    Ora { src: Operand },
+    Ora { src: Operand8 },
     /// `CMP src`: sets the flags from `A - src` and leaves `A` as it was.
-    Cmp { src: Operand },
+    Cmp { src: Operand8 },
     /// `ADI value`: adds a constant to `A`.
     Adi { value: u8 },
     /// `ACI value`: adds a constant and the carry flag to `A`.
@@ -42,10 +55,6 @@ pub(crate) enum Instruction {
     /// `CPI value`: sets the flags from `A - value` and leaves `A` as it
     /// was.
     Cpi { value: u8 },
-    /// `INR dst`: adds 1 to `dst` and leaves the carry flag alone.
-    Inr { dst: Operand },
-    /// `DCR dst`: subtracts 1 from `dst` and leaves the carry flag alone.
-    Dcr { dst: Operand },
 }
 
 impl Instruction {
@@ -78,17 +87,36 @@ impl Instruction {
         match (x, y, z) {
             // NOP: 00 000 000
             (0b00, 0b000, 0b000) => Self::Nop,
+            // LXI rp,nn: 00 rp0 001. The two bits rp sit above bit 3, so
+            // `y >> 1` picks them and bit 3 tells LXI from DAD. The
+            // constant follows the opcode low byte first.
+            (0b00, y, 0b001) if y & 1 == 0 => Self::Lxi {
+                dst: Operand16::from_code(y >> 1),
+                value: u16::from_le_bytes([next_byte(), next_byte()]),
+            },
+            // DAD rp: 00 rp1 001
+            (0b00, y, 0b001) => Self::Dad {
+                src: Operand16::from_code(y >> 1),
+            },
+            // INX rp: 00 rp0 011
+            (0b00, y, 0b011) if y & 1 == 0 => Self::Inx {
+                pair: Operand16::from_code(y >> 1),
+            },
+            // DCX rp: 00 rp1 011
+            (0b00, y, 0b011) => Self::Dcx {
+                pair: Operand16::from_code(y >> 1),
+            },
             // INR ddd: 00 ddd 100
             (0b00, ddd, 0b100) => Self::Inr {
-                dst: Operand::from_code(ddd),
+                dst: Operand8::from_code(ddd),
             },
             // DCR ddd: 00 ddd 101
             (0b00, ddd, 0b101) => Self::Dcr {
-                dst: Operand::from_code(ddd),
+                dst: Operand8::from_code(ddd),
             },
             // MVI ddd,n: 00 ddd 110
             (0b00, ddd, 0b110) => Self::Mvi {
-                dst: Operand::from_code(ddd),
+                dst: Operand8::from_code(ddd),
                 value: next_byte(),
             },
             // HLT: 01 110 110, the slot where MOV M,M would be. It comes
@@ -96,40 +124,40 @@ impl Instruction {
             (0b01, 0b110, 0b110) => Self::Hlt,
             // MOV ddd,sss: 01 ddd sss
             (0b01, ddd, sss) => Self::Mov {
-                dst: Operand::from_code(ddd),
-                src: Operand::from_code(sss),
+                dst: Operand8::from_code(ddd),
+                src: Operand8::from_code(sss),
             },
             // ADD sss: 10 000 sss
             (0b10, 0b000, sss) => Self::Add {
-                src: Operand::from_code(sss),
+                src: Operand8::from_code(sss),
             },
             // ADC sss: 10 001 sss
             (0b10, 0b001, sss) => Self::Adc {
-                src: Operand::from_code(sss),
+                src: Operand8::from_code(sss),
             },
             // SUB sss: 10 010 sss
             (0b10, 0b010, sss) => Self::Sub {
-                src: Operand::from_code(sss),
+                src: Operand8::from_code(sss),
             },
             // SBB sss: 10 011 sss
             (0b10, 0b011, sss) => Self::Sbb {
-                src: Operand::from_code(sss),
+                src: Operand8::from_code(sss),
             },
             // ANA sss: 10 100 sss
             (0b10, 0b100, sss) => Self::Ana {
-                src: Operand::from_code(sss),
+                src: Operand8::from_code(sss),
             },
             // XRA sss: 10 101 sss
             (0b10, 0b101, sss) => Self::Xra {
-                src: Operand::from_code(sss),
+                src: Operand8::from_code(sss),
             },
             // ORA sss: 10 110 sss
             (0b10, 0b110, sss) => Self::Ora {
-                src: Operand::from_code(sss),
+                src: Operand8::from_code(sss),
             },
             // CMP sss: 10 111 sss
             (0b10, 0b111, sss) => Self::Cmp {
-                src: Operand::from_code(sss),
+                src: Operand8::from_code(sss),
             },
             // The same eight operations with a constant byte after the
             // opcode: 11 yyy 110.
@@ -152,7 +180,7 @@ impl Instruction {
 /// on up to `A` at 111. `M` stands for the memory byte at the address in
 /// `HL`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Operand {
+pub(crate) enum Operand8 {
     B = 0,
     C = 1,
     D = 2,
@@ -163,7 +191,7 @@ pub(crate) enum Operand {
     A = 7,
 }
 
-impl Operand {
+impl Operand8 {
     /// Decodes a 3-bit operand field. It ignores bits above the lowest
     /// three.
     pub(crate) const fn from_code(code: u8) -> Self {
@@ -180,31 +208,67 @@ impl Operand {
     }
 }
 
+/// A 16-bit operand: a register pair, as opcodes encode it in a 2-bit
+/// field.
+///
+/// The discriminants follow the Intel manual: `BC` is 00, `DE` 01, `HL` 10
+/// and `SP` 11. Intel assembler names a pair by its first register:
+/// `LXI B` loads `BC`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Operand16 {
+    BC = 0,
+    DE = 1,
+    HL = 2,
+    SP = 3,
+}
+
+impl Operand16 {
+    /// Decodes a 2-bit register pair field. It ignores bits above the
+    /// lowest two.
+    pub(crate) const fn from_code(code: u8) -> Self {
+        match code & 0b11 {
+            0 => Self::BC,
+            1 => Self::DE,
+            2 => Self::HL,
+            _ => Self::SP,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn operand_codes_match_intel_manual() {
+    fn operand8_codes_match_intel_manual() {
         let manual_order = [
-            Operand::B,
-            Operand::C,
-            Operand::D,
-            Operand::E,
-            Operand::H,
-            Operand::L,
-            Operand::M,
-            Operand::A,
+            Operand8::B,
+            Operand8::C,
+            Operand8::D,
+            Operand8::E,
+            Operand8::H,
+            Operand8::L,
+            Operand8::M,
+            Operand8::A,
         ];
 
         for (code, operand) in (0..).zip(manual_order) {
-            assert_eq!(Operand::from_code(code), operand, "code {code:03b}");
+            assert_eq!(Operand8::from_code(code), operand, "code {code:03b}");
+        }
+    }
+
+    #[test]
+    fn operand16_codes_match_intel_manual() {
+        let manual_order = [Operand16::BC, Operand16::DE, Operand16::HL, Operand16::SP];
+
+        for (code, pair) in (0..).zip(manual_order) {
+            assert_eq!(Operand16::from_code(code), pair, "code {code:02b}");
         }
     }
 
     #[test]
     fn from_code_ignores_bits_above_the_field() {
-        assert_eq!(Operand::from_code(0b1111_1000), Operand::B);
-        assert_eq!(Operand::from_code(0b0011_1111), Operand::A);
+        assert_eq!(Operand8::from_code(0b1111_1000), Operand8::B);
+        assert_eq!(Operand8::from_code(0b0011_1111), Operand8::A);
     }
 }

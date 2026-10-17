@@ -35,7 +35,7 @@ applies when the condition holds.
 |-------------|-------|--------|-------|----------------------------------------------|--------|
 | `MOV r,r`   | 1     | 5 / 7  | none  | Copies a byte between registers and `M`      | ✅     |
 | `MVI r,n`   | 2     | 7 / 10 | none  | Loads a constant byte into a register or `M` | ✅     |
-| `LXI rp,nn` | 3     | 10     | none  | Loads a 16-bit constant into a register pair | ⬜     |
+| `LXI rp,nn` | 3     | 10     | none  | Loads a 16-bit constant into a register pair | ✅     |
 | `LDA nn`    | 3     | 13     | none  | Loads `A` from address `nn`                  | ⬜     |
 | `STA nn`    | 3     | 13     | none  | Stores `A` at address `nn`                   | ⬜     |
 | `LHLD nn`   | 3     | 16     | none  | Loads `L` from `nn` and `H` from `nn + 1`    | ⬜     |
@@ -58,9 +58,9 @@ applies when the condition holds.
 | `SBI n`     | 2     | 7      | S Z AC P CY | `A = A - n - CY`                        | ✅     |
 | `INR r`     | 1     | 5 / 10 | S Z AC P    | `r = r + 1`, carry unchanged            | ✅     |
 | `DCR r`     | 1     | 5 / 10 | S Z AC P    | `r = r - 1`, carry unchanged            | ✅     |
-| `INX rp`    | 1     | 5      | none        | `rp = rp + 1`                           | ⬜     |
-| `DCX rp`    | 1     | 5      | none        | `rp = rp - 1`                           | ⬜     |
-| `DAD rp`    | 1     | 10     | CY          | `HL = HL + rp`                          | ⬜     |
+| `INX rp`    | 1     | 5      | none        | `rp = rp + 1`                           | ✅     |
+| `DCX rp`    | 1     | 5      | none        | `rp = rp - 1`                           | ✅     |
+| `DAD rp`    | 1     | 10     | CY          | `HL = HL + rp`                          | ✅     |
 | `DAA`       | 1     | 4      | S Z AC P CY | Adjusts `A` to two decimal digits (BCD) | ⬜     |
 
 ### Logical
@@ -694,3 +694,133 @@ The `DCR M` below repeats the example from the Intel manual.
 | `MVI M,40H` | `0106H` | `00H` | `3A7CH` | `40H`           | 0   | 0   | 0    | 0   | 0    |
 | `DCR M`     | `0107H` | `00H` | `3A7CH` | `3FH`           | 0   | 0   | 0    | 1   | 0    |
 | `DCR A`     | `0108H` | `FFH` | `3A7CH` | `3FH`           | 1   | 0   | 0    | 1   | 0    |
+
+### LXI: load a register pair
+
+`LXI rp,nn` · opcode `00 rp0 001` · 3 bytes · 10 cycles · flags: none
+
+`LXI` loads the 16-bit constant after the opcode into a register pair. The
+constant sits in memory low byte first: `LXI H,2000H` assembles to
+`21 00 20`. Programs use `LXI H` to point `HL` at data before working on it
+through `M`, and `LXI SP` to set up the stack.
+
+| Instruction | Opcode |
+|-------------|--------|
+| `LXI B,nn`  | `01H`  |
+| `LXI D,nn`  | `11H`  |
+| `LXI H,nn`  | `21H`  |
+| `LXI SP,nn` | `31H`  |
+
+The 2 bits `rp` pick the pair: `00` is `BC`, `01` `DE`, `10` `HL` and `11`
+`SP`. Intel assembler names a pair by its first register, so `LXI B` loads
+`BC`.
+
+```asm
+0100H   LXI  H,2000H   ; HL = 2000H                  bytes: 21 00 20
+0103H   LXI  SP,0F000H ; SP = F000H                  bytes: 31 00 F0
+0106H   MVI  M,42H     ; memory[2000H] = 42H         bytes: 36 42
+```
+
+| After           | `PC`    | `HL`    | `SP`    | `memory[2000H]` |
+|-----------------|---------|---------|---------|-----------------|
+| `LXI H,2000H`   | `0103H` | `2000H` | `0000H` | `00H`           |
+| `LXI SP,0F000H` | `0106H` | `2000H` | `F000H` | `00H`           |
+| `MVI M,42H`     | `0108H` | `2000H` | `F000H` | `42H`           |
+
+### INX: increment a register pair
+
+`INX rp` · opcode `00 rp0 011` · 1 byte · 5 cycles · flags: none
+
+`INX` adds 1 to a register pair. `FFFFH` wraps to `0000H`. Programs step
+`HL` through a block of memory with `INX H`.
+
+| Instruction | Opcode |
+|-------------|--------|
+| `INX B`     | `03H`  |
+| `INX D`     | `13H`  |
+| `INX H`     | `23H`  |
+| `INX SP`    | `33H`  |
+
+`INX` sets no flags, even when the pair wraps to `0000H`. A program can't
+test `Z` after it.
+
+The example repeats the one from the Intel manual: the carry from `E`
+moves into `D`.
+
+```asm
+0100H   LXI  D,38FFH  ; DE = 38FFH                   bytes: 11 FF 38
+0103H   INX  D        ; DE = 38FFH + 1 = 3900H       bytes: 13
+```
+
+| After         | `PC`    | `D`   | `E`   |
+|---------------|---------|-------|-------|
+| `LXI D,38FFH` | `0103H` | `38H` | `FFH` |
+| `INX D`       | `0104H` | `39H` | `00H` |
+
+### DCX: decrement a register pair
+
+`DCX rp` · opcode `00 rp1 011` · 1 byte · 5 cycles · flags: none
+
+`DCX` subtracts 1 from a register pair. `0000H` wraps to `FFFFH`.
+
+| Instruction | Opcode |
+|-------------|--------|
+| `DCX B`     | `0BH`  |
+| `DCX D`     | `1BH`  |
+| `DCX H`     | `2BH`  |
+| `DCX SP`    | `3BH`  |
+
+Like `INX`, `DCX` sets no flags. A loop that counts a 16-bit pair down to 0
+can't jump on `Z` after `DCX B`. It has to test the two halves itself,
+for example with `MOV A,B` and `ORA C`.
+
+The first `DCX H` repeats the example from the Intel manual.
+
+```asm
+0100H   LXI  H,9800H  ; HL = 9800H                   bytes: 21 00 98
+0103H   DCX  H        ; HL = 9800H - 1 = 97FFH       bytes: 2B
+0104H   LXI  B,0001H  ; BC = 0001H                   bytes: 01 01 00
+0107H   DCX  B        ; BC = 0000H, Z stays 0        bytes: 0B
+```
+
+| After         | `PC`    | `BC`    | `HL`    | `Z` |
+|---------------|---------|---------|---------|-----|
+| `LXI H,9800H` | `0103H` | `0000H` | `9800H` | 0   |
+| `DCX H`       | `0104H` | `0000H` | `97FFH` | 0   |
+| `LXI B,0001H` | `0107H` | `0001H` | `97FFH` | 0   |
+| `DCX B`       | `0108H` | `0000H` | `97FFH` | 0   |
+
+### DAD: add a register pair to HL
+
+`DAD rp` · opcode `00 rp1 001` · 1 byte · 10 cycles · flags: CY
+
+`DAD` adds a register pair to `HL` and keeps the low 16 bits of the sum in
+`HL`. It sets `CY` when the sum needs 17 bits and leaves the other flags
+alone. `DAD H` doubles `HL`, which shifts it left by one bit, so programs
+use it to multiply.
+
+| Instruction | Opcode |
+|-------------|--------|
+| `DAD B`     | `09H`  |
+| `DAD D`     | `19H`  |
+| `DAD H`     | `29H`  |
+| `DAD SP`    | `39H`  |
+
+The `DAD B` below repeats the example from the Intel manual.
+
+```asm
+0100H   LXI  B,339FH  ; BC = 339FH                   bytes: 01 9F 33
+0103H   LXI  H,0A17BH ; HL = A17BH                   bytes: 21 7B A1
+0106H   DAD  B        ; HL = A17BH + 339FH = D51AH   bytes: 09
+0107H   DAD  H        ; D51AH + D51AH = 1AA34H       bytes: 29
+```
+
+| After          | `PC`    | `BC`    | `HL`    | `CY` |
+|----------------|---------|---------|---------|------|
+| `LXI B,339FH`  | `0103H` | `339FH` | `0000H` | 0    |
+| `LXI H,0A17BH` | `0106H` | `339FH` | `A17BH` | 0    |
+| `DAD B`        | `0107H` | `339FH` | `D51AH` | 0    |
+| `DAD H`        | `0108H` | `339FH` | `AA34H` | 1    |
+
+In `DAD H`, the sum `1AA34H` needs 17 bits. `HL` keeps `AA34H` and `CY`
+takes the 17th bit.

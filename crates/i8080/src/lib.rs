@@ -17,10 +17,10 @@
 //!
 //! # Status
 //!
-//! Work in progress: the CPU runs `NOP`, `MVI`, `MOV`, `HLT`, `INR`, `DCR`
-//! and the eight arithmetic and logic operations, with a register or `M`
-//! (`ADD` to `CMP`) and with a constant (`ADI` to `CPI`). It panics on every
-//! other opcode.
+//! Work in progress: the [instruction catalog] marks each instruction the
+//! CPU runs. The CPU panics on every other opcode.
+//!
+//! [instruction catalog]: https://github.com/nazarslota/i8080/blob/main/docs/instructions.md
 
 #![no_std]
 

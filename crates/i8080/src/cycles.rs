@@ -11,10 +11,35 @@
 /// `NOP`.
 pub(crate) const NOP: u32 = 4;
 
+/// `LXI rp,nn`: opcode fetch plus two reads for the constant.
+pub(crate) const LXI: u32 = 10;
+
+/// `DAD rp`.
+pub(crate) const DAD: u32 = 10;
+
+/// `INX rp`.
+pub(crate) const INX: u32 = 5;
+
+/// `DCX rp`.
+pub(crate) const DCX: u32 = 5;
+
+/// `INR r`.
+pub(crate) const INR: u32 = 5;
+/// `INR M`: `INR` plus a memory read and a memory write.
+pub(crate) const INR_M: u32 = 10;
+
+/// `DCR r`.
+pub(crate) const DCR: u32 = 5;
+/// `DCR M`: `DCR` plus a memory read and a memory write.
+pub(crate) const DCR_M: u32 = 10;
+
 /// `MVI r,n`: opcode fetch plus one read for the constant.
 pub(crate) const MVI: u32 = 7;
 /// `MVI M,n`: `MVI` plus a write to memory.
 pub(crate) const MVI_M: u32 = 10;
+
+/// `HLT`.
+pub(crate) const HLT: u32 = 7;
 
 /// `MOV r,r`.
 pub(crate) const MOV: u32 = 5;
@@ -85,19 +110,6 @@ pub(crate) const ORI: u32 = 7;
 
 /// `CPI n`: opcode fetch plus one read for the constant.
 pub(crate) const CPI: u32 = 7;
-
-/// `INR r`.
-pub(crate) const INR: u32 = 5;
-/// `INR M`: `INR` plus a memory read and a memory write.
-pub(crate) const INR_M: u32 = 10;
-
-/// `DCR r`.
-pub(crate) const DCR: u32 = 5;
-/// `DCR M`: `DCR` plus a memory read and a memory write.
-pub(crate) const DCR_M: u32 = 10;
-
-/// `HLT`.
-pub(crate) const HLT: u32 = 7;
 
 /// Clock cycles that [`Cpu::step`](crate::Cpu::step) reports while the CPU is
 /// halted.

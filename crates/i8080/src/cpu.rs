@@ -1,6 +1,6 @@
 use crate::alu;
 use crate::cycles::{self, HALTED_STEP_CYCLES};
-use crate::instruction::{Instruction, Operand};
+use crate::instruction::{Instruction, Operand8, Operand16};
 use crate::{Flags, MemoryBus, Registers};
 
 /// The Intel 8080 processor.
@@ -61,9 +61,15 @@ impl Cpu {
         // own method, which returns the cycle count from the `cycles` module.
         match instruction {
             Instruction::Nop => cycles::NOP,
+            Instruction::Lxi { dst, value } => self.lxi(dst, value),
+            Instruction::Dad { src } => self.dad(src),
+            Instruction::Inx { pair } => self.inx(pair),
+            Instruction::Dcx { pair } => self.dcx(pair),
+            Instruction::Inr { dst } => self.inr(memory, dst),
+            Instruction::Dcr { dst } => self.dcr(memory, dst),
             Instruction::Mvi { dst, value } => self.mvi(memory, dst, value),
-            Instruction::Mov { dst, src } => self.mov(memory, dst, src),
             Instruction::Hlt => self.hlt(),
+            Instruction::Mov { dst, src } => self.mov(memory, dst, src),
             Instruction::Add { src } => self.add(memory, src),
             Instruction::Adc { src } => self.adc(memory, src),
             Instruction::Sub { src } => self.sub(memory, src),
@@ -80,29 +86,78 @@ impl Cpu {
             Instruction::Xri { value } => self.xri(value),
             Instruction::Ori { value } => self.ori(value),
             Instruction::Cpi { value } => self.cpi(value),
-            Instruction::Inr { dst } => self.inr(memory, dst),
-            Instruction::Dcr { dst } => self.dcr(memory, dst),
+        }
+    }
+
+    /// `LXI dst,value`: loads a 16-bit constant into a register pair.
+    fn lxi(&mut self, dst: Operand16, value: u16) -> u32 {
+        self.write_pair(dst, value);
+        cycles::LXI
+    }
+
+    /// `DAD src`: adds a register pair to `HL`. Sets `CY` and no other flag.
+    fn dad(&mut self, src: Operand16) -> u32 {
+        let value = self.read_pair(src);
+        let (sum, carry) = self.registers.hl().overflowing_add(value);
+        self.registers.set_hl(sum);
+        self.registers.flags.carry = carry;
+        cycles::DAD
+    }
+
+    /// `INX pair`: adds 1 to a register pair. Sets no flags.
+    fn inx(&mut self, pair: Operand16) -> u32 {
+        let value = self.read_pair(pair);
+        self.write_pair(pair, value.wrapping_add(1));
+        cycles::INX
+    }
+
+    /// `DCX pair`: subtracts 1 from a register pair. Sets no flags.
+    fn dcx(&mut self, pair: Operand16) -> u32 {
+        let value = self.read_pair(pair);
+        self.write_pair(pair, value.wrapping_sub(1));
+        cycles::DCX
+    }
+
+    /// `INR dst`: adds 1 to a register or `M`. Sets every flag but `CY`.
+    fn inr(&mut self, memory: &mut impl MemoryBus, dst: Operand8) -> u32 {
+        let value = self.read_operand(memory, dst);
+        let (result, flags) = alu::add(value, 1, false);
+        self.write_operand(memory, dst, result);
+        self.registers.flags = Flags {
+            carry: self.registers.flags.carry,
+            ..flags
+        };
+        if dst == Operand8::M {
+            cycles::INR_M
+        } else {
+            cycles::INR
+        }
+    }
+
+    /// `DCR dst`: subtracts 1 from a register or `M`. Sets every flag but
+    /// `CY`.
+    fn dcr(&mut self, memory: &mut impl MemoryBus, dst: Operand8) -> u32 {
+        let value = self.read_operand(memory, dst);
+        let (result, flags) = alu::subtract(value, 1, false);
+        self.write_operand(memory, dst, result);
+        self.registers.flags = Flags {
+            carry: self.registers.flags.carry,
+            ..flags
+        };
+        if dst == Operand8::M {
+            cycles::DCR_M
+        } else {
+            cycles::DCR
         }
     }
 
     /// `MVI dst,value`: loads a constant byte into a register or `M`.
-    fn mvi(&mut self, memory: &mut impl MemoryBus, dst: Operand, value: u8) -> u32 {
+    fn mvi(&mut self, memory: &mut impl MemoryBus, dst: Operand8, value: u8) -> u32 {
         self.write_operand(memory, dst, value);
-        if dst == Operand::M {
+        if dst == Operand8::M {
             cycles::MVI_M
         } else {
             cycles::MVI
-        }
-    }
-
-    /// `MOV dst,src`: copies a byte between registers and `M`.
-    fn mov(&mut self, memory: &mut impl MemoryBus, dst: Operand, src: Operand) -> u32 {
-        let value = self.read_operand(memory, src);
-        self.write_operand(memory, dst, value);
-        if dst == Operand::M || src == Operand::M {
-            cycles::MOV_M
-        } else {
-            cycles::MOV
         }
     }
 
@@ -112,12 +167,23 @@ impl Cpu {
         cycles::HLT
     }
 
+    /// `MOV dst,src`: copies a byte between registers and `M`.
+    fn mov(&mut self, memory: &mut impl MemoryBus, dst: Operand8, src: Operand8) -> u32 {
+        let value = self.read_operand(memory, src);
+        self.write_operand(memory, dst, value);
+        if dst == Operand8::M || src == Operand8::M {
+            cycles::MOV_M
+        } else {
+            cycles::MOV
+        }
+    }
+
     /// `ADD src`: adds a register or `M` to `A`.
-    fn add(&mut self, memory: &mut impl MemoryBus, src: Operand) -> u32 {
+    fn add(&mut self, memory: &mut impl MemoryBus, src: Operand8) -> u32 {
         let a = self.registers.a;
         let value = self.read_operand(memory, src);
         (self.registers.a, self.registers.flags) = alu::add(a, value, false);
-        if src == Operand::M {
+        if src == Operand8::M {
             cycles::ADD_M
         } else {
             cycles::ADD
@@ -125,11 +191,11 @@ impl Cpu {
     }
 
     /// `ADC src`: adds a register or `M` and the carry flag to `A`.
-    fn adc(&mut self, memory: &mut impl MemoryBus, src: Operand) -> u32 {
+    fn adc(&mut self, memory: &mut impl MemoryBus, src: Operand8) -> u32 {
         let a = self.registers.a;
         let value = self.read_operand(memory, src);
         (self.registers.a, self.registers.flags) = alu::add(a, value, self.registers.flags.carry);
-        if src == Operand::M {
+        if src == Operand8::M {
             cycles::ADC_M
         } else {
             cycles::ADC
@@ -137,11 +203,11 @@ impl Cpu {
     }
 
     /// `SUB src`: subtracts a register or `M` from `A`.
-    fn sub(&mut self, memory: &mut impl MemoryBus, src: Operand) -> u32 {
+    fn sub(&mut self, memory: &mut impl MemoryBus, src: Operand8) -> u32 {
         let a = self.registers.a;
         let value = self.read_operand(memory, src);
         (self.registers.a, self.registers.flags) = alu::subtract(a, value, false);
-        if src == Operand::M {
+        if src == Operand8::M {
             cycles::SUB_M
         } else {
             cycles::SUB
@@ -149,12 +215,12 @@ impl Cpu {
     }
 
     /// `SBB src`: subtracts a register or `M` and the carry flag from `A`.
-    fn sbb(&mut self, memory: &mut impl MemoryBus, src: Operand) -> u32 {
+    fn sbb(&mut self, memory: &mut impl MemoryBus, src: Operand8) -> u32 {
         let a = self.registers.a;
         let value = self.read_operand(memory, src);
         (self.registers.a, self.registers.flags) =
             alu::subtract(a, value, self.registers.flags.carry);
-        if src == Operand::M {
+        if src == Operand8::M {
             cycles::SBB_M
         } else {
             cycles::SBB
@@ -162,11 +228,11 @@ impl Cpu {
     }
 
     /// `ANA src`: `A = A AND src`, with a register or `M` as `src`.
-    fn ana(&mut self, memory: &mut impl MemoryBus, src: Operand) -> u32 {
+    fn ana(&mut self, memory: &mut impl MemoryBus, src: Operand8) -> u32 {
         let a = self.registers.a;
         let value = self.read_operand(memory, src);
         (self.registers.a, self.registers.flags) = alu::and(a, value);
-        if src == Operand::M {
+        if src == Operand8::M {
             cycles::ANA_M
         } else {
             cycles::ANA
@@ -174,11 +240,11 @@ impl Cpu {
     }
 
     /// `XRA src`: `A = A XOR src`, with a register or `M` as `src`.
-    fn xra(&mut self, memory: &mut impl MemoryBus, src: Operand) -> u32 {
+    fn xra(&mut self, memory: &mut impl MemoryBus, src: Operand8) -> u32 {
         let a = self.registers.a;
         let value = self.read_operand(memory, src);
         (self.registers.a, self.registers.flags) = alu::xor(a, value);
-        if src == Operand::M {
+        if src == Operand8::M {
             cycles::XRA_M
         } else {
             cycles::XRA
@@ -186,11 +252,11 @@ impl Cpu {
     }
 
     /// `ORA src`: `A = A OR src`, with a register or `M` as `src`.
-    fn ora(&mut self, memory: &mut impl MemoryBus, src: Operand) -> u32 {
+    fn ora(&mut self, memory: &mut impl MemoryBus, src: Operand8) -> u32 {
         let a = self.registers.a;
         let value = self.read_operand(memory, src);
         (self.registers.a, self.registers.flags) = alu::or(a, value);
-        if src == Operand::M {
+        if src == Operand8::M {
             cycles::ORA_M
         } else {
             cycles::ORA
@@ -199,11 +265,11 @@ impl Cpu {
 
     /// `CMP src`: compares `A` with a register or `M`: sets the flags
     /// from `A - src` and leaves `A` as it was.
-    fn cmp(&mut self, memory: &mut impl MemoryBus, src: Operand) -> u32 {
+    fn cmp(&mut self, memory: &mut impl MemoryBus, src: Operand8) -> u32 {
         let a = self.registers.a;
         let value = self.read_operand(memory, src);
         (_, self.registers.flags) = alu::subtract(a, value, false);
-        if src == Operand::M {
+        if src == Operand8::M {
             cycles::CMP_M
         } else {
             cycles::CMP
@@ -261,66 +327,55 @@ impl Cpu {
         cycles::CPI
     }
 
-    /// `INR dst`: adds 1 to a register or `M`. Sets every flag but `CY`.
-    fn inr(&mut self, memory: &mut impl MemoryBus, dst: Operand) -> u32 {
-        let value = self.read_operand(memory, dst);
-        let (result, flags) = alu::add(value, 1, false);
-        self.write_operand(memory, dst, result);
-        self.registers.flags = Flags {
-            carry: self.registers.flags.carry,
-            ..flags
-        };
-        if dst == Operand::M {
-            cycles::INR_M
-        } else {
-            cycles::INR
-        }
-    }
-
-    /// `DCR dst`: subtracts 1 from a register or `M`. Sets every flag but
-    /// `CY`.
-    fn dcr(&mut self, memory: &mut impl MemoryBus, dst: Operand) -> u32 {
-        let value = self.read_operand(memory, dst);
-        let (result, flags) = alu::subtract(value, 1, false);
-        self.write_operand(memory, dst, result);
-        self.registers.flags = Flags {
-            carry: self.registers.flags.carry,
-            ..flags
-        };
-        if dst == Operand::M {
-            cycles::DCR_M
-        } else {
-            cycles::DCR
-        }
-    }
-
     /// Reads an 8-bit operand. `M` reads memory at the address in `HL`.
-    fn read_operand(&self, memory: &mut impl MemoryBus, operand: Operand) -> u8 {
+    fn read_operand(&self, memory: &mut impl MemoryBus, operand: Operand8) -> u8 {
         let r = &self.registers;
         match operand {
-            Operand::B => r.b,
-            Operand::C => r.c,
-            Operand::D => r.d,
-            Operand::E => r.e,
-            Operand::H => r.h,
-            Operand::L => r.l,
-            Operand::M => memory.read(r.hl()),
-            Operand::A => r.a,
+            Operand8::B => r.b,
+            Operand8::C => r.c,
+            Operand8::D => r.d,
+            Operand8::E => r.e,
+            Operand8::H => r.h,
+            Operand8::L => r.l,
+            Operand8::M => memory.read(r.hl()),
+            Operand8::A => r.a,
         }
     }
 
     /// Writes an 8-bit operand. `M` writes to memory at the address in `HL`.
-    fn write_operand(&mut self, memory: &mut impl MemoryBus, operand: Operand, value: u8) {
+    fn write_operand(&mut self, memory: &mut impl MemoryBus, operand: Operand8, value: u8) {
         let r = &mut self.registers;
         match operand {
-            Operand::B => r.b = value,
-            Operand::C => r.c = value,
-            Operand::D => r.d = value,
-            Operand::E => r.e = value,
-            Operand::H => r.h = value,
-            Operand::L => r.l = value,
-            Operand::M => memory.write(r.hl(), value),
-            Operand::A => r.a = value,
+            Operand8::B => r.b = value,
+            Operand8::C => r.c = value,
+            Operand8::D => r.d = value,
+            Operand8::E => r.e = value,
+            Operand8::H => r.h = value,
+            Operand8::L => r.l = value,
+            Operand8::M => memory.write(r.hl(), value),
+            Operand8::A => r.a = value,
+        }
+    }
+
+    /// Reads a register pair.
+    fn read_pair(&self, pair: Operand16) -> u16 {
+        let r = &self.registers;
+        match pair {
+            Operand16::BC => r.bc(),
+            Operand16::DE => r.de(),
+            Operand16::HL => r.hl(),
+            Operand16::SP => r.sp,
+        }
+    }
+
+    /// Writes a register pair.
+    fn write_pair(&mut self, pair: Operand16, value: u16) {
+        let r = &mut self.registers;
+        match pair {
+            Operand16::BC => r.set_bc(value),
+            Operand16::DE => r.set_de(value),
+            Operand16::HL => r.set_hl(value),
+            Operand16::SP => r.sp = value,
         }
     }
 
@@ -388,6 +443,35 @@ mod tests {
         (cpu, cycles)
     }
 
+    /// Runs one instruction from `program` with `before`. Checks the
+    /// registers it leaves behind, flags included, and its cycle count.
+    #[track_caller]
+    fn assert_registers(program: &[u8], before: Registers, expected: Registers, cycles: u32) {
+        let (cpu, actual_cycles) = run(program, before);
+
+        assert_eq!(cpu.registers, expected, "program {program:02X?}");
+        assert_eq!(actual_cycles, cycles, "program {program:02X?}");
+    }
+
+    /// Same as [`assert_registers`], but ignores the flags. Tests that cover
+    /// the flags on their own use it.
+    #[track_caller]
+    fn assert_registers_except_flags(
+        program: &[u8],
+        before: Registers,
+        expected: Registers,
+        cycles: u32,
+    ) {
+        let (cpu, actual_cycles) = run(program, before);
+        let registers = Registers {
+            flags: expected.flags,
+            ..cpu.registers
+        };
+
+        assert_eq!(registers, expected, "program {program:02X?}");
+        assert_eq!(actual_cycles, cycles, "program {program:02X?}");
+    }
+
     /// Runs one ALU instruction from `program` on [`distinct_registers`] with
     /// the carry flag at `carry`. Checks that A ends up at `a`, PC moves past
     /// the instruction and the step takes `cycles`.
@@ -440,6 +524,391 @@ mod tests {
     }
 
     #[test]
+    fn pc_wraps_from_ffff_to_0000() {
+        let registers = Registers {
+            pc: 0xFFFF,
+            ..distinct_registers()
+        };
+
+        let (cpu, _) = run(&[0x00], registers); // NOP
+
+        assert_eq!(cpu.registers.pc, 0x0000);
+    }
+
+    #[test]
+    fn lxi_loads_constant_into_pair() {
+        // Opcodes from the Intel manual, each followed by 1234H low byte
+        // first, with the registers they should leave behind.
+        let before = distinct_registers();
+        let after = Registers {
+            pc: 0x0103,
+            ..before
+        };
+        let cases = [
+            (
+                0x01,
+                Registers {
+                    b: 0x12,
+                    c: 0x34,
+                    ..after
+                },
+            ), // LXI B,1234H
+            (
+                0x11,
+                Registers {
+                    d: 0x12,
+                    e: 0x34,
+                    ..after
+                },
+            ), // LXI D,1234H
+            (
+                0x21,
+                Registers {
+                    h: 0x12,
+                    l: 0x34,
+                    ..after
+                },
+            ), // LXI H,1234H
+            (
+                0x31,
+                Registers {
+                    sp: 0x1234,
+                    ..after
+                },
+            ), // LXI SP,1234H
+        ];
+
+        for (opcode, expected) in cases {
+            assert_registers(&[opcode, 0x34, 0x12], before, expected, cycles::LXI);
+        }
+    }
+
+    #[test]
+    fn dad_adds_pair_to_hl() {
+        // Opcodes from the Intel manual, each with the HL it should leave
+        // behind. HL starts at 0102H.
+        let cases = [
+            (0x09, 0x0C0E), // DAD B: 0102H + 0B0CH
+            (0x19, 0x0E10), // DAD D: 0102H + 0D0EH
+            (0x29, 0x0204), // DAD H: 0102H + 0102H
+            (0x39, 0xF102), // DAD SP: 0102H + F000H
+        ];
+
+        for (opcode, hl) in cases {
+            let (cpu, cycles) = run(&[opcode], distinct_registers());
+
+            assert_eq!(cpu.registers.hl(), hl, "opcode {opcode:#04X}");
+            assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
+            assert_eq!(cycles, cycles::DAD, "opcode {opcode:#04X}");
+        }
+    }
+
+    #[test]
+    fn dad_sets_only_carry() {
+        // Each case: HL, BC and the flags before DAD B, then HL and the
+        // flags after. Only CY changes.
+        let no_carry = Flags {
+            carry: false,
+            ..ALL_FLAGS
+        };
+        let cases = [
+            // The DAD example from the Intel manual: A17BH + 339FH = D51AH.
+            (0xA17B, 0x339F, ALL_FLAGS, 0xD51A, no_carry),
+            // FFFFH + 0001H needs 17 bits, so CY is 1.
+            (0xFFFF, 0x0001, no_carry, 0x0000, ALL_FLAGS),
+        ];
+
+        for (hl, bc, before, expected_hl, expected_flags) in cases {
+            let mut registers = distinct_registers();
+            registers.set_hl(hl);
+            registers.set_bc(bc);
+            registers.flags = before;
+
+            let (cpu, _) = run(&[0x09], registers); // DAD B
+
+            assert_eq!(cpu.registers.hl(), expected_hl, "{hl:#06X} + {bc:#06X}");
+            assert_eq!(cpu.registers.flags, expected_flags, "{hl:#06X} + {bc:#06X}");
+        }
+    }
+
+    #[test]
+    fn inx_increments_pair() {
+        // Opcodes from the Intel manual, each with the registers it should
+        // leave behind: the pair grew by 1 and PC moved 1 byte.
+        let before = distinct_registers();
+        let after = Registers {
+            pc: 0x0101,
+            ..before
+        };
+        let cases = [
+            (0x03, Registers { c: 0x0D, ..after }), // INX B: 0B0CH + 1
+            (0x13, Registers { e: 0x0F, ..after }), // INX D: 0D0EH + 1
+            (0x23, Registers { l: 0x03, ..after }), // INX H: 0102H + 1
+            (
+                0x33,
+                Registers {
+                    sp: 0xF001,
+                    ..after
+                },
+            ), // INX SP: F000H + 1
+        ];
+
+        for (opcode, expected) in cases {
+            assert_registers(&[opcode], before, expected, cycles::INX);
+        }
+    }
+
+    #[test]
+    fn dcx_decrements_pair() {
+        // Opcodes from the Intel manual, each with the registers it should
+        // leave behind: the pair shrank by 1 and PC moved 1 byte.
+        let before = distinct_registers();
+        let after = Registers {
+            pc: 0x0101,
+            ..before
+        };
+        let cases = [
+            (0x0B, Registers { c: 0x0B, ..after }), // DCX B: 0B0CH - 1
+            (0x1B, Registers { e: 0x0D, ..after }), // DCX D: 0D0EH - 1
+            (0x2B, Registers { l: 0x01, ..after }), // DCX H: 0102H - 1
+            (
+                0x3B,
+                Registers {
+                    sp: 0xEFFF,
+                    ..after
+                },
+            ), // DCX SP: F000H - 1
+        ];
+
+        for (opcode, expected) in cases {
+            assert_registers(&[opcode], before, expected, cycles::DCX);
+        }
+    }
+
+    #[test]
+    fn inx_and_dcx_wrap_and_set_no_flags() {
+        // Each case: an opcode, HL before and after. HL wraps around, and
+        // the flags stay at 0 even when HL reaches 0000H.
+        let cases = [
+            (0x23, 0xFFFF, 0x0000), // INX H
+            (0x2B, 0x0000, 0xFFFF), // DCX H
+        ];
+
+        for (opcode, hl, expected) in cases {
+            let mut registers = distinct_registers();
+            registers.set_hl(hl);
+
+            let (cpu, _) = run(&[opcode], registers);
+
+            assert_eq!(cpu.registers.hl(), expected, "opcode {opcode:#04X}");
+            assert_eq!(
+                cpu.registers.flags,
+                Flags::default(),
+                "opcode {opcode:#04X}"
+            );
+        }
+    }
+
+    #[test]
+    fn inr_increments_register() {
+        // Opcodes from the Intel manual, each with the registers it should
+        // leave behind: the register grew by 1 and PC moved 1 byte.
+        let before = distinct_registers();
+        let after = Registers {
+            pc: 0x0101,
+            ..before
+        };
+        let cases = [
+            (0x04, Registers { b: 0x0C, ..after }), // INR B
+            (0x0C, Registers { c: 0x0D, ..after }), // INR C
+            (0x14, Registers { d: 0x0E, ..after }), // INR D
+            (0x1C, Registers { e: 0x0F, ..after }), // INR E
+            (0x24, Registers { h: 0x02, ..after }), // INR H
+            (0x2C, Registers { l: 0x03, ..after }), // INR L
+            (0x3C, Registers { a: 0x0B, ..after }), // INR A
+        ];
+
+        // The flags have their own test, so this one ignores them.
+        for (opcode, expected) in cases {
+            assert_registers_except_flags(&[opcode], before, expected, cycles::INR);
+        }
+    }
+
+    #[test]
+    fn inr_sets_flags_and_keeps_carry() {
+        // Each case: the flags before the step, A, the result and the flags
+        // INR A should leave behind. CY keeps its value in every case.
+        let none = Flags::default();
+        let cases = [
+            (
+                ALL_FLAGS,
+                0x01,
+                0x02,
+                Flags {
+                    carry: true,
+                    ..none
+                },
+            ),
+            (
+                ALL_FLAGS,
+                0x0F,
+                0x10,
+                Flags {
+                    aux_carry: true,
+                    carry: true,
+                    ..none
+                },
+            ),
+            (
+                ALL_FLAGS,
+                0x7F,
+                0x80,
+                Flags {
+                    sign: true,
+                    aux_carry: true,
+                    carry: true,
+                    ..none
+                },
+            ),
+            // FFH wraps to 00H, and CY still stays 0.
+            (
+                none,
+                0xFF,
+                0x00,
+                Flags {
+                    zero: true,
+                    aux_carry: true,
+                    parity: true,
+                    ..none
+                },
+            ),
+        ];
+
+        for (before, a, result, flags) in cases {
+            let registers = Registers {
+                a,
+                flags: before,
+                ..distinct_registers()
+            };
+
+            assert_alu_flags(&[0x3C], registers, result, flags); // INR A
+        }
+    }
+
+    #[test]
+    fn dcr_decrements_register() {
+        // Opcodes from the Intel manual, each with the registers it should
+        // leave behind: the register shrank by 1 and PC moved 1 byte.
+        let before = distinct_registers();
+        let after = Registers {
+            pc: 0x0101,
+            ..before
+        };
+        let cases = [
+            (0x05, Registers { b: 0x0A, ..after }), // DCR B
+            (0x0D, Registers { c: 0x0B, ..after }), // DCR C
+            (0x15, Registers { d: 0x0C, ..after }), // DCR D
+            (0x1D, Registers { e: 0x0D, ..after }), // DCR E
+            (0x25, Registers { h: 0x00, ..after }), // DCR H
+            (0x2D, Registers { l: 0x01, ..after }), // DCR L
+            (0x3D, Registers { a: 0x09, ..after }), // DCR A
+        ];
+
+        // The flags have their own test, so this one ignores them.
+        for (opcode, expected) in cases {
+            assert_registers_except_flags(&[opcode], before, expected, cycles::DCR);
+        }
+    }
+
+    #[test]
+    fn dcr_sets_flags_and_keeps_carry() {
+        // Each case: the flags before the step, A, the result and the flags
+        // DCR A should leave behind. CY keeps its value in every case.
+        let none = Flags::default();
+        let cases = [
+            // 10H - 1 borrows from the high 4 bits, so AC is 0.
+            (
+                ALL_FLAGS,
+                0x10,
+                0x0F,
+                Flags {
+                    parity: true,
+                    carry: true,
+                    ..none
+                },
+            ),
+            (
+                ALL_FLAGS,
+                0x01,
+                0x00,
+                Flags {
+                    zero: true,
+                    aux_carry: true,
+                    parity: true,
+                    carry: true,
+                    ..none
+                },
+            ),
+            (
+                ALL_FLAGS,
+                0x80,
+                0x7F,
+                Flags {
+                    carry: true,
+                    ..none
+                },
+            ),
+            // 00H wraps to FFH, and CY still stays 0.
+            (
+                none,
+                0x00,
+                0xFF,
+                Flags {
+                    sign: true,
+                    parity: true,
+                    ..none
+                },
+            ),
+        ];
+
+        for (before, a, result, flags) in cases {
+            let registers = Registers {
+                a,
+                flags: before,
+                ..distinct_registers()
+            };
+
+            assert_alu_flags(&[0x3D], registers, result, flags); // DCR A
+        }
+    }
+
+    #[test]
+    fn inr_and_dcr_m_change_memory_at_hl() {
+        // Each case: an opcode with M as the operand, the byte it should
+        // leave at HL and its cycle count. Memory at HL holds 40H, the
+        // example from the Intel manual's DCR M.
+        let cases = [
+            (0x34, 0x41, cycles::INR_M), // INR M
+            (0x35, 0x3F, cycles::DCR_M), // DCR M
+        ];
+
+        for (opcode, result, expected_cycles) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0x3A7C] = 0x40;
+            let registers = Registers {
+                h: 0x3A,
+                l: 0x7C,
+                ..distinct_registers()
+            };
+
+            let (_, cycles) = run_with_memory(&mut memory, &[opcode], registers);
+
+            assert_eq!(memory[0x3A7C], result, "opcode {opcode:#04X}");
+            assert_eq!(cycles, expected_cycles, "opcode {opcode:#04X}");
+        }
+    }
+
+    #[test]
     fn mvi_loads_next_byte_into_register() {
         // Opcodes from the Intel manual, each with the registers it should
         // leave behind: the loaded register holds 42H and PC moved 2 bytes.
@@ -459,10 +928,7 @@ mod tests {
         ];
 
         for (opcode, expected) in cases {
-            let (cpu, cycles) = run(&[opcode, 0x42], before);
-
-            assert_eq!(cpu.registers, expected, "opcode {opcode:#04X}");
-            assert_eq!(cycles, cycles::MVI, "opcode {opcode:#04X}");
+            assert_registers(&[opcode, 0x42], before, expected, cycles::MVI);
         }
     }
 
@@ -486,6 +952,39 @@ mod tests {
             }
         );
         assert_eq!(cycles, cycles::MVI_M);
+    }
+
+    #[test]
+    fn hlt_halts_cpu() {
+        let before = distinct_registers();
+
+        let (cpu, cycles) = run(&[0x76], before); // HLT
+
+        assert!(cpu.is_halted());
+        assert_eq!(
+            cpu.registers,
+            Registers {
+                pc: 0x0101,
+                ..before
+            }
+        );
+        assert_eq!(cycles, cycles::HLT);
+    }
+
+    #[test]
+    fn halted_cpu_executes_nothing() {
+        let mut memory = [0u8; 0x10000];
+        memory[0x0100..0x0102].copy_from_slice(&[0x06, 0x42]); // MVI B,42H
+        let mut cpu = Cpu::new();
+        cpu.registers = distinct_registers();
+        cpu.halted = true;
+        let before = cpu.registers;
+
+        let cycles = cpu.step(&mut memory);
+
+        assert!(cpu.is_halted());
+        assert_eq!(cpu.registers, before);
+        assert_eq!(cycles, HALTED_STEP_CYCLES);
     }
 
     #[test]
@@ -545,10 +1044,7 @@ mod tests {
         ];
 
         for (opcode, expected) in cases {
-            let (cpu, cycles) = run(&[opcode], before);
-
-            assert_eq!(cpu.registers, expected, "opcode {opcode:#04X}");
-            assert_eq!(cycles, cycles::MOV, "opcode {opcode:#04X}");
+            assert_registers(&[opcode], before, expected, cycles::MOV);
         }
     }
 
@@ -595,51 +1091,6 @@ mod tests {
             }
         );
         assert_eq!(cycles, cycles::MOV_M);
-    }
-
-    #[test]
-    fn pc_wraps_from_ffff_to_0000() {
-        let registers = Registers {
-            pc: 0xFFFF,
-            ..distinct_registers()
-        };
-
-        let (cpu, _) = run(&[0x00], registers); // NOP
-
-        assert_eq!(cpu.registers.pc, 0x0000);
-    }
-
-    #[test]
-    fn hlt_halts_cpu() {
-        let before = distinct_registers();
-
-        let (cpu, cycles) = run(&[0x76], before); // HLT
-
-        assert!(cpu.is_halted());
-        assert_eq!(
-            cpu.registers,
-            Registers {
-                pc: 0x0101,
-                ..before
-            }
-        );
-        assert_eq!(cycles, cycles::HLT);
-    }
-
-    #[test]
-    fn halted_cpu_executes_nothing() {
-        let mut memory = [0u8; 0x10000];
-        memory[0x0100..0x0102].copy_from_slice(&[0x06, 0x42]); // MVI B,42H
-        let mut cpu = Cpu::new();
-        cpu.registers = distinct_registers();
-        cpu.halted = true;
-        let before = cpu.registers;
-
-        let cycles = cpu.step(&mut memory);
-
-        assert!(cpu.is_halted());
-        assert_eq!(cpu.registers, before);
-        assert_eq!(cycles, HALTED_STEP_CYCLES);
     }
 
     #[test]
@@ -951,40 +1402,6 @@ mod tests {
     }
 
     #[test]
-    fn alu_with_m_reads_memory_at_hl() {
-        // Each case: an opcode with M as the source, the value it should
-        // leave in A and its cycle count. A starts at 10H, memory at HL
-        // holds 05H and the carry flag is 1.
-        let cases = [
-            (0x86, 0x15, cycles::ADD_M), // ADD M: 10H + 05H
-            (0x8E, 0x16, cycles::ADC_M), // ADC M: 10H + 05H + 1
-            (0x96, 0x0B, cycles::SUB_M), // SUB M: 10H - 05H
-            (0x9E, 0x0A, cycles::SBB_M), // SBB M: 10H - 05H - 1
-            (0xA6, 0x00, cycles::ANA_M), // ANA M: 10H AND 05H
-            (0xAE, 0x15, cycles::XRA_M), // XRA M: 10H XOR 05H
-            (0xB6, 0x15, cycles::ORA_M), // ORA M: 10H OR 05H
-            (0xBE, 0x10, cycles::CMP_M), // CMP M: A stays 10H
-        ];
-
-        for (opcode, result, expected_cycles) in cases {
-            let mut memory = [0u8; 0x10000];
-            memory[0x2000] = 0x05;
-            let mut registers = Registers {
-                a: 0x10,
-                h: 0x20,
-                l: 0x00,
-                ..distinct_registers()
-            };
-            registers.flags.carry = true;
-
-            let (cpu, cycles) = run_with_memory(&mut memory, &[opcode], registers);
-
-            assert_eq!(cpu.registers.a, result, "opcode {opcode:#04X}");
-            assert_eq!(cycles, expected_cycles, "opcode {opcode:#04X}");
-        }
-    }
-
-    #[test]
     fn ana_combines_register_with_a() {
         // Opcodes from the Intel manual, each with the value it should leave
         // in A. A starts at 0AH.
@@ -1271,6 +1688,40 @@ mod tests {
     }
 
     #[test]
+    fn alu_with_m_reads_memory_at_hl() {
+        // Each case: an opcode with M as the source, the value it should
+        // leave in A and its cycle count. A starts at 10H, memory at HL
+        // holds 05H and the carry flag is 1.
+        let cases = [
+            (0x86, 0x15, cycles::ADD_M), // ADD M: 10H + 05H
+            (0x8E, 0x16, cycles::ADC_M), // ADC M: 10H + 05H + 1
+            (0x96, 0x0B, cycles::SUB_M), // SUB M: 10H - 05H
+            (0x9E, 0x0A, cycles::SBB_M), // SBB M: 10H - 05H - 1
+            (0xA6, 0x00, cycles::ANA_M), // ANA M: 10H AND 05H
+            (0xAE, 0x15, cycles::XRA_M), // XRA M: 10H XOR 05H
+            (0xB6, 0x15, cycles::ORA_M), // ORA M: 10H OR 05H
+            (0xBE, 0x10, cycles::CMP_M), // CMP M: A stays 10H
+        ];
+
+        for (opcode, result, expected_cycles) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0x2000] = 0x05;
+            let mut registers = Registers {
+                a: 0x10,
+                h: 0x20,
+                l: 0x00,
+                ..distinct_registers()
+            };
+            registers.flags.carry = true;
+
+            let (cpu, cycles) = run_with_memory(&mut memory, &[opcode], registers);
+
+            assert_eq!(cpu.registers.a, result, "opcode {opcode:#04X}");
+            assert_eq!(cycles, expected_cycles, "opcode {opcode:#04X}");
+        }
+    }
+
+    #[test]
     fn immediate_alu_uses_next_byte() {
         // Each case: an opcode with the constant 03H after it, the value it
         // should leave in A and its cycle count. A starts at 0AH and the
@@ -1338,221 +1789,8 @@ mod tests {
     }
 
     #[test]
-    fn inr_increments_register() {
-        // Opcodes from the Intel manual, each with the registers it should
-        // leave behind: the register grew by 1 and PC moved 1 byte.
-        let before = distinct_registers();
-        let after = Registers {
-            pc: 0x0101,
-            ..before
-        };
-        let cases = [
-            (0x04, Registers { b: 0x0C, ..after }), // INR B
-            (0x0C, Registers { c: 0x0D, ..after }), // INR C
-            (0x14, Registers { d: 0x0E, ..after }), // INR D
-            (0x1C, Registers { e: 0x0F, ..after }), // INR E
-            (0x24, Registers { h: 0x02, ..after }), // INR H
-            (0x2C, Registers { l: 0x03, ..after }), // INR L
-            (0x3C, Registers { a: 0x0B, ..after }), // INR A
-        ];
-
-        for (opcode, expected) in cases {
-            let (cpu, cycles) = run(&[opcode], before);
-
-            // The flags have their own test, so this one ignores them.
-            let registers = Registers {
-                flags: before.flags,
-                ..cpu.registers
-            };
-            assert_eq!(registers, expected, "opcode {opcode:#04X}");
-            assert_eq!(cycles, cycles::INR, "opcode {opcode:#04X}");
-        }
-    }
-
-    #[test]
-    fn inr_sets_flags_and_keeps_carry() {
-        // Each case: the flags before the step, A, the result and the flags
-        // INR A should leave behind. CY keeps its value in every case.
-        let none = Flags::default();
-        let cases = [
-            (
-                ALL_FLAGS,
-                0x01,
-                0x02,
-                Flags {
-                    carry: true,
-                    ..none
-                },
-            ),
-            (
-                ALL_FLAGS,
-                0x0F,
-                0x10,
-                Flags {
-                    aux_carry: true,
-                    carry: true,
-                    ..none
-                },
-            ),
-            (
-                ALL_FLAGS,
-                0x7F,
-                0x80,
-                Flags {
-                    sign: true,
-                    aux_carry: true,
-                    carry: true,
-                    ..none
-                },
-            ),
-            // FFH wraps to 00H, and CY still stays 0.
-            (
-                none,
-                0xFF,
-                0x00,
-                Flags {
-                    zero: true,
-                    aux_carry: true,
-                    parity: true,
-                    ..none
-                },
-            ),
-        ];
-
-        for (before, a, result, flags) in cases {
-            let registers = Registers {
-                a,
-                flags: before,
-                ..distinct_registers()
-            };
-
-            assert_alu_flags(&[0x3C], registers, result, flags); // INR A
-        }
-    }
-
-    #[test]
-    fn dcr_decrements_register() {
-        // Opcodes from the Intel manual, each with the registers it should
-        // leave behind: the register shrank by 1 and PC moved 1 byte.
-        let before = distinct_registers();
-        let after = Registers {
-            pc: 0x0101,
-            ..before
-        };
-        let cases = [
-            (0x05, Registers { b: 0x0A, ..after }), // DCR B
-            (0x0D, Registers { c: 0x0B, ..after }), // DCR C
-            (0x15, Registers { d: 0x0C, ..after }), // DCR D
-            (0x1D, Registers { e: 0x0D, ..after }), // DCR E
-            (0x25, Registers { h: 0x00, ..after }), // DCR H
-            (0x2D, Registers { l: 0x01, ..after }), // DCR L
-            (0x3D, Registers { a: 0x09, ..after }), // DCR A
-        ];
-
-        for (opcode, expected) in cases {
-            let (cpu, cycles) = run(&[opcode], before);
-
-            // The flags have their own test, so this one ignores them.
-            let registers = Registers {
-                flags: before.flags,
-                ..cpu.registers
-            };
-            assert_eq!(registers, expected, "opcode {opcode:#04X}");
-            assert_eq!(cycles, cycles::DCR, "opcode {opcode:#04X}");
-        }
-    }
-
-    #[test]
-    fn dcr_sets_flags_and_keeps_carry() {
-        // Each case: the flags before the step, A, the result and the flags
-        // DCR A should leave behind. CY keeps its value in every case.
-        let none = Flags::default();
-        let cases = [
-            // 10H - 1 borrows from the high 4 bits, so AC is 0.
-            (
-                ALL_FLAGS,
-                0x10,
-                0x0F,
-                Flags {
-                    parity: true,
-                    carry: true,
-                    ..none
-                },
-            ),
-            (
-                ALL_FLAGS,
-                0x01,
-                0x00,
-                Flags {
-                    zero: true,
-                    aux_carry: true,
-                    parity: true,
-                    carry: true,
-                    ..none
-                },
-            ),
-            (
-                ALL_FLAGS,
-                0x80,
-                0x7F,
-                Flags {
-                    carry: true,
-                    ..none
-                },
-            ),
-            // 00H wraps to FFH, and CY still stays 0.
-            (
-                none,
-                0x00,
-                0xFF,
-                Flags {
-                    sign: true,
-                    parity: true,
-                    ..none
-                },
-            ),
-        ];
-
-        for (before, a, result, flags) in cases {
-            let registers = Registers {
-                a,
-                flags: before,
-                ..distinct_registers()
-            };
-
-            assert_alu_flags(&[0x3D], registers, result, flags); // DCR A
-        }
-    }
-
-    #[test]
-    fn inr_and_dcr_m_change_memory_at_hl() {
-        // Each case: an opcode with M as the operand, the byte it should
-        // leave at HL and its cycle count. Memory at HL holds 40H, the
-        // example from the Intel manual's DCR M.
-        let cases = [
-            (0x34, 0x41, cycles::INR_M), // INR M
-            (0x35, 0x3F, cycles::DCR_M), // DCR M
-        ];
-
-        for (opcode, result, expected_cycles) in cases {
-            let mut memory = [0u8; 0x10000];
-            memory[0x3A7C] = 0x40;
-            let registers = Registers {
-                h: 0x3A,
-                l: 0x7C,
-                ..distinct_registers()
-            };
-
-            let (_, cycles) = run_with_memory(&mut memory, &[opcode], registers);
-
-            assert_eq!(memory[0x3A7C], result, "opcode {opcode:#04X}");
-            assert_eq!(cycles, expected_cycles, "opcode {opcode:#04X}");
-        }
-    }
-
-    #[test]
-    #[should_panic(expected = "opcode 0x01 is not supported yet")]
+    #[should_panic(expected = "opcode 0x02 is not supported yet")]
     fn unsupported_opcode_panics() {
-        run(&[0x01], distinct_registers()); // LXI B,nn, not implemented yet
+        run(&[0x02], distinct_registers()); // STAX B, not implemented yet
     }
 }
