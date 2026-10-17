@@ -25,7 +25,8 @@ from Altair BASIC in your terminal to a real CP/M booted from a floppy image.
 | [`app`](crates/app)       | The `altair` command-line program.                                                                    |
 
 See [docs/architecture.md](docs/architecture.md) for how the pieces fit
-together.
+together and [docs/instructions.md](docs/instructions.md) for the 8080
+instruction set and what the emulator supports so far.
 
 ## Building
 
