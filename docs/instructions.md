@@ -36,13 +36,13 @@ applies when the condition holds.
 | `MOV r,r`   | 1     | 5 / 7  | none  | Copies a byte between registers and `M`      | ✅     |
 | `MVI r,n`   | 2     | 7 / 10 | none  | Loads a constant byte into a register or `M` | ✅     |
 | `LXI rp,nn` | 3     | 10     | none  | Loads a 16-bit constant into a register pair | ✅     |
-| `LDA nn`    | 3     | 13     | none  | Loads `A` from address `nn`                  | ⬜     |
-| `STA nn`    | 3     | 13     | none  | Stores `A` at address `nn`                   | ⬜     |
-| `LHLD nn`   | 3     | 16     | none  | Loads `L` from `nn` and `H` from `nn + 1`    | ⬜     |
-| `SHLD nn`   | 3     | 16     | none  | Stores `L` at `nn` and `H` at `nn + 1`       | ⬜     |
-| `LDAX rp`   | 1     | 7      | none  | Loads `A` from the address in `BC` or `DE`   | ⬜     |
-| `STAX rp`   | 1     | 7      | none  | Stores `A` at the address in `BC` or `DE`    | ⬜     |
-| `XCHG`      | 1     | 4      | none  | Swaps `HL` and `DE`                          | ⬜     |
+| `LDA nn`    | 3     | 13     | none  | Loads `A` from address `nn`                  | ✅     |
+| `STA nn`    | 3     | 13     | none  | Stores `A` at address `nn`                   | ✅     |
+| `LHLD nn`   | 3     | 16     | none  | Loads `L` from `nn` and `H` from `nn + 1`    | ✅     |
+| `SHLD nn`   | 3     | 16     | none  | Stores `L` at `nn` and `H` at `nn + 1`       | ✅     |
+| `LDAX rp`   | 1     | 7      | none  | Loads `A` from the address in `BC` or `DE`   | ✅     |
+| `STAX rp`   | 1     | 7      | none  | Stores `A` at the address in `BC` or `DE`    | ✅     |
+| `XCHG`      | 1     | 4      | none  | Swaps `HL` and `DE`                          | ✅     |
 
 ### Arithmetic
 
@@ -824,3 +824,155 @@ The `DAD B` below repeats the example from the Intel manual.
 
 In `DAD H`, the sum `1AA34H` needs 17 bits. `HL` keeps `AA34H` and `CY`
 takes the 17th bit.
+
+### STAX: store A through BC or DE
+
+`STAX rp` · opcode `00 rp0 010` · 1 byte · 7 cycles · flags: none
+
+`STAX` stores `A` at the address in `BC` or `DE`. It works like `MOV M,A`,
+with another pair in place of `HL`.
+
+| Instruction | Opcode |
+|-------------|--------|
+| `STAX B`    | `02H`  |
+| `STAX D`    | `12H`  |
+
+`STAX H` and `STAX SP` don't exist: `MOV M,A` covers `HL`, and their slots
+hold `SHLD` and `STA`.
+
+The example repeats the one from the Intel manual.
+
+```asm
+0100H   MVI  A,42H    ; A = 42H                      bytes: 3E 42
+0102H   LXI  B,3F16H  ; BC = 3F16H                   bytes: 01 16 3F
+0105H   STAX B        ; memory[3F16H] = A = 42H      bytes: 02
+```
+
+| After         | `PC`    | `A`   | `BC`    | `memory[3F16H]` |
+|---------------|---------|-------|---------|-----------------|
+| `MVI A,42H`   | `0102H` | `42H` | `0000H` | `00H`           |
+| `LXI B,3F16H` | `0105H` | `42H` | `3F16H` | `00H`           |
+| `STAX B`      | `0106H` | `42H` | `3F16H` | `42H`           |
+
+### LDAX: load A through BC or DE
+
+`LDAX rp` · opcode `00 rp1 010` · 1 byte · 7 cycles · flags: none
+
+`LDAX` loads `A` from the address in `BC` or `DE`. It works like `MOV A,M`,
+with another pair in place of `HL`. A copy loop can read through `DE` with
+`LDAX D` and write through `HL` with `MOV M,A`.
+
+| Instruction | Opcode |
+|-------------|--------|
+| `LDAX B`    | `0AH`  |
+| `LDAX D`    | `1AH`  |
+
+The example repeats the one from the Intel manual. Memory at `938BH` holds
+`77H` before the program runs.
+
+```asm
+0100H   LXI  D,938BH  ; DE = 938BH                   bytes: 11 8B 93
+0103H   LDAX D        ; A = memory[938BH] = 77H      bytes: 1A
+```
+
+| After         | `PC`    | `A`   | `DE`    |
+|---------------|---------|-------|---------|
+| `LXI D,938BH` | `0103H` | `00H` | `938BH` |
+| `LDAX D`      | `0104H` | `77H` | `938BH` |
+
+### SHLD: store HL at an address
+
+`SHLD nn` · opcode `22H` · 3 bytes · 16 cycles · flags: none
+
+`SHLD` stores `L` at address `nn` and `H` at `nn + 1`. The low byte goes
+first, the same order the 8080 uses for 16-bit constants in code.
+
+The example repeats the one from the Intel manual.
+
+```asm
+0100H   LXI  H,0AE29H ; HL = AE29H                   bytes: 21 29 AE
+0103H   SHLD 010AH    ; memory[010AH] = L = 29H,     bytes: 22 0A 01
+                      ; memory[010BH] = H = AEH
+```
+
+| After          | `PC`    | `HL`    | `memory[010AH]` | `memory[010BH]` |
+|----------------|---------|---------|-----------------|-----------------|
+| `LXI H,0AE29H` | `0103H` | `AE29H` | `00H`           | `00H`           |
+| `SHLD 010AH`   | `0106H` | `AE29H` | `29H`           | `AEH`           |
+
+### LHLD: load HL from an address
+
+`LHLD nn` · opcode `2AH` · 3 bytes · 16 cycles · flags: none
+
+`LHLD` loads `L` from address `nn` and `H` from `nn + 1`. Programs keep
+16-bit variables in memory and pair `LHLD` with `SHLD` to read and write
+them.
+
+The example repeats the one from the Intel manual. Memory at `025BH` holds
+`FFH` and at `025CH` holds `03H` before the program runs.
+
+```asm
+0100H   LHLD 025BH    ; L = FFH, H = 03H             bytes: 2A 5B 02
+```
+
+| After        | `PC`    | `H`   | `L`   |
+|--------------|---------|-------|-------|
+| `LHLD 025BH` | `0103H` | `03H` | `FFH` |
+
+### STA: store A at an address
+
+`STA nn` · opcode `32H` · 3 bytes · 13 cycles · flags: none
+
+`STA` stores `A` at address `nn`. Unlike `MOV M,A`, it needs no pair set up
+first, and it costs 13 cycles instead of 7.
+
+The example repeats the one from the Intel manual.
+
+```asm
+0100H   MVI  A,42H    ; A = 42H                      bytes: 3E 42
+0102H   STA  05B3H    ; memory[05B3H] = A = 42H      bytes: 32 B3 05
+```
+
+| After       | `PC`    | `A`   | `memory[05B3H]` |
+|-------------|---------|-------|-----------------|
+| `MVI A,42H` | `0102H` | `42H` | `00H`           |
+| `STA 05B3H` | `0105H` | `42H` | `42H`           |
+
+### LDA: load A from an address
+
+`LDA nn` · opcode `3AH` · 3 bytes · 13 cycles · flags: none
+
+`LDA` loads `A` from address `nn`.
+
+The example repeats the one from the Intel manual. Memory at `0300H` holds
+`77H` before the program runs.
+
+```asm
+0100H   LDA  0300H    ; A = memory[0300H] = 77H      bytes: 3A 00 03
+```
+
+| After       | `PC`    | `A`   |
+|-------------|---------|-------|
+| `LDA 0300H` | `0103H` | `77H` |
+
+### XCHG: swap HL and DE
+
+`XCHG` · opcode `EBH` · 1 byte · 4 cycles · flags: none
+
+`XCHG` swaps `H` with `D` and `L` with `E`. Only `HL` works with `M`, `DAD`
+and `SHLD`, so programs swap a pointer into `HL`, use it there and swap it
+back.
+
+The example repeats the one from the Intel manual.
+
+```asm
+0100H   LXI  D,3355H  ; DE = 3355H                   bytes: 11 55 33
+0103H   LXI  H,00FFH  ; HL = 00FFH                   bytes: 21 FF 00
+0106H   XCHG          ; DE = 00FFH, HL = 3355H       bytes: EB
+```
+
+| After         | `PC`    | `DE`    | `HL`    |
+|---------------|---------|---------|---------|
+| `LXI D,3355H` | `0103H` | `3355H` | `0000H` |
+| `LXI H,00FFH` | `0106H` | `3355H` | `00FFH` |
+| `XCHG`        | `0107H` | `00FFH` | `3355H` |

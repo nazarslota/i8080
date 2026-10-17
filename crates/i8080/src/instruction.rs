@@ -8,6 +8,18 @@ pub(crate) enum Instruction {
     Lxi { dst: Operand16, value: u16 },
     /// `DAD src`: adds `src` to `HL`.
     Dad { src: Operand16 },
+    /// `STAX dst`: stores `A` at the address in `dst`, `BC` or `DE`.
+    Stax { dst: Operand16 },
+    /// `LDAX src`: loads `A` from the address in `src`, `BC` or `DE`.
+    Ldax { src: Operand16 },
+    /// `SHLD address`: stores `L` at `address` and `H` at `address + 1`.
+    Shld { address: u16 },
+    /// `LHLD address`: loads `L` from `address` and `H` from `address + 1`.
+    Lhld { address: u16 },
+    /// `STA address`: stores `A` at `address`.
+    Sta { address: u16 },
+    /// `LDA address`: loads `A` from `address`.
+    Lda { address: u16 },
     /// `INX pair`: adds 1 to `pair`.
     Inx { pair: Operand16 },
     /// `DCX pair`: subtracts 1 from `pair`.
@@ -38,6 +50,8 @@ pub(crate) enum Instruction {
     Ora { src: Operand8 },
     /// `CMP src`: sets the flags from `A - src` and leaves `A` as it was.
     Cmp { src: Operand8 },
+    /// `XCHG`: swaps `HL` and `DE`.
+    Xchg,
     /// `ADI value`: adds a constant to `A`.
     Adi { value: u8 },
     /// `ACI value`: adds a constant and the carry flag to `A`.
@@ -88,15 +102,40 @@ impl Instruction {
             // NOP: 00 000 000
             (0b00, 0b000, 0b000) => Self::Nop,
             // LXI rp,nn: 00 rp0 001. The two bits rp sit above bit 3, so
-            // `y >> 1` picks them and bit 3 tells LXI from DAD. The
-            // constant follows the opcode low byte first.
+            // `y >> 1` picks them and bit 3 tells LXI from DAD.
             (0b00, y, 0b001) if y & 1 == 0 => Self::Lxi {
                 dst: Operand16::from_code(y >> 1),
-                value: u16::from_le_bytes([next_byte(), next_byte()]),
+                value: next_word(&mut next_byte),
             },
             // DAD rp: 00 rp1 001
             (0b00, y, 0b001) => Self::Dad {
                 src: Operand16::from_code(y >> 1),
+            },
+            // STAX rp: 00 rp0 010, for BC and DE only
+            (0b00, y @ (0b000 | 0b010), 0b010) => Self::Stax {
+                dst: Operand16::from_code(y >> 1),
+            },
+            // LDAX rp: 00 rp1 010, for BC and DE only
+            (0b00, y @ (0b001 | 0b011), 0b010) => Self::Ldax {
+                src: Operand16::from_code(y >> 1),
+            },
+            // The slots STAX H, LDAX H, STAX SP and LDAX SP would take
+            // hold the instructions with a 16-bit address instead.
+            // SHLD nn: 00 100 010
+            (0b00, 0b100, 0b010) => Self::Shld {
+                address: next_word(&mut next_byte),
+            },
+            // LHLD nn: 00 101 010
+            (0b00, 0b101, 0b010) => Self::Lhld {
+                address: next_word(&mut next_byte),
+            },
+            // STA nn: 00 110 010
+            (0b00, 0b110, 0b010) => Self::Sta {
+                address: next_word(&mut next_byte),
+            },
+            // LDA nn: 00 111 010
+            (0b00, 0b111, 0b010) => Self::Lda {
+                address: next_word(&mut next_byte),
             },
             // INX rp: 00 rp0 011
             (0b00, y, 0b011) if y & 1 == 0 => Self::Inx {
@@ -159,6 +198,8 @@ impl Instruction {
             (0b10, 0b111, sss) => Self::Cmp {
                 src: Operand8::from_code(sss),
             },
+            // XCHG: 11 101 011
+            (0b11, 0b101, 0b011) => Self::Xchg,
             // The same eight operations with a constant byte after the
             // opcode: 11 yyy 110.
             (0b11, 0b000, 0b110) => Self::Adi { value: next_byte() },
@@ -172,6 +213,14 @@ impl Instruction {
             _ => unimplemented!("opcode {opcode:#04X} is not supported yet"),
         }
     }
+}
+
+/// Reads a 16-bit constant. The 8080 stores it after the opcode low byte
+/// first: `LXI H,2000H` assembles to `21 00 20`.
+fn next_word(next_byte: &mut impl FnMut() -> u8) -> u16 {
+    let low = next_byte();
+    let high = next_byte();
+    u16::from_le_bytes([low, high])
 }
 
 /// An 8-bit operand, as opcodes encode it in a 3-bit field.

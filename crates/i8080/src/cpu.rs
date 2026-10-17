@@ -63,6 +63,12 @@ impl Cpu {
             Instruction::Nop => cycles::NOP,
             Instruction::Lxi { dst, value } => self.lxi(dst, value),
             Instruction::Dad { src } => self.dad(src),
+            Instruction::Stax { dst } => self.stax(memory, dst),
+            Instruction::Ldax { src } => self.ldax(memory, src),
+            Instruction::Shld { address } => self.shld(memory, address),
+            Instruction::Lhld { address } => self.lhld(memory, address),
+            Instruction::Sta { address } => self.sta(memory, address),
+            Instruction::Lda { address } => self.lda(memory, address),
             Instruction::Inx { pair } => self.inx(pair),
             Instruction::Dcx { pair } => self.dcx(pair),
             Instruction::Inr { dst } => self.inr(memory, dst),
@@ -78,6 +84,7 @@ impl Cpu {
             Instruction::Xra { src } => self.xra(memory, src),
             Instruction::Ora { src } => self.ora(memory, src),
             Instruction::Cmp { src } => self.cmp(memory, src),
+            Instruction::Xchg => self.xchg(),
             Instruction::Adi { value } => self.adi(value),
             Instruction::Aci { value } => self.aci(value),
             Instruction::Sui { value } => self.sui(value),
@@ -102,6 +109,44 @@ impl Cpu {
         self.registers.set_hl(sum);
         self.registers.flags.carry = carry;
         cycles::DAD
+    }
+
+    /// `STAX dst`: stores `A` at the address in `BC` or `DE`.
+    fn stax(&mut self, memory: &mut impl MemoryBus, dst: Operand16) -> u32 {
+        memory.write(self.read_pair(dst), self.registers.a);
+        cycles::STAX
+    }
+
+    /// `LDAX src`: loads `A` from the address in `BC` or `DE`.
+    fn ldax(&mut self, memory: &mut impl MemoryBus, src: Operand16) -> u32 {
+        self.registers.a = memory.read(self.read_pair(src));
+        cycles::LDAX
+    }
+
+    /// `SHLD address`: stores `L` at `address` and `H` at the next byte.
+    fn shld(&mut self, memory: &mut impl MemoryBus, address: u16) -> u32 {
+        memory.write(address, self.registers.l);
+        memory.write(address.wrapping_add(1), self.registers.h);
+        cycles::SHLD
+    }
+
+    /// `LHLD address`: loads `L` from `address` and `H` from the next byte.
+    fn lhld(&mut self, memory: &mut impl MemoryBus, address: u16) -> u32 {
+        self.registers.l = memory.read(address);
+        self.registers.h = memory.read(address.wrapping_add(1));
+        cycles::LHLD
+    }
+
+    /// `STA address`: stores `A` at `address`.
+    fn sta(&mut self, memory: &mut impl MemoryBus, address: u16) -> u32 {
+        memory.write(address, self.registers.a);
+        cycles::STA
+    }
+
+    /// `LDA address`: loads `A` from `address`.
+    fn lda(&mut self, memory: &mut impl MemoryBus, address: u16) -> u32 {
+        self.registers.a = memory.read(address);
+        cycles::LDA
     }
 
     /// `INX pair`: adds 1 to a register pair. Sets no flags.
@@ -274,6 +319,14 @@ impl Cpu {
         } else {
             cycles::CMP
         }
+    }
+
+    /// `XCHG`: swaps `HL` and `DE`.
+    fn xchg(&mut self) -> u32 {
+        let r = &mut self.registers;
+        core::mem::swap(&mut r.h, &mut r.d);
+        core::mem::swap(&mut r.l, &mut r.e);
+        cycles::XCHG
     }
 
     /// `ADI value`: adds a constant to `A`.
@@ -629,6 +682,130 @@ mod tests {
             assert_eq!(cpu.registers.hl(), expected_hl, "{hl:#06X} + {bc:#06X}");
             assert_eq!(cpu.registers.flags, expected_flags, "{hl:#06X} + {bc:#06X}");
         }
+    }
+
+    #[test]
+    fn stax_stores_a_at_pair_address() {
+        // Each case: an opcode and the address its pair holds. A holds 0AH.
+        let cases = [
+            (0x02, 0x0B0C), // STAX B
+            (0x12, 0x0D0E), // STAX D
+        ];
+
+        for (opcode, address) in cases {
+            let mut memory = [0u8; 0x10000];
+            let before = distinct_registers();
+
+            let (cpu, cycles) = run_with_memory(&mut memory, &[opcode], before);
+
+            assert_eq!(memory[address], 0x0A, "opcode {opcode:#04X}");
+            let after = Registers {
+                pc: 0x0101,
+                ..before
+            };
+            assert_eq!(cpu.registers, after, "opcode {opcode:#04X}");
+            assert_eq!(cycles, cycles::STAX, "opcode {opcode:#04X}");
+        }
+    }
+
+    #[test]
+    fn ldax_loads_a_from_pair_address() {
+        // Each case: an opcode and the byte at the address its pair holds.
+        let cases = [
+            (0x0A, 0x11), // LDAX B: memory[0B0CH]
+            (0x1A, 0x22), // LDAX D: memory[0D0EH]
+        ];
+
+        for (opcode, value) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0x0B0C] = 0x11;
+            memory[0x0D0E] = 0x22;
+
+            let (cpu, cycles) = run_with_memory(&mut memory, &[opcode], distinct_registers());
+
+            assert_eq!(cpu.registers.a, value, "opcode {opcode:#04X}");
+            assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
+            assert_eq!(cycles, cycles::LDAX, "opcode {opcode:#04X}");
+        }
+    }
+
+    #[test]
+    fn shld_stores_l_then_h() {
+        // The SHLD example from the Intel manual: HL = AE29H, SHLD 010AH.
+        let mut memory = [0u8; 0x10000];
+        let mut before = distinct_registers();
+        before.set_hl(0xAE29);
+
+        let (cpu, cycles) = run_with_memory(&mut memory, &[0x22, 0x0A, 0x01], before);
+
+        assert_eq!(memory[0x010A..0x010C], [0x29, 0xAE]);
+        assert_eq!(
+            cpu.registers,
+            Registers {
+                pc: 0x0103,
+                ..before
+            }
+        );
+        assert_eq!(cycles, cycles::SHLD);
+    }
+
+    #[test]
+    fn lhld_loads_l_then_h() {
+        // The LHLD example from the Intel manual: memory at 025BH holds
+        // FFH 03H, so LHLD 025BH loads HL = 03FFH.
+        let mut memory = [0u8; 0x10000];
+        memory[0x025B..0x025D].copy_from_slice(&[0xFF, 0x03]);
+        let before = distinct_registers();
+
+        let (cpu, cycles) = run_with_memory(&mut memory, &[0x2A, 0x5B, 0x02], before);
+
+        assert_eq!(
+            cpu.registers,
+            Registers {
+                h: 0x03,
+                l: 0xFF,
+                pc: 0x0103,
+                ..before
+            }
+        );
+        assert_eq!(cycles, cycles::LHLD);
+    }
+
+    #[test]
+    fn sta_stores_a_at_address() {
+        let mut memory = [0u8; 0x10000];
+        let before = distinct_registers();
+
+        let (cpu, cycles) = run_with_memory(&mut memory, &[0x32, 0x00, 0x20], before); // STA 2000H
+
+        assert_eq!(memory[0x2000], 0x0A);
+        assert_eq!(
+            cpu.registers,
+            Registers {
+                pc: 0x0103,
+                ..before
+            }
+        );
+        assert_eq!(cycles, cycles::STA);
+    }
+
+    #[test]
+    fn lda_loads_a_from_address() {
+        let mut memory = [0u8; 0x10000];
+        memory[0x2000] = 0x99;
+        let before = distinct_registers();
+
+        let (cpu, cycles) = run_with_memory(&mut memory, &[0x3A, 0x00, 0x20], before); // LDA 2000H
+
+        assert_eq!(
+            cpu.registers,
+            Registers {
+                a: 0x99,
+                pc: 0x0103,
+                ..before
+            }
+        );
+        assert_eq!(cycles, cycles::LDA);
     }
 
     #[test]
@@ -1722,6 +1899,26 @@ mod tests {
     }
 
     #[test]
+    fn xchg_swaps_hl_and_de() {
+        let before = distinct_registers();
+
+        let (cpu, cycles) = run(&[0xEB], before); // XCHG
+
+        assert_eq!(
+            cpu.registers,
+            Registers {
+                d: before.h,
+                e: before.l,
+                h: before.d,
+                l: before.e,
+                pc: 0x0101,
+                ..before
+            }
+        );
+        assert_eq!(cycles, cycles::XCHG);
+    }
+
+    #[test]
     fn immediate_alu_uses_next_byte() {
         // Each case: an opcode with the constant 03H after it, the value it
         // should leave in A and its cycle count. A starts at 0AH and the
@@ -1789,8 +1986,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "opcode 0x02 is not supported yet")]
+    #[should_panic(expected = "opcode 0x07 is not supported yet")]
     fn unsupported_opcode_panics() {
-        run(&[0x02], distinct_registers()); // STAX B, not implemented yet
+        run(&[0x07], distinct_registers()); // RLC, not implemented yet
     }
 }
