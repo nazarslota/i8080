@@ -39,16 +39,26 @@ impl Cpu {
     ///
     /// Panics on opcodes the emulator doesn't support yet.
     pub fn step(&mut self, memory: &mut impl MemoryBus) -> u32 {
-        // Fetch: read the opcode at PC and move PC to the next byte.
-        let opcode = memory.read(self.registers.pc);
-        self.registers.pc = self.registers.pc.wrapping_add(1);
+        // Fetch and decode: read the instruction's bytes starting at PC.
+        let instruction = Instruction::decode(|| self.fetch_byte(memory));
 
-        // Decode, then execute. Cycle counts come from the Intel 8080
-        // Microcomputer Systems User's Manual (September 1975):
+        // Execute. Cycle counts come from the Intel 8080 Microcomputer
+        // Systems User's Manual (September 1975):
         // https://bitsavers.org/components/intel/MCS80/98-153B_Intel_8080_Microcomputer_Systems_Users_Manual_197509.pdf
-        match Instruction::decode(opcode) {
+        match instruction {
             Instruction::Nop => 4,
+            Instruction::MviB(value) => {
+                self.registers.b = value;
+                7
+            }
         }
+    }
+
+    /// Reads the byte at PC and moves PC to the next one.
+    fn fetch_byte(&mut self, memory: &mut impl MemoryBus) -> u8 {
+        let byte = memory.read(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
+        byte
     }
 }
 
@@ -56,11 +66,10 @@ impl Cpu {
 mod tests {
     use super::*;
 
-    #[test]
-    fn nop_changes_nothing_but_pc() {
-        let mut memory = [0u8; 0x10000]; // NOP
-        let mut cpu = Cpu::new();
-        cpu.registers = Registers {
+    /// Registers holding distinct values, so a test notices when an
+    /// instruction writes to the wrong register. PC starts at 0100H.
+    fn distinct_registers() -> Registers {
+        Registers {
             a: 0x0A,
             b: 0x0B,
             c: 0x0C,
@@ -70,7 +79,14 @@ mod tests {
             l: 0x02,
             sp: 0xF000,
             pc: 0x0100,
-        };
+        }
+    }
+
+    #[test]
+    fn nop_changes_nothing_but_pc() {
+        let mut memory = [0u8; 0x10000]; // NOP
+        let mut cpu = Cpu::new();
+        cpu.registers = distinct_registers();
         let before = cpu.registers;
 
         let cycles = cpu.step(&mut memory);
@@ -83,6 +99,27 @@ mod tests {
             }
         );
         assert_eq!(cycles, 4);
+    }
+
+    #[test]
+    fn mvi_b_loads_next_byte_into_b() {
+        let mut memory = [0u8; 0x10000];
+        memory[0x0100..0x0102].copy_from_slice(&[0x06, 0x42]); // MVI B,42H
+        let mut cpu = Cpu::new();
+        cpu.registers = distinct_registers();
+        let before = cpu.registers;
+
+        let cycles = cpu.step(&mut memory);
+
+        assert_eq!(
+            cpu.registers,
+            Registers {
+                b: 0x42,
+                pc: 0x0102,
+                ..before
+            }
+        );
+        assert_eq!(cycles, 7);
     }
 
     #[test]
