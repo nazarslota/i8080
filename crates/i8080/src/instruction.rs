@@ -42,6 +42,10 @@ pub(crate) enum Instruction {
     /// `CPI value`: sets the flags from `A - value` and leaves `A` as it
     /// was.
     Cpi { value: u8 },
+    /// `INR dst`: adds 1 to `dst` and leaves the carry flag alone.
+    Inr { dst: Operand },
+    /// `DCR dst`: subtracts 1 from `dst` and leaves the carry flag alone.
+    Dcr { dst: Operand },
 }
 
 impl Instruction {
@@ -74,6 +78,14 @@ impl Instruction {
         match (x, y, z) {
             // NOP: 00 000 000
             (0b00, 0b000, 0b000) => Self::Nop,
+            // INR ddd: 00 ddd 100
+            (0b00, ddd, 0b100) => Self::Inr {
+                dst: Operand::from_code(ddd),
+            },
+            // DCR ddd: 00 ddd 101
+            (0b00, ddd, 0b101) => Self::Dcr {
+                dst: Operand::from_code(ddd),
+            },
             // MVI ddd,n: 00 ddd 110
             (0b00, ddd, 0b110) => Self::Mvi {
                 dst: Operand::from_code(ddd),

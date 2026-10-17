@@ -86,6 +86,16 @@ pub(crate) const ORI: u32 = 7;
 /// `CPI n`: opcode fetch plus one read for the constant.
 pub(crate) const CPI: u32 = 7;
 
+/// `INR r`.
+pub(crate) const INR: u32 = 5;
+/// `INR M`: `INR` plus a memory read and a memory write.
+pub(crate) const INR_M: u32 = 10;
+
+/// `DCR r`.
+pub(crate) const DCR: u32 = 5;
+/// `DCR M`: `DCR` plus a memory read and a memory write.
+pub(crate) const DCR_M: u32 = 10;
+
 /// `HLT`.
 pub(crate) const HLT: u32 = 7;
 

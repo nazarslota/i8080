@@ -56,8 +56,8 @@ applies when the condition holds.
 | `SUI n`     | 2     | 7      | S Z AC P CY | `A = A - n`                             | ✅     |
 | `SBB r`     | 1     | 4 / 7  | S Z AC P CY | `A = A - r - CY`                        | ✅     |
 | `SBI n`     | 2     | 7      | S Z AC P CY | `A = A - n - CY`                        | ✅     |
-| `INR r`     | 1     | 5 / 10 | S Z AC P    | `r = r + 1`, carry unchanged            | ⬜     |
-| `DCR r`     | 1     | 5 / 10 | S Z AC P    | `r = r - 1`, carry unchanged            | ⬜     |
+| `INR r`     | 1     | 5 / 10 | S Z AC P    | `r = r + 1`, carry unchanged            | ✅     |
+| `DCR r`     | 1     | 5 / 10 | S Z AC P    | `r = r - 1`, carry unchanged            | ✅     |
 | `INX rp`    | 1     | 5      | none        | `rp = rp + 1`                           | ⬜     |
 | `DCX rp`    | 1     | 5      | none        | `rp = rp - 1`                           | ⬜     |
 | `DAD rp`    | 1     | 10     | CY          | `HL = HL + rp`                          | ⬜     |
@@ -618,3 +618,79 @@ from `ACI` to `SBI`.
 | `ANI 3CH`   | `010EH` | `30H` | 0   | 0   | 1    | 1   | 0    |
 | `XRI 33H`   | `0110H` | `03H` | 0   | 0   | 0    | 1   | 0    |
 | `CPI 03H`   | `0112H` | `03H` | 0   | 1   | 1    | 1   | 0    |
+
+### INR: increment
+
+`INR dst` · opcode `00 ddd 100` · 1 byte · 5 cycles (10 with `M`) ·
+flags: S Z AC P
+
+`INR` adds 1 to a register or to `M`, the memory byte at the address in
+`HL`. `FFH` wraps to `00H`. With `M`, the CPU reads the byte, adds 1 and
+writes it back, so it takes 5 more cycles.
+
+| Instruction | Opcode | Instruction | Opcode |
+|-------------|--------|-------------|--------|
+| `INR B`     | `04H`  | `INR H`     | `24H`  |
+| `INR C`     | `0CH`  | `INR L`     | `2CH`  |
+| `INR D`     | `14H`  | `INR M`     | `34H`  |
+| `INR E`     | `1CH`  | `INR A`     | `3CH`  |
+
+`INR` sets `S`, `Z`, `AC` and `P` the way `ADD` with 1 would, and leaves
+`CY` as it was. A loop can count in one register while `CY` carries a
+multi-byte sum from one pass to the next.
+
+The `INR C` below repeats the example from the Intel manual. `INR A` wraps
+`FFH` to `00H` and still leaves `CY` at 0.
+
+```asm
+0100H   MVI  C,99H   ; C = 99H                       bytes: 0E 99
+0102H   INR  C       ; C = 99H + 1 = 9AH             bytes: 0C
+0103H   MVI  A,0FFH  ; A = FFH                       bytes: 3E FF
+0105H   INR  A       ; A = 00H, CY stays 0           bytes: 3C
+```
+
+| After        | `PC`    | `A`   | `C`   | `S` | `Z` | `AC` | `P` | `CY` |
+|--------------|---------|-------|-------|-----|-----|------|-----|------|
+| `MVI C,99H`  | `0102H` | `00H` | `99H` | 0   | 0   | 0    | 0   | 0    |
+| `INR C`      | `0103H` | `00H` | `9AH` | 1   | 0   | 0    | 1   | 0    |
+| `MVI A,0FFH` | `0105H` | `FFH` | `9AH` | 1   | 0   | 0    | 1   | 0    |
+| `INR A`      | `0106H` | `00H` | `9AH` | 0   | 1   | 1    | 1   | 0    |
+
+### DCR: decrement
+
+`DCR dst` · opcode `00 ddd 101` · 1 byte · 5 cycles (10 with `M`) ·
+flags: S Z AC P
+
+`DCR` subtracts 1 from a register or from `M`. `00H` wraps to `FFH`. It sets
+`S`, `Z`, `AC` and `P` the way `SUB` with 1 would, and leaves `CY` as it
+was. `AC = 0` means the low 4 bits borrowed, as after `SUB`: `10H` drops to
+`0FH` with `AC = 0`.
+
+| Instruction | Opcode | Instruction | Opcode |
+|-------------|--------|-------------|--------|
+| `DCR B`     | `05H`  | `DCR H`     | `25H`  |
+| `DCR C`     | `0DH`  | `DCR L`     | `2DH`  |
+| `DCR D`     | `15H`  | `DCR M`     | `35H`  |
+| `DCR E`     | `1DH`  | `DCR A`     | `3DH`  |
+
+Programs count loops down with `DCR`: load a counter, run the loop body,
+`DCR` the counter and jump back while `Z = 0`. The jump comes with `JNZ`
+later.
+
+The `DCR M` below repeats the example from the Intel manual.
+
+```asm
+0100H   MVI  H,3AH   ; H = 3AH                       bytes: 26 3A
+0102H   MVI  L,7CH   ; L = 7CH, so HL = 3A7CH        bytes: 2E 7C
+0104H   MVI  M,40H   ; memory[3A7CH] = 40H           bytes: 36 40
+0106H   DCR  M       ; memory[3A7CH] = 40H - 1 = 3FH bytes: 35
+0107H   DCR  A       ; A = 00H - 1 = FFH, CY stays 0 bytes: 3D
+```
+
+| After       | `PC`    | `A`   | `HL`    | `memory[3A7CH]` | `S` | `Z` | `AC` | `P` | `CY` |
+|-------------|---------|-------|---------|-----------------|-----|-----|------|-----|------|
+| `MVI H,3AH` | `0102H` | `00H` | `3A00H` | `00H`           | 0   | 0   | 0    | 0   | 0    |
+| `MVI L,7CH` | `0104H` | `00H` | `3A7CH` | `00H`           | 0   | 0   | 0    | 0   | 0    |
+| `MVI M,40H` | `0106H` | `00H` | `3A7CH` | `40H`           | 0   | 0   | 0    | 0   | 0    |
+| `DCR M`     | `0107H` | `00H` | `3A7CH` | `3FH`           | 0   | 0   | 0    | 1   | 0    |
+| `DCR A`     | `0108H` | `FFH` | `3A7CH` | `3FH`           | 1   | 0   | 0    | 1   | 0    |

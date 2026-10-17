@@ -1,7 +1,7 @@
 use crate::alu;
 use crate::cycles::{self, HALTED_STEP_CYCLES};
 use crate::instruction::{Instruction, Operand};
-use crate::{MemoryBus, Registers};
+use crate::{Flags, MemoryBus, Registers};
 
 /// The Intel 8080 processor.
 ///
@@ -80,6 +80,8 @@ impl Cpu {
             Instruction::Xri { value } => self.xri(value),
             Instruction::Ori { value } => self.ori(value),
             Instruction::Cpi { value } => self.cpi(value),
+            Instruction::Inr { dst } => self.inr(memory, dst),
+            Instruction::Dcr { dst } => self.dcr(memory, dst),
         }
     }
 
@@ -259,6 +261,39 @@ impl Cpu {
         cycles::CPI
     }
 
+    /// `INR dst`: adds 1 to a register or `M`. Sets every flag but `CY`.
+    fn inr(&mut self, memory: &mut impl MemoryBus, dst: Operand) -> u32 {
+        let value = self.read_operand(memory, dst);
+        let (result, flags) = alu::add(value, 1, false);
+        self.write_operand(memory, dst, result);
+        self.registers.flags = Flags {
+            carry: self.registers.flags.carry,
+            ..flags
+        };
+        if dst == Operand::M {
+            cycles::INR_M
+        } else {
+            cycles::INR
+        }
+    }
+
+    /// `DCR dst`: subtracts 1 from a register or `M`. Sets every flag but
+    /// `CY`.
+    fn dcr(&mut self, memory: &mut impl MemoryBus, dst: Operand) -> u32 {
+        let value = self.read_operand(memory, dst);
+        let (result, flags) = alu::subtract(value, 1, false);
+        self.write_operand(memory, dst, result);
+        self.registers.flags = Flags {
+            carry: self.registers.flags.carry,
+            ..flags
+        };
+        if dst == Operand::M {
+            cycles::DCR_M
+        } else {
+            cycles::DCR
+        }
+    }
+
     /// Reads an 8-bit operand. `M` reads memory at the address in `HL`.
     fn read_operand(&self, memory: &mut impl MemoryBus, operand: Operand) -> u8 {
         let r = &self.registers;
@@ -300,7 +335,6 @@ impl Cpu {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Flags;
 
     /// Registers holding distinct values, so a test notices when an
     /// instruction writes to the wrong register. PC starts at 0100H.
@@ -1300,6 +1334,219 @@ mod tests {
             };
 
             assert_alu_flags(&[0xFE, value], registers, 0x4A, flags); // CPI value
+        }
+    }
+
+    #[test]
+    fn inr_increments_register() {
+        // Opcodes from the Intel manual, each with the registers it should
+        // leave behind: the register grew by 1 and PC moved 1 byte.
+        let before = distinct_registers();
+        let after = Registers {
+            pc: 0x0101,
+            ..before
+        };
+        let cases = [
+            (0x04, Registers { b: 0x0C, ..after }), // INR B
+            (0x0C, Registers { c: 0x0D, ..after }), // INR C
+            (0x14, Registers { d: 0x0E, ..after }), // INR D
+            (0x1C, Registers { e: 0x0F, ..after }), // INR E
+            (0x24, Registers { h: 0x02, ..after }), // INR H
+            (0x2C, Registers { l: 0x03, ..after }), // INR L
+            (0x3C, Registers { a: 0x0B, ..after }), // INR A
+        ];
+
+        for (opcode, expected) in cases {
+            let (cpu, cycles) = run(&[opcode], before);
+
+            // The flags have their own test, so this one ignores them.
+            let registers = Registers {
+                flags: before.flags,
+                ..cpu.registers
+            };
+            assert_eq!(registers, expected, "opcode {opcode:#04X}");
+            assert_eq!(cycles, cycles::INR, "opcode {opcode:#04X}");
+        }
+    }
+
+    #[test]
+    fn inr_sets_flags_and_keeps_carry() {
+        // Each case: the flags before the step, A, the result and the flags
+        // INR A should leave behind. CY keeps its value in every case.
+        let none = Flags::default();
+        let cases = [
+            (
+                ALL_FLAGS,
+                0x01,
+                0x02,
+                Flags {
+                    carry: true,
+                    ..none
+                },
+            ),
+            (
+                ALL_FLAGS,
+                0x0F,
+                0x10,
+                Flags {
+                    aux_carry: true,
+                    carry: true,
+                    ..none
+                },
+            ),
+            (
+                ALL_FLAGS,
+                0x7F,
+                0x80,
+                Flags {
+                    sign: true,
+                    aux_carry: true,
+                    carry: true,
+                    ..none
+                },
+            ),
+            // FFH wraps to 00H, and CY still stays 0.
+            (
+                none,
+                0xFF,
+                0x00,
+                Flags {
+                    zero: true,
+                    aux_carry: true,
+                    parity: true,
+                    ..none
+                },
+            ),
+        ];
+
+        for (before, a, result, flags) in cases {
+            let registers = Registers {
+                a,
+                flags: before,
+                ..distinct_registers()
+            };
+
+            assert_alu_flags(&[0x3C], registers, result, flags); // INR A
+        }
+    }
+
+    #[test]
+    fn dcr_decrements_register() {
+        // Opcodes from the Intel manual, each with the registers it should
+        // leave behind: the register shrank by 1 and PC moved 1 byte.
+        let before = distinct_registers();
+        let after = Registers {
+            pc: 0x0101,
+            ..before
+        };
+        let cases = [
+            (0x05, Registers { b: 0x0A, ..after }), // DCR B
+            (0x0D, Registers { c: 0x0B, ..after }), // DCR C
+            (0x15, Registers { d: 0x0C, ..after }), // DCR D
+            (0x1D, Registers { e: 0x0D, ..after }), // DCR E
+            (0x25, Registers { h: 0x00, ..after }), // DCR H
+            (0x2D, Registers { l: 0x01, ..after }), // DCR L
+            (0x3D, Registers { a: 0x09, ..after }), // DCR A
+        ];
+
+        for (opcode, expected) in cases {
+            let (cpu, cycles) = run(&[opcode], before);
+
+            // The flags have their own test, so this one ignores them.
+            let registers = Registers {
+                flags: before.flags,
+                ..cpu.registers
+            };
+            assert_eq!(registers, expected, "opcode {opcode:#04X}");
+            assert_eq!(cycles, cycles::DCR, "opcode {opcode:#04X}");
+        }
+    }
+
+    #[test]
+    fn dcr_sets_flags_and_keeps_carry() {
+        // Each case: the flags before the step, A, the result and the flags
+        // DCR A should leave behind. CY keeps its value in every case.
+        let none = Flags::default();
+        let cases = [
+            // 10H - 1 borrows from the high 4 bits, so AC is 0.
+            (
+                ALL_FLAGS,
+                0x10,
+                0x0F,
+                Flags {
+                    parity: true,
+                    carry: true,
+                    ..none
+                },
+            ),
+            (
+                ALL_FLAGS,
+                0x01,
+                0x00,
+                Flags {
+                    zero: true,
+                    aux_carry: true,
+                    parity: true,
+                    carry: true,
+                    ..none
+                },
+            ),
+            (
+                ALL_FLAGS,
+                0x80,
+                0x7F,
+                Flags {
+                    carry: true,
+                    ..none
+                },
+            ),
+            // 00H wraps to FFH, and CY still stays 0.
+            (
+                none,
+                0x00,
+                0xFF,
+                Flags {
+                    sign: true,
+                    parity: true,
+                    ..none
+                },
+            ),
+        ];
+
+        for (before, a, result, flags) in cases {
+            let registers = Registers {
+                a,
+                flags: before,
+                ..distinct_registers()
+            };
+
+            assert_alu_flags(&[0x3D], registers, result, flags); // DCR A
+        }
+    }
+
+    #[test]
+    fn inr_and_dcr_m_change_memory_at_hl() {
+        // Each case: an opcode with M as the operand, the byte it should
+        // leave at HL and its cycle count. Memory at HL holds 40H, the
+        // example from the Intel manual's DCR M.
+        let cases = [
+            (0x34, 0x41, cycles::INR_M), // INR M
+            (0x35, 0x3F, cycles::DCR_M), // DCR M
+        ];
+
+        for (opcode, result, expected_cycles) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0x3A7C] = 0x40;
+            let registers = Registers {
+                h: 0x3A,
+                l: 0x7C,
+                ..distinct_registers()
+            };
+
+            let (_, cycles) = run_with_memory(&mut memory, &[opcode], registers);
+
+            assert_eq!(memory[0x3A7C], result, "opcode {opcode:#04X}");
+            assert_eq!(cycles, expected_cycles, "opcode {opcode:#04X}");
         }
     }
 
