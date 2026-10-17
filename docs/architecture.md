@@ -103,6 +103,10 @@ port in a loop, sees the bit and reads the key with `IN 0x11`.
   `Instruction` value and then executes that value. Decoding depends on the
   bytes alone, so the same code drives the disassembler (`impl Display for
   Instruction`) and execution traces.
+- **The execute step is a dispatch table.** The `match` in `step` has one
+  line per instruction. An instruction with any logic gets its own method,
+  named after it (`mvi`, `mov`), which does the work and returns the cycle
+  count.
 - **Decoding can't fail.** The 8080 treats all 256 opcodes as valid. The 12
   undocumented ones duplicate documented ones: `0x08` acts as `NOP`, `0xCB` as
   `JMP`. `step` returns no `Result`.

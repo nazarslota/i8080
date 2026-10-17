@@ -34,7 +34,7 @@ applies when the condition holds.
 | Instruction | Bytes | Cycles | Flags | What it does                                 | Status |
 |-------------|-------|--------|-------|----------------------------------------------|--------|
 | `MOV r,r`   | 1     | 5 / 7  | none  | Copies a byte between registers and `M`      | ⬜     |
-| `MVI r,n`   | 2     | 7 / 10 | none  | Loads a constant byte into a register or `M` | 🟡     |
+| `MVI r,n`   | 2     | 7 / 10 | none  | Loads a constant byte into a register or `M` | ✅     |
 | `LXI rp,nn` | 3     | 10     | none  | Loads a 16-bit constant into a register pair | ⬜     |
 | `LDA nn`    | 3     | 13     | none  | Loads `A` from address `nn`                  | ⬜     |
 | `STA nn`    | 3     | 13     | none  | Stores `A` at address `nn`                   | ⬜     |
@@ -176,5 +176,3 @@ cycles.
 
 Intel assembler writes `0FFH` with a leading zero. Without it, the assembler
 would read `FFH` as a name.
-
-**Emulator status:** only `MVI B,n` so far.
