@@ -17,8 +17,8 @@
 //!
 //! # Status
 //!
-//! Work in progress: the CPU runs `NOP` and `MVI` and panics on every other
-//! opcode.
+//! Work in progress: the CPU runs `NOP`, `MVI` and `MOV` and panics on every
+//! other opcode.
 
 #![no_std]
 

@@ -33,7 +33,7 @@ applies when the condition holds.
 
 | Instruction | Bytes | Cycles | Flags | What it does                                 | Status |
 |-------------|-------|--------|-------|----------------------------------------------|--------|
-| `MOV r,r`   | 1     | 5 / 7  | none  | Copies a byte between registers and `M`      | ⬜     |
+| `MOV r,r`   | 1     | 5 / 7  | none  | Copies a byte between registers and `M`      | ✅     |
 | `MVI r,n`   | 2     | 7 / 10 | none  | Loads a constant byte into a register or `M` | ✅     |
 | `LXI rp,nn` | 3     | 10     | none  | Loads a 16-bit constant into a register pair | ⬜     |
 | `LDA nn`    | 3     | 13     | none  | Loads `A` from address `nn`                  | ⬜     |
@@ -176,3 +176,43 @@ cycles.
 
 Intel assembler writes `0FFH` with a leading zero. Without it, the assembler
 would read `FFH` as a name.
+
+### MOV: copy a byte
+
+`MOV dst,src` · opcode `01 ddd sss` · 1 byte · 5 cycles (7 with `M`) ·
+flags: none
+
+`MOV` copies `src` into `dst` and leaves `src` as it was. Either operand can
+be `M`, the memory byte at the address in `HL`. A memory operand costs one
+more bus access, which is why `MOV` takes 7 cycles with `M` and 5 without.
+
+`MOV M,M` doesn't exist. Its opcode, `76H`, belongs to `HLT`.
+
+| dst \ src | `B`   | `C`   | `D`   | `E`   | `H`   | `L`   | `M`   | `A`   |
+|-----------|-------|-------|-------|-------|-------|-------|-------|-------|
+| `B`       | `40H` | `41H` | `42H` | `43H` | `44H` | `45H` | `46H` | `47H` |
+| `C`       | `48H` | `49H` | `4AH` | `4BH` | `4CH` | `4DH` | `4EH` | `4FH` |
+| `D`       | `50H` | `51H` | `52H` | `53H` | `54H` | `55H` | `56H` | `57H` |
+| `E`       | `58H` | `59H` | `5AH` | `5BH` | `5CH` | `5DH` | `5EH` | `5FH` |
+| `H`       | `60H` | `61H` | `62H` | `63H` | `64H` | `65H` | `66H` | `67H` |
+| `L`       | `68H` | `69H` | `6AH` | `6BH` | `6CH` | `6DH` | `6EH` | `6FH` |
+| `M`       | `70H` | `71H` | `72H` | `73H` | `74H` | `75H` | `HLT` | `77H` |
+| `A`       | `78H` | `79H` | `7AH` | `7BH` | `7CH` | `7DH` | `7EH` | `7FH` |
+
+```asm
+0100H   MVI  B,42H   ; B = 42H                    bytes: 06 42
+0102H   MOV  A,B     ; A = B = 42H                bytes: 78
+0103H   MVI  H,20H   ; H = 20H                    bytes: 26 20
+0105H   MVI  L,00H   ; L = 00H, so HL = 2000H     bytes: 2E 00
+0107H   MOV  M,A     ; memory[2000H] = A = 42H    bytes: 77
+0108H   MOV  C,M     ; C = memory[2000H] = 42H    bytes: 4E
+```
+
+| After       | `PC`    | `A`   | `B`   | `C`   | `HL`    | `memory[2000H]` |
+|-------------|---------|-------|-------|-------|---------|-----------------|
+| `MVI B,42H` | `0102H` | `00H` | `42H` | `00H` | `0000H` | `00H`           |
+| `MOV A,B`   | `0103H` | `42H` | `42H` | `00H` | `0000H` | `00H`           |
+| `MVI H,20H` | `0105H` | `42H` | `42H` | `00H` | `2000H` | `00H`           |
+| `MVI L,00H` | `0107H` | `42H` | `42H` | `00H` | `2000H` | `00H`           |
+| `MOV M,A`   | `0108H` | `42H` | `42H` | `00H` | `2000H` | `42H`           |
+| `MOV C,M`   | `0109H` | `42H` | `42H` | `42H` | `2000H` | `42H`           |

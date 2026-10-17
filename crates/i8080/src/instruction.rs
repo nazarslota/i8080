@@ -5,6 +5,8 @@ pub(crate) enum Instruction {
     Nop,
     /// `MVI dst,value`: loads the byte that follows the opcode into `dst`.
     Mvi { dst: Operand, value: u8 },
+    /// `MOV dst,src`: copies `src` into `dst`.
+    Mov { dst: Operand, src: Operand },
 }
 
 impl Instruction {
@@ -41,6 +43,12 @@ impl Instruction {
             (0b00, ddd, 0b110) => Self::Mvi {
                 dst: Operand::from_code(ddd),
                 value: next_byte(),
+            },
+            // MOV ddd,sss: 01 ddd sss. The slot for MOV M,M, 01 110 110,
+            // belongs to HLT, which isn't supported yet.
+            (0b01, ddd, sss) if (ddd, sss) != (0b110, 0b110) => Self::Mov {
+                dst: Operand::from_code(ddd),
+                src: Operand::from_code(sss),
             },
             _ => unimplemented!("opcode {opcode:#04X} is not supported yet"),
         }

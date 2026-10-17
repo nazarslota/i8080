@@ -49,6 +49,7 @@ impl Cpu {
         match instruction {
             Instruction::Nop => 4,
             Instruction::Mvi { dst, value } => self.mvi(memory, dst, value),
+            Instruction::Mov { dst, src } => self.mov(memory, dst, src),
         }
     }
 
@@ -56,6 +57,32 @@ impl Cpu {
     fn mvi(&mut self, memory: &mut impl MemoryBus, dst: Operand, value: u8) -> u32 {
         self.write_operand(memory, dst, value);
         if dst == Operand::M { 10 } else { 7 }
+    }
+
+    /// `MOV dst,src`: copies a byte between registers and `M`.
+    fn mov(&mut self, memory: &mut impl MemoryBus, dst: Operand, src: Operand) -> u32 {
+        let value = self.read_operand(memory, src);
+        self.write_operand(memory, dst, value);
+        if dst == Operand::M || src == Operand::M {
+            7
+        } else {
+            5
+        }
+    }
+
+    /// Reads an 8-bit operand. `M` reads memory at the address in `HL`.
+    fn read_operand(&self, memory: &mut impl MemoryBus, operand: Operand) -> u8 {
+        let r = &self.registers;
+        match operand {
+            Operand::B => r.b,
+            Operand::C => r.c,
+            Operand::D => r.d,
+            Operand::E => r.e,
+            Operand::H => r.h,
+            Operand::L => r.l,
+            Operand::M => memory.read(r.hl()),
+            Operand::A => r.a,
+        }
     }
 
     /// Writes an 8-bit operand. `M` writes to memory at the address in `HL`.
@@ -175,6 +202,126 @@ mod tests {
             }
         );
         assert_eq!(cycles, 10);
+    }
+
+    #[test]
+    fn mov_copies_register_to_register() {
+        // Opcodes from the Intel manual, each with the registers it should
+        // leave behind: the destination holds the source's value and PC
+        // moved 1 byte.
+        let before = distinct_registers();
+        let after = Registers {
+            pc: 0x0101,
+            ..before
+        };
+        let cases = [
+            (
+                0x41,
+                Registers {
+                    b: before.c,
+                    ..after
+                },
+            ), // MOV B,C
+            (
+                0x48,
+                Registers {
+                    c: before.b,
+                    ..after
+                },
+            ), // MOV C,B
+            (
+                0x5F,
+                Registers {
+                    e: before.a,
+                    ..after
+                },
+            ), // MOV E,A
+            (
+                0x62,
+                Registers {
+                    h: before.d,
+                    ..after
+                },
+            ), // MOV H,D
+            (
+                0x6B,
+                Registers {
+                    l: before.e,
+                    ..after
+                },
+            ), // MOV L,E
+            (
+                0x78,
+                Registers {
+                    a: before.b,
+                    ..after
+                },
+            ), // MOV A,B
+            (0x7F, after), // MOV A,A
+        ];
+
+        for (opcode, expected) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0x0100] = opcode;
+            let mut cpu = Cpu::new();
+            cpu.registers = before;
+
+            let cycles = cpu.step(&mut memory);
+
+            assert_eq!(cpu.registers, expected, "opcode {opcode:#04X}");
+            assert_eq!(cycles, 5, "opcode {opcode:#04X}");
+        }
+    }
+
+    #[test]
+    fn mov_from_m_reads_memory_at_hl() {
+        let mut memory = [0u8; 0x10000];
+        memory[0x0100] = 0x7E; // MOV A,M
+        memory[0x2000] = 0x99;
+        let mut cpu = Cpu::new();
+        cpu.registers = Registers {
+            h: 0x20,
+            l: 0x00,
+            ..distinct_registers()
+        };
+        let before = cpu.registers;
+
+        let cycles = cpu.step(&mut memory);
+
+        assert_eq!(
+            cpu.registers,
+            Registers {
+                a: 0x99,
+                pc: 0x0101,
+                ..before
+            }
+        );
+        assert_eq!(cycles, 7);
+    }
+
+    #[test]
+    fn mov_to_m_writes_memory_at_hl() {
+        let mut memory = [0u8; 0x10000];
+        memory[0x0100] = 0x77; // MOV M,A
+        let mut cpu = Cpu::new();
+        cpu.registers = Registers {
+            h: 0x20,
+            l: 0x00,
+            ..distinct_registers()
+        };
+        let before = cpu.registers;
+
+        let cycles = cpu.step(&mut memory);
+
+        assert_eq!(memory[0x2000], before.a);
+        assert_eq!(
+            cpu.registers,
+            Registers {
+                pc: 0x0101,
+                ..before
+            }
+        );
+        assert_eq!(cycles, 7);
     }
 
     #[test]
