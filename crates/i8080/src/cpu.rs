@@ -1,7 +1,7 @@
 use crate::alu;
 use crate::condition::Condition;
 use crate::cycles::{self, HALTED_STEP_CYCLES};
-use crate::instruction::{Instruction, Operand8, Operand16};
+use crate::instruction::{Instruction, Operand8, Operand16, StackOperand};
 use crate::{Flags, MemoryBus, Registers};
 
 /// The Intel 8080 processor.
@@ -93,17 +93,21 @@ impl Cpu {
             Instruction::Xra { src } => self.xra(memory, src),
             Instruction::Ora { src } => self.ora(memory, src),
             Instruction::Cmp { src } => self.cmp(memory, src),
+            Instruction::Pop { dst } => self.pop(memory, dst),
             Instruction::Jcc { condition, address } => self.jcc(condition, address),
             Instruction::Jmp { address } => self.jmp(address),
+            Instruction::Push { src } => self.push(memory, src),
             Instruction::Adi { value } => self.adi(value),
             Instruction::Aci { value } => self.aci(value),
             Instruction::Sui { value } => self.sui(value),
             Instruction::Sbi { value } => self.sbi(value),
+            Instruction::Xthl => self.xthl(memory),
             Instruction::Ani { value } => self.ani(value),
             Instruction::Pchl => self.pchl(),
             Instruction::Xchg => self.xchg(),
             Instruction::Xri { value } => self.xri(value),
             Instruction::Ori { value } => self.ori(value),
+            Instruction::Sphl => self.sphl(),
             Instruction::Cpi { value } => self.cpi(value),
         }
     }
@@ -395,6 +399,13 @@ impl Cpu {
         }
     }
 
+    /// `POP dst`: loads a register pair or `PSW` from the top of the stack.
+    fn pop(&mut self, memory: &mut impl MemoryBus, dst: StackOperand) -> u32 {
+        let value = self.pop_word(memory);
+        self.write_stack_operand(dst, value);
+        cycles::POP
+    }
+
     /// `Jcc address`: jumps to `address` if `condition` holds. Otherwise
     /// the CPU goes on to the next instruction.
     fn jcc(&mut self, condition: Condition, address: u16) -> u32 {
@@ -408,6 +419,13 @@ impl Cpu {
     fn jmp(&mut self, address: u16) -> u32 {
         self.registers.pc = address;
         cycles::JMP
+    }
+
+    /// `PUSH src`: stores a register pair or `PSW` on top of the stack.
+    fn push(&mut self, memory: &mut impl MemoryBus, src: StackOperand) -> u32 {
+        let value = self.read_stack_operand(src);
+        self.push_word(memory, value);
+        cycles::PUSH
     }
 
     /// `ADI value`: adds a constant to `A`.
@@ -434,6 +452,18 @@ impl Cpu {
         let carry = self.registers.flags.carry;
         (self.registers.a, self.registers.flags) = alu::subtract(self.registers.a, value, carry);
         cycles::SBI
+    }
+
+    /// `XTHL`: swaps `L` with the byte at `SP` and `H` with the byte at
+    /// `SP + 1`. `SP` stays as it was.
+    fn xthl(&mut self, memory: &mut impl MemoryBus) -> u32 {
+        let sp = self.registers.sp;
+        let top = u16::from_le_bytes([memory.read(sp), memory.read(sp.wrapping_add(1))]);
+        let [high, low] = self.registers.hl().to_be_bytes();
+        memory.write(sp, low);
+        memory.write(sp.wrapping_add(1), high);
+        self.registers.set_hl(top);
+        cycles::XTHL
     }
 
     /// `ANI value`: `A = A AND value`.
@@ -466,6 +496,12 @@ impl Cpu {
     fn ori(&mut self, value: u8) -> u32 {
         (self.registers.a, self.registers.flags) = alu::or(self.registers.a, value);
         cycles::ORI
+    }
+
+    /// `SPHL`: copies `HL` into `SP`.
+    fn sphl(&mut self) -> u32 {
+        self.registers.sp = self.registers.hl();
+        cycles::SPHL
     }
 
     /// `CPI value`: compares `A` with a constant: sets the flags from
@@ -525,6 +561,54 @@ impl Cpu {
             Operand16::HL => r.set_hl(value),
             Operand16::SP => r.sp = value,
         }
+    }
+
+    /// Reads a `PUSH` operand. `PSW` puts `A` in the high byte and the
+    /// flags in the low byte.
+    fn read_stack_operand(&self, operand: StackOperand) -> u16 {
+        let r = &self.registers;
+        match operand {
+            StackOperand::BC => r.bc(),
+            StackOperand::DE => r.de(),
+            StackOperand::HL => r.hl(),
+            StackOperand::PSW => u16::from_be_bytes([r.a, r.flags.to_byte()]),
+        }
+    }
+
+    /// Writes a `POP` operand. `PSW` takes `A` from the high byte and the
+    /// flags from the low byte.
+    fn write_stack_operand(&mut self, operand: StackOperand, value: u16) {
+        let r = &mut self.registers;
+        match operand {
+            StackOperand::BC => r.set_bc(value),
+            StackOperand::DE => r.set_de(value),
+            StackOperand::HL => r.set_hl(value),
+            StackOperand::PSW => {
+                let [a, flags] = value.to_be_bytes();
+                r.a = a;
+                r.flags = Flags::from_byte(flags);
+            }
+        }
+    }
+
+    /// Stores a 16-bit value on the stack. The stack grows down: `SP`
+    /// drops by 2, the high byte goes to `SP + 1` and the low byte to `SP`.
+    fn push_word(&mut self, memory: &mut impl MemoryBus, value: u16) {
+        let [high, low] = value.to_be_bytes();
+        self.registers.sp = self.registers.sp.wrapping_sub(1);
+        memory.write(self.registers.sp, high);
+        self.registers.sp = self.registers.sp.wrapping_sub(1);
+        memory.write(self.registers.sp, low);
+    }
+
+    /// Loads a 16-bit value from the stack: the low byte from `SP`, the high
+    /// byte from `SP + 1`. `SP` grows by 2.
+    fn pop_word(&mut self, memory: &mut impl MemoryBus) -> u16 {
+        let low = memory.read(self.registers.sp);
+        self.registers.sp = self.registers.sp.wrapping_add(1);
+        let high = memory.read(self.registers.sp);
+        self.registers.sp = self.registers.sp.wrapping_add(1);
+        u16::from_le_bytes([low, high])
     }
 
     /// Reads the byte at PC and moves PC to the next one.
@@ -2157,6 +2241,69 @@ mod tests {
     }
 
     #[test]
+    fn pop_loads_pair_from_stack() {
+        // Each case: an opcode and the registers it should leave behind.
+        // The stack at F000H holds 3DH 93H, the bytes from the Intel
+        // manual's POP H example. SP moves up by 2 to F002H.
+        let before = distinct_registers();
+        let after = Registers {
+            sp: 0xF002,
+            pc: 0x0101,
+            ..before
+        };
+        let cases = [
+            (
+                0xC1,
+                Registers {
+                    b: 0x93,
+                    c: 0x3D,
+                    ..after
+                },
+            ), // POP B
+            (
+                0xD1,
+                Registers {
+                    d: 0x93,
+                    e: 0x3D,
+                    ..after
+                },
+            ), // POP D
+            (
+                0xE1,
+                Registers {
+                    h: 0x93,
+                    l: 0x3D,
+                    ..after
+                },
+            ), // POP H
+            // POP PSW: 3DH = 0011 1101 sets AC, P and CY.
+            (
+                0xF1,
+                Registers {
+                    a: 0x93,
+                    flags: Flags {
+                        aux_carry: true,
+                        parity: true,
+                        carry: true,
+                        ..Flags::default()
+                    },
+                    ..after
+                },
+            ),
+        ];
+
+        for (opcode, expected) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0xF000..0xF002].copy_from_slice(&[0x3D, 0x93]);
+
+            let (cpu, cycles) = run_with_memory(&mut memory, &[opcode], before);
+
+            assert_eq!(cpu.registers, expected, "opcode {opcode:#04X}");
+            assert_eq!(cycles, cycles::POP, "opcode {opcode:#04X}");
+        }
+    }
+
+    #[test]
     fn jcc_jumps_only_when_condition_holds() {
         // Each case: an opcode followed by 2000H, the flags before the step
         // and whether the CPU should jump. Without the jump, PC moves past
@@ -2196,6 +2343,38 @@ mod tests {
     }
 
     #[test]
+    fn push_stores_pair_below_sp() {
+        // Each case: an opcode and the two bytes it should store, high byte
+        // at F000H - 1 and low byte at F000H - 2. All flags are 1, so PUSH
+        // PSW stores D7H for them.
+        let before = Registers {
+            flags: ALL_FLAGS,
+            ..distinct_registers()
+        };
+        let cases = [
+            (0xC5, [0x0C, 0x0B]), // PUSH B: C, then B
+            (0xD5, [0x0E, 0x0D]), // PUSH D: E, then D
+            (0xE5, [0x02, 0x01]), // PUSH H: L, then H
+            (0xF5, [0xD7, 0x0A]), // PUSH PSW: flags, then A
+        ];
+
+        for (opcode, bytes) in cases {
+            let mut memory = [0u8; 0x10000];
+
+            let (cpu, cycles) = run_with_memory(&mut memory, &[opcode], before);
+
+            assert_eq!(memory[0xEFFE..0xF000], bytes, "opcode {opcode:#04X}");
+            let after = Registers {
+                sp: 0xEFFE,
+                pc: 0x0101,
+                ..before
+            };
+            assert_eq!(cpu.registers, after, "opcode {opcode:#04X}");
+            assert_eq!(cycles, cycles::PUSH, "opcode {opcode:#04X}");
+        }
+    }
+
+    #[test]
     fn immediate_alu_uses_next_byte() {
         // Each case: an opcode with the constant 03H after it, the value it
         // should leave in A and its cycle count. A starts at 0AH and the
@@ -2214,6 +2393,31 @@ mod tests {
         for (opcode, result, cycles) in cases {
             assert_alu_result(&[opcode, 0x03], true, result, cycles);
         }
+    }
+
+    #[test]
+    fn xthl_swaps_hl_with_top_of_stack() {
+        // The XTHL example from the Intel manual: SP = 10ADH, HL = 0B3CH and
+        // the stack holds F0H 0DH.
+        let mut memory = [0u8; 0x10000];
+        memory[0x10AD..0x10AF].copy_from_slice(&[0xF0, 0x0D]);
+        let mut before = distinct_registers();
+        before.sp = 0x10AD;
+        before.set_hl(0x0B3C);
+
+        let (cpu, cycles) = run_with_memory(&mut memory, &[0xE3], before); // XTHL
+
+        assert_eq!(memory[0x10AD..0x10AF], [0x3C, 0x0B]);
+        assert_eq!(
+            cpu.registers,
+            Registers {
+                h: 0x0D,
+                l: 0xF0,
+                pc: 0x0101,
+                ..before
+            }
+        );
+        assert_eq!(cycles, cycles::XTHL);
     }
 
     #[test]
@@ -2247,6 +2451,20 @@ mod tests {
             }
         );
         assert_eq!(cycles, cycles::XCHG);
+    }
+
+    #[test]
+    fn sphl_copies_hl_to_sp() {
+        // The SPHL example from the Intel manual: HL = 506CH.
+        let mut before = distinct_registers();
+        before.set_hl(0x506C);
+        let after = Registers {
+            sp: 0x506C,
+            pc: 0x0101,
+            ..before
+        };
+
+        assert_registers(&[0xF9], before, after, cycles::SPHL); // SPHL
     }
 
     #[test]
@@ -2296,8 +2514,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "opcode 0xC5 is not supported yet")]
+    #[should_panic(expected = "opcode 0xCD is not supported yet")]
     fn unsupported_opcode_panics() {
-        run(&[0xC5], distinct_registers()); // PUSH B, not implemented yet
+        run(&[0xCD, 0x00, 0x00], distinct_registers()); // CALL 0000H, not implemented yet
     }
 }

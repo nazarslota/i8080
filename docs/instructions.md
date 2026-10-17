@@ -100,10 +100,10 @@ applies when the condition holds.
 
 | Instruction | Bytes | Cycles | Flags              | What it does                                   | Status |
 |-------------|-------|--------|--------------------|------------------------------------------------|--------|
-| `PUSH rp`   | 1     | 11     | none               | Pushes `BC`, `DE`, `HL` or `PSW` (A and flags) | ⬜     |
-| `POP rp`    | 1     | 10     | all, for `POP PSW` | Pops `BC`, `DE`, `HL` or `PSW`                 | ⬜     |
-| `XTHL`      | 1     | 18     | none               | Swaps `HL` with the two bytes on top of stack  | ⬜     |
-| `SPHL`      | 1     | 5      | none               | Copies `HL` into `SP`                          | ⬜     |
+| `PUSH rp`   | 1     | 11     | none               | Pushes `BC`, `DE`, `HL` or `PSW` (A and flags) | ✅     |
+| `POP rp`    | 1     | 10     | all, for `POP PSW` | Pops `BC`, `DE`, `HL` or `PSW`                 | ✅     |
+| `XTHL`      | 1     | 18     | none               | Swaps `HL` with the two bytes on top of stack  | ✅     |
+| `SPHL`      | 1     | 5      | none               | Copies `HL` into `SP`                          | ✅     |
 | `IN n`      | 2     | 10     | none               | Reads port `n` into `A`                        | ⬜     |
 | `OUT n`     | 2     | 10     | none               | Writes `A` to port `n`                         | ⬜     |
 | `EI`        | 1     | 4      | none               | Enables interrupts after the next instruction  | ⬜     |
@@ -1209,3 +1209,127 @@ The example repeats the one from the Intel manual.
 |---------------|---------|---------|
 | `LXI H,413EH` | `0103H` | `413EH` |
 | `PCHL`        | `413EH` | `413EH` |
+
+### PUSH: push onto the stack
+
+`PUSH rp` · opcode `11 rp0 101` · 1 byte · 11 cycles · flags: none
+
+The stack is a region of memory that `SP` points into. It grows down:
+`PUSH` lowers `SP` by 2 and stores a register pair in the two bytes there,
+the high byte at `SP + 1` and the low byte at `SP`. Programs set `SP` once
+with `LXI SP` and then save registers with `PUSH` and restore them with
+`POP`.
+
+| Instruction | Opcode | Stores                     |
+|-------------|--------|----------------------------|
+| `PUSH B`    | `C5H`  | `B`, then `C`              |
+| `PUSH D`    | `D5H`  | `D`, then `E`              |
+| `PUSH H`    | `E5H`  | `H`, then `L`              |
+| `PUSH PSW`  | `F5H`  | `A`, then the flags byte   |
+
+Code `11` means `PSW` here, the program status word: `A` and the flags.
+`PUSH SP` doesn't exist. The flags byte packs the five flags like this:
+
+| Bit  | 7   | 6   | 5   | 4    | 3   | 2   | 1   | 0    |
+|------|-----|-----|-----|------|-----|-----|-----|------|
+| Flag | `S` | `Z` | 0   | `AC` | 0   | `P` | 1   | `CY` |
+
+Bits 5 and 3 are always 0 and bit 1 is always 1. With `Z`, `AC`, `P` and
+`CY` at 1, the flags byte is `57H`.
+
+The example repeats the one from the Intel manual and then pops the value
+into another pair.
+
+```asm
+0100H   LXI  SP,3A2CH ; SP = 3A2CH                    bytes: 31 2C 3A
+0103H   LXI  D,8F9DH  ; DE = 8F9DH                    bytes: 11 9D 8F
+0106H   PUSH D        ; memory[3A2BH] = D = 8FH,      bytes: D5
+                      ; memory[3A2AH] = E = 9DH
+0107H   POP  B        ; BC = 8F9DH                    bytes: C1
+```
+
+| After          | `PC`    | `SP`    | `BC`    | `DE`    | `memory[3A2AH]` | `memory[3A2BH]` |
+|----------------|---------|---------|---------|---------|-----------------|-----------------|
+| `LXI SP,3A2CH` | `0103H` | `3A2CH` | `0000H` | `0000H` | `00H`           | `00H`           |
+| `LXI D,8F9DH`  | `0106H` | `3A2CH` | `0000H` | `8F9DH` | `00H`           | `00H`           |
+| `PUSH D`       | `0107H` | `3A2AH` | `0000H` | `8F9DH` | `9DH`           | `8FH`           |
+| `POP B`        | `0108H` | `3A2CH` | `8F9DH` | `8F9DH` | `9DH`           | `8FH`           |
+
+`POP` leaves the bytes in memory. Only `SP` moves.
+
+### POP: pop from the stack
+
+`POP rp` · opcode `11 rp0 001` · 1 byte · 10 cycles · flags: all, for
+`POP PSW`
+
+`POP` loads a register pair from the two bytes at `SP`, the low byte from
+`SP` and the high byte from `SP + 1`, and raises `SP` by 2. It undoes a
+`PUSH`.
+
+| Instruction | Opcode | Loads                      |
+|-------------|--------|----------------------------|
+| `POP B`     | `C1H`  | `C`, then `B`              |
+| `POP D`     | `D1H`  | `E`, then `D`              |
+| `POP H`     | `E1H`  | `L`, then `H`              |
+| `POP PSW`   | `F1H`  | the flags byte, then `A`   |
+
+`POP PSW` sets all five flags from the flags byte and ignores bits 5, 3
+and 1.
+
+The example repeats the one from the Intel manual. Memory at `1239H` holds
+`3DH` and at `123AH` holds `93H` before the program runs.
+
+```asm
+0100H   LXI  SP,1239H ; SP = 1239H                    bytes: 31 39 12
+0103H   POP  H        ; L = 3DH, H = 93H              bytes: E1
+```
+
+| After          | `PC`    | `SP`    | `HL`    |
+|----------------|---------|---------|---------|
+| `LXI SP,1239H` | `0103H` | `1239H` | `0000H` |
+| `POP H`        | `0104H` | `123BH` | `933DH` |
+
+`POP PSW` on the same bytes would load `A = 93H` and the flags from
+`3DH = 0011 1101`: `AC`, `P` and `CY` at 1, `S` and `Z` at 0.
+
+### XTHL: swap HL with the top of the stack
+
+`XTHL` · opcode `E3H` · 1 byte · 18 cycles · flags: none
+
+`XTHL` swaps `L` with the byte at `SP` and `H` with the byte at `SP + 1`.
+`SP` stays as it was. It takes 18 cycles, the most of any 8080
+instruction, for two memory reads and two writes.
+
+The example repeats the one from the Intel manual. Memory at `10ADH` holds
+`F0H` and at `10AEH` holds `0DH` before the program runs.
+
+```asm
+0100H   LXI  SP,10ADH ; SP = 10ADH                    bytes: 31 AD 10
+0103H   LXI  H,0B3CH  ; HL = 0B3CH                    bytes: 21 3C 0B
+0106H   XTHL          ; HL = 0DF0H, stack = 3CH 0BH   bytes: E3
+```
+
+| After          | `PC`    | `SP`    | `HL`    | `memory[10ADH]` | `memory[10AEH]` |
+|----------------|---------|---------|---------|-----------------|-----------------|
+| `LXI SP,10ADH` | `0103H` | `10ADH` | `0000H` | `F0H`           | `0DH`           |
+| `LXI H,0B3CH`  | `0106H` | `10ADH` | `0B3CH` | `F0H`           | `0DH`           |
+| `XTHL`         | `0107H` | `10ADH` | `0DF0H` | `3CH`           | `0BH`           |
+
+### SPHL: copy HL into SP
+
+`SPHL` · opcode `F9H` · 1 byte · 5 cycles · flags: none
+
+`SPHL` copies `HL` into `SP`. A program can compute where its stack goes,
+for example at the top of the RAM it found, and move `SP` there.
+
+The example repeats the one from the Intel manual.
+
+```asm
+0100H   LXI  H,506CH  ; HL = 506CH                    bytes: 21 6C 50
+0103H   SPHL          ; SP = HL = 506CH               bytes: F9
+```
+
+| After         | `PC`    | `SP`    | `HL`    |
+|---------------|---------|---------|---------|
+| `LXI H,506CH` | `0103H` | `0000H` | `506CH` |
+| `SPHL`        | `0104H` | `506CH` | `506CH` |

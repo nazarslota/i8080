@@ -129,11 +129,17 @@ pub(crate) const CMP: u32 = 4;
 /// `CMP M`: `CMP` plus a memory read.
 pub(crate) const CMP_M: u32 = 7;
 
+/// `POP rp`: opcode fetch plus two reads from the stack.
+pub(crate) const POP: u32 = 10;
+
 /// `Jcc nn`: the same whether the jump happens or not.
 pub(crate) const JCC: u32 = 10;
 
 /// `JMP nn`: opcode fetch plus two reads for the address.
 pub(crate) const JMP: u32 = 10;
+
+/// `PUSH rp`: opcode fetch plus two writes to the stack.
+pub(crate) const PUSH: u32 = 11;
 
 /// `ADI n`: opcode fetch plus one read for the constant.
 pub(crate) const ADI: u32 = 7;
@@ -146,6 +152,9 @@ pub(crate) const SUI: u32 = 7;
 
 /// `SBI n`: opcode fetch plus one read for the constant.
 pub(crate) const SBI: u32 = 7;
+
+/// `XTHL`: two reads from the stack and two writes back.
+pub(crate) const XTHL: u32 = 18;
 
 /// `ANI n`: opcode fetch plus one read for the constant.
 pub(crate) const ANI: u32 = 7;
@@ -161,6 +170,9 @@ pub(crate) const XRI: u32 = 7;
 
 /// `ORI n`: opcode fetch plus one read for the constant.
 pub(crate) const ORI: u32 = 7;
+
+/// `SPHL`.
+pub(crate) const SPHL: u32 = 5;
 
 /// `CPI n`: opcode fetch plus one read for the constant.
 pub(crate) const CPI: u32 = 7;

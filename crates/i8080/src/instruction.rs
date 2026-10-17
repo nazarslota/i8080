@@ -68,10 +68,14 @@ pub(crate) enum Instruction {
     Ora { src: Operand8 },
     /// `CMP src`: sets the flags from `A - src` and leaves `A` as it was.
     Cmp { src: Operand8 },
+    /// `POP dst`: loads `dst` from the top of the stack.
+    Pop { dst: StackOperand },
     /// `Jcc address`: jumps to `address` if `condition` holds.
     Jcc { condition: Condition, address: u16 },
     /// `JMP address`: jumps to `address`.
     Jmp { address: u16 },
+    /// `PUSH src`: stores `src` on top of the stack.
+    Push { src: StackOperand },
     /// `ADI value`: adds a constant to `A`.
     Adi { value: u8 },
     /// `ACI value`: adds a constant and the carry flag to `A`.
@@ -80,6 +84,8 @@ pub(crate) enum Instruction {
     Sui { value: u8 },
     /// `SBI value`: subtracts a constant and the carry flag from `A`.
     Sbi { value: u8 },
+    /// `XTHL`: swaps `HL` with the two bytes on top of the stack.
+    Xthl,
     /// `ANI value`: `A = A AND value`.
     Ani { value: u8 },
     /// `PCHL`: jumps to the address in `HL`.
@@ -90,6 +96,8 @@ pub(crate) enum Instruction {
     Xri { value: u8 },
     /// `ORI value`: `A = A OR value`.
     Ori { value: u8 },
+    /// `SPHL`: copies `HL` into `SP`.
+    Sphl,
     /// `CPI value`: sets the flags from `A - value` and leaves `A` as it
     /// was.
     Cpi { value: u8 },
@@ -172,6 +180,9 @@ impl Instruction {
             0xA8..=0xAF => Self::Xra { src: sss },
             0xB0..=0xB7 => Self::Ora { src: sss },
             0xB8..=0xBF => Self::Cmp { src: sss },
+            0xC1 | 0xD1 | 0xE1 | 0xF1 => Self::Pop {
+                dst: StackOperand::from_code(opcode >> 4),
+            },
             0xC2 | 0xCA | 0xD2 | 0xDA | 0xE2 | 0xEA | 0xF2 | 0xFA => Self::Jcc {
                 condition: ccc,
                 address: next_word(&mut next_byte),
@@ -179,15 +190,20 @@ impl Instruction {
             0xC3 => Self::Jmp {
                 address: next_word(&mut next_byte),
             },
+            0xC5 | 0xD5 | 0xE5 | 0xF5 => Self::Push {
+                src: StackOperand::from_code(opcode >> 4),
+            },
             0xC6 => Self::Adi { value: next_byte() },
             0xCE => Self::Aci { value: next_byte() },
             0xD6 => Self::Sui { value: next_byte() },
             0xDE => Self::Sbi { value: next_byte() },
+            0xE3 => Self::Xthl,
             0xE6 => Self::Ani { value: next_byte() },
             0xE9 => Self::Pchl,
             0xEB => Self::Xchg,
             0xEE => Self::Xri { value: next_byte() },
             0xF6 => Self::Ori { value: next_byte() },
+            0xF9 => Self::Sphl,
             0xFE => Self::Cpi { value: next_byte() },
             _ => unimplemented!("opcode {opcode:#04X} is not supported yet"),
         }
@@ -263,6 +279,36 @@ impl Operand16 {
     }
 }
 
+/// A 16-bit operand of `PUSH` and `POP`, as opcodes encode it in a 2-bit
+/// field.
+///
+/// It matches [`Operand16`] except for code 11: `PUSH` and `POP` take `PSW`,
+/// the accumulator and the flags, where other instructions take `SP`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(
+    clippy::upper_case_acronyms,
+    reason = "variants spell the Intel names, like BC and HL"
+)]
+pub(crate) enum StackOperand {
+    BC = 0,
+    DE = 1,
+    HL = 2,
+    PSW = 3,
+}
+
+impl StackOperand {
+    /// Decodes a 2-bit register pair field. It ignores bits above the
+    /// lowest two.
+    pub(crate) const fn from_code(code: u8) -> Self {
+        match code & 0b11 {
+            0 => Self::BC,
+            1 => Self::DE,
+            2 => Self::HL,
+            _ => Self::PSW,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -291,6 +337,20 @@ mod tests {
 
         for (code, pair) in (0..).zip(manual_order) {
             assert_eq!(Operand16::from_code(code), pair, "code {code:02b}");
+        }
+    }
+
+    #[test]
+    fn stack_operand_codes_match_intel_manual() {
+        let manual_order = [
+            StackOperand::BC,
+            StackOperand::DE,
+            StackOperand::HL,
+            StackOperand::PSW,
+        ];
+
+        for (code, operand) in (0..).zip(manual_order) {
+            assert_eq!(StackOperand::from_code(code), operand, "code {code:02b}");
         }
     }
 
