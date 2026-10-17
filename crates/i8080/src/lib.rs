@@ -17,11 +17,13 @@
 //!
 //! # Status
 //!
-//! Work in progress: the CPU runs `NOP`, `MVI`, `MOV`, `HLT`, `ADD`, `ADC`,
-//! `SUB` and `SBB` and panics on every other opcode.
+//! Work in progress: the CPU runs `NOP`, `MVI`, `MOV`, `HLT` and the eight
+//! arithmetic and logic instructions from `ADD` to `CMP` (opcodes `80H` to
+//! `BFH`). It panics on every other opcode.
 
 #![no_std]
 
+mod alu;
 mod bus;
 mod cpu;
 mod cycles;

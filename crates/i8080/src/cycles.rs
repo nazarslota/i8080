@@ -42,6 +42,26 @@ pub(crate) const SBB: u32 = 4;
 /// `SBB M`: `SBB` plus a memory read.
 pub(crate) const SBB_M: u32 = 7;
 
+/// `ANA r`.
+pub(crate) const ANA: u32 = 4;
+/// `ANA M`: `ANA` plus a memory read.
+pub(crate) const ANA_M: u32 = 7;
+
+/// `XRA r`.
+pub(crate) const XRA: u32 = 4;
+/// `XRA M`: `XRA` plus a memory read.
+pub(crate) const XRA_M: u32 = 7;
+
+/// `ORA r`.
+pub(crate) const ORA: u32 = 4;
+/// `ORA M`: `ORA` plus a memory read.
+pub(crate) const ORA_M: u32 = 7;
+
+/// `CMP r`.
+pub(crate) const CMP: u32 = 4;
+/// `CMP M`: `CMP` plus a memory read.
+pub(crate) const CMP_M: u32 = 7;
+
 /// `HLT`.
 pub(crate) const HLT: u32 = 7;
 

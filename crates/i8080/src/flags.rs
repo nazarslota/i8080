@@ -18,3 +18,16 @@ pub struct Flags {
     /// subtraction.
     pub carry: bool,
 }
+
+impl Flags {
+    /// Takes `S`, `Z` and `P` from `result` and leaves `AC` and `CY` at 0.
+    pub(crate) const fn from_result(result: u8) -> Self {
+        Self {
+            sign: result & 0x80 != 0,
+            zero: result == 0,
+            aux_carry: false,
+            parity: result.count_ones() % 2 == 0,
+            carry: false,
+        }
+    }
+}

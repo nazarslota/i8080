@@ -67,13 +67,13 @@ applies when the condition holds.
 
 | Instruction | Bytes | Cycles | Flags       | What it does                       | Status |
 |-------------|-------|--------|-------------|------------------------------------|--------|
-| `ANA r`     | 1     | 4 / 7  | S Z AC P CY | `A = A AND r`                      | ⬜     |
+| `ANA r`     | 1     | 4 / 7  | S Z AC P CY | `A = A AND r`                      | ✅     |
 | `ANI n`     | 2     | 7      | S Z AC P CY | `A = A AND n`                      | ⬜     |
-| `XRA r`     | 1     | 4 / 7  | S Z AC P CY | `A = A XOR r`                      | ⬜     |
+| `XRA r`     | 1     | 4 / 7  | S Z AC P CY | `A = A XOR r`                      | ✅     |
 | `XRI n`     | 2     | 7      | S Z AC P CY | `A = A XOR n`                      | ⬜     |
-| `ORA r`     | 1     | 4 / 7  | S Z AC P CY | `A = A OR r`                       | ⬜     |
+| `ORA r`     | 1     | 4 / 7  | S Z AC P CY | `A = A OR r`                       | ✅     |
 | `ORI n`     | 2     | 7      | S Z AC P CY | `A = A OR n`                       | ⬜     |
-| `CMP r`     | 1     | 4 / 7  | S Z AC P CY | Sets flags from `A - r`, keeps `A` | ⬜     |
+| `CMP r`     | 1     | 4 / 7  | S Z AC P CY | Sets flags from `A - r`, keeps `A` | ✅     |
 | `CPI n`     | 2     | 7      | S Z AC P CY | Sets flags from `A - n`, keeps `A` | ⬜     |
 | `RLC`       | 1     | 4      | CY          | Rotates `A` left, bit 7 into `CY`  | ⬜     |
 | `RRC`       | 1     | 4      | CY          | Rotates `A` right, bit 0 into `CY` | ⬜     |
@@ -259,13 +259,13 @@ flags: S Z AC P CY
 
 `ADD` sets all five flags from the result:
 
-| Flag | Set to 1 when                                          |
-|------|--------------------------------------------------------|
-| `S`  | bit 7 of the result is 1                               |
-| `Z`  | the result is `00H`                                    |
-| `AC` | the low 4 bits of the operands sum to more than `0FH`  |
-| `P`  | the result has an even number of 1 bits                |
-| `CY` | the full sum doesn't fit in 8 bits                     |
+| Flag | Set to 1 when                                         |
+|------|-------------------------------------------------------|
+| `S`  | bit 7 of the result is 1                              |
+| `Z`  | the result is `00H`                                   |
+| `AC` | the low 4 bits of the operands sum to more than `0FH` |
+| `P`  | the result has an even number of 1 bits               |
+| `CY` | the full sum doesn't fit in 8 bits                    |
 
 The first `ADD` below repeats the example from the Intel manual. `ADD A`
 doubles `A`.
@@ -413,3 +413,147 @@ before it sets the carry.
 
 In `SBB L`, the CPU computes `04H + FDH + 0 = 101H`. The carry into the sum
 is `NOT CY`, so a set carry flag takes 1 away.
+
+### ANA: AND with the accumulator
+
+`ANA src` · opcode `10 100 sss` · 1 byte · 4 cycles (7 with `M`) ·
+flags: S Z AC P CY
+
+`ANA` keeps the bits of `A` where `src` has a 1 and clears the rest. Programs
+use it to pick bits out of a byte: `ANI 0FH` and `ANA` with `0FH` in a
+register keep the low 4 bits.
+
+| Instruction | Opcode | Instruction | Opcode |
+|-------------|--------|-------------|--------|
+| `ANA B`     | `A0H`  | `ANA H`     | `A4H`  |
+| `ANA C`     | `A1H`  | `ANA L`     | `A5H`  |
+| `ANA D`     | `A2H`  | `ANA M`     | `A6H`  |
+| `ANA E`     | `A3H`  | `ANA A`     | `A7H`  |
+
+`ANA` sets `CY` to 0 and takes `S`, `Z` and `P` from the result. The 8080
+sets `AC` to bit 3 of `A OR src`. The Intel 8085 sets `AC` to 1 instead, and
+CPU diagnostics such as 8080EXM check the 8080 behavior.
+
+The example repeats the one from the Intel manual.
+
+```asm
+0100H   MVI  A,0FCH  ; A = FCH = 1111 1100           bytes: 3E FC
+0102H   MVI  C,0FH   ; C = 0FH = 0000 1111           bytes: 0E 0F
+0104H   ANA  C       ; A = FCH AND 0FH = 0CH         bytes: A1
+```
+
+| After        | `PC`    | `A`   | `C`   | `S` | `Z` | `AC` | `P` | `CY` |
+|--------------|---------|-------|-------|-----|-----|------|-----|------|
+| `MVI A,0FCH` | `0102H` | `FCH` | `00H` | 0   | 0   | 0    | 0   | 0    |
+| `MVI C,0FH`  | `0104H` | `FCH` | `0FH` | 0   | 0   | 0    | 0   | 0    |
+| `ANA C`      | `0105H` | `0CH` | `0FH` | 0   | 0   | 1    | 1   | 0    |
+
+### XRA: exclusive OR with the accumulator
+
+`XRA src` · opcode `10 101 sss` · 1 byte · 4 cycles (7 with `M`) ·
+flags: S Z AC P CY
+
+`XRA` flips the bits of `A` where `src` has a 1. `XRA` with `FFH` inverts
+every bit, and `XRA A` sets `A` to 0. Programs used `XRA A` to clear `A` and
+`CY` in one byte.
+
+| Instruction | Opcode | Instruction | Opcode |
+|-------------|--------|-------------|--------|
+| `XRA B`     | `A8H`  | `XRA H`     | `ACH`  |
+| `XRA C`     | `A9H`  | `XRA L`     | `ADH`  |
+| `XRA D`     | `AAH`  | `XRA M`     | `AEH`  |
+| `XRA E`     | `ABH`  | `XRA A`     | `AFH`  |
+
+`XRA` sets `AC` and `CY` to 0 and takes `S`, `Z` and `P` from the result.
+
+```asm
+0100H   MVI  A,5CH   ; A = 5CH = 0101 1100           bytes: 3E 5C
+0102H   MVI  B,0FFH  ; B = FFH                       bytes: 06 FF
+0104H   XRA  B       ; A = 5CH XOR FFH = A3H         bytes: A8
+0105H   XRA  A       ; A = A3H XOR A3H = 00H         bytes: AF
+```
+
+| After        | `PC`    | `A`   | `B`   | `S` | `Z` | `AC` | `P` | `CY` |
+|--------------|---------|-------|-------|-----|-----|------|-----|------|
+| `MVI A,5CH`  | `0102H` | `5CH` | `00H` | 0   | 0   | 0    | 0   | 0    |
+| `MVI B,0FFH` | `0104H` | `5CH` | `FFH` | 0   | 0   | 0    | 0   | 0    |
+| `XRA B`      | `0105H` | `A3H` | `FFH` | 1   | 0   | 0    | 1   | 0    |
+| `XRA A`      | `0106H` | `00H` | `FFH` | 0   | 1   | 0    | 1   | 0    |
+
+### ORA: OR with the accumulator
+
+`ORA src` · opcode `10 110 sss` · 1 byte · 4 cycles (7 with `M`) ·
+flags: S Z AC P CY
+
+`ORA` sets the bits of `A` where `src` has a 1 and keeps the rest. `ORA A`
+leaves `A` as it is and sets the flags from it, so programs use it to test
+`A` for 0.
+
+| Instruction | Opcode | Instruction | Opcode |
+|-------------|--------|-------------|--------|
+| `ORA B`     | `B0H`  | `ORA H`     | `B4H`  |
+| `ORA C`     | `B1H`  | `ORA L`     | `B5H`  |
+| `ORA D`     | `B2H`  | `ORA M`     | `B6H`  |
+| `ORA E`     | `B3H`  | `ORA A`     | `B7H`  |
+
+`ORA` sets `AC` and `CY` to 0 and takes `S`, `Z` and `P` from the result.
+
+The first `ORA` repeats the example from the Intel manual.
+
+```asm
+0100H   MVI  A,33H   ; A = 33H = 0011 0011           bytes: 3E 33
+0102H   MVI  C,0FH   ; C = 0FH = 0000 1111           bytes: 0E 0F
+0104H   ORA  C       ; A = 33H OR 0FH = 3FH          bytes: B1
+0105H   MVI  A,00H   ; A = 00H                       bytes: 3E 00
+0107H   ORA  A       ; A stays 00H, Z = 1            bytes: B7
+```
+
+| After       | `PC`    | `A`   | `C`   | `S` | `Z` | `AC` | `P` | `CY` |
+|-------------|---------|-------|-------|-----|-----|------|-----|------|
+| `MVI A,33H` | `0102H` | `33H` | `00H` | 0   | 0   | 0    | 0   | 0    |
+| `MVI C,0FH` | `0104H` | `33H` | `0FH` | 0   | 0   | 0    | 0   | 0    |
+| `ORA C`     | `0105H` | `3FH` | `0FH` | 0   | 0   | 0    | 1   | 0    |
+| `MVI A,00H` | `0107H` | `00H` | `0FH` | 0   | 0   | 0    | 1   | 0    |
+| `ORA A`     | `0108H` | `00H` | `0FH` | 0   | 1   | 0    | 1   | 0    |
+
+### CMP: compare with the accumulator
+
+`CMP src` · opcode `10 111 sss` · 1 byte · 4 cycles (7 with `M`) ·
+flags: S Z AC P CY
+
+`CMP` subtracts `src` from `A` the way `SUB` does, sets the flags and throws
+the difference away. `A` keeps its value. A conditional jump after `CMP`
+reads the answer:
+
+| After `CMP src` | Means                     |
+|-----------------|---------------------------|
+| `Z = 1`         | `A` equals `src`          |
+| `CY = 1`        | `A` is less than `src`    |
+| `Z = 0, CY = 0` | `A` is greater than `src` |
+
+`CMP` compares unsigned bytes: `E5H` counts as larger than `05H`.
+
+| Instruction | Opcode | Instruction | Opcode |
+|-------------|--------|-------------|--------|
+| `CMP B`     | `B8H`  | `CMP H`     | `BCH`  |
+| `CMP C`     | `B9H`  | `CMP L`     | `BDH`  |
+| `CMP D`     | `BAH`  | `CMP M`     | `BEH`  |
+| `CMP E`     | `BBH`  | `CMP A`     | `BFH`  |
+
+Both `CMP E` below repeat the examples from the Intel manual.
+
+```asm
+0100H   MVI  A,0AH   ; A = 0AH                       bytes: 3E 0A
+0102H   MVI  E,05H   ; E = 05H                       bytes: 1E 05
+0104H   CMP  E       ; 0AH - 05H: A is larger        bytes: BB
+0105H   MVI  A,02H   ; A = 02H                       bytes: 3E 02
+0107H   CMP  E       ; 02H - 05H borrows: A is less  bytes: BB
+```
+
+| After       | `PC`    | `A`   | `E`   | `S` | `Z` | `AC` | `P` | `CY` |
+|-------------|---------|-------|-------|-----|-----|------|-----|------|
+| `MVI A,0AH` | `0102H` | `0AH` | `00H` | 0   | 0   | 0    | 0   | 0    |
+| `MVI E,05H` | `0104H` | `0AH` | `05H` | 0   | 0   | 0    | 0   | 0    |
+| `CMP E`     | `0105H` | `0AH` | `05H` | 0   | 0   | 1    | 1   | 0    |
+| `MVI A,02H` | `0107H` | `02H` | `05H` | 0   | 0   | 1    | 1   | 0    |
+| `CMP E`     | `0108H` | `02H` | `05H` | 1   | 0   | 0    | 0   | 1    |

@@ -17,6 +17,14 @@ pub(crate) enum Instruction {
     Sub { src: Operand },
     /// `SBB src`: subtracts `src` and the carry flag from `A`.
     Sbb { src: Operand },
+    /// `ANA src`: `A = A AND src`.
+    Ana { src: Operand },
+    /// `XRA src`: `A = A XOR src`.
+    Xra { src: Operand },
+    /// `ORA src`: `A = A OR src`.
+    Ora { src: Operand },
+    /// `CMP src`: sets the flags from `A - src` and leaves `A` as it was.
+    Cmp { src: Operand },
 }
 
 impl Instruction {
@@ -76,6 +84,22 @@ impl Instruction {
             },
             // SBB sss: 10 011 sss
             (0b10, 0b011, sss) => Self::Sbb {
+                src: Operand::from_code(sss),
+            },
+            // ANA sss: 10 100 sss
+            (0b10, 0b100, sss) => Self::Ana {
+                src: Operand::from_code(sss),
+            },
+            // XRA sss: 10 101 sss
+            (0b10, 0b101, sss) => Self::Xra {
+                src: Operand::from_code(sss),
+            },
+            // ORA sss: 10 110 sss
+            (0b10, 0b110, sss) => Self::Ora {
+                src: Operand::from_code(sss),
+            },
+            // CMP sss: 10 111 sss
+            (0b10, 0b111, sss) => Self::Cmp {
                 src: Operand::from_code(sss),
             },
             _ => unimplemented!("opcode {opcode:#04X} is not supported yet"),

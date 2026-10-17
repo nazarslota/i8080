@@ -1,6 +1,7 @@
+use crate::alu;
 use crate::cycles::{self, HALTED_STEP_CYCLES};
 use crate::instruction::{Instruction, Operand};
-use crate::{Flags, MemoryBus, Registers};
+use crate::{MemoryBus, Registers};
 
 /// The Intel 8080 processor.
 ///
@@ -67,6 +68,10 @@ impl Cpu {
             Instruction::Adc { src } => self.adc(memory, src),
             Instruction::Sub { src } => self.sub(memory, src),
             Instruction::Sbb { src } => self.sbb(memory, src),
+            Instruction::Ana { src } => self.ana(memory, src),
+            Instruction::Xra { src } => self.xra(memory, src),
+            Instruction::Ora { src } => self.ora(memory, src),
+            Instruction::Cmp { src } => self.cmp(memory, src),
         }
     }
 
@@ -99,8 +104,9 @@ impl Cpu {
 
     /// `ADD src`: adds a register or `M` to `A`.
     fn add(&mut self, memory: &mut impl MemoryBus, src: Operand) -> u32 {
+        let a = self.registers.a;
         let value = self.read_operand(memory, src);
-        self.add_to_a(value, false);
+        (self.registers.a, self.registers.flags) = alu::add(a, value, false);
         if src == Operand::M {
             cycles::ADD_M
         } else {
@@ -110,8 +116,9 @@ impl Cpu {
 
     /// `ADC src`: adds a register or `M` and the carry flag to `A`.
     fn adc(&mut self, memory: &mut impl MemoryBus, src: Operand) -> u32 {
+        let a = self.registers.a;
         let value = self.read_operand(memory, src);
-        self.add_to_a(value, self.registers.flags.carry);
+        (self.registers.a, self.registers.flags) = alu::add(a, value, self.registers.flags.carry);
         if src == Operand::M {
             cycles::ADC_M
         } else {
@@ -121,8 +128,9 @@ impl Cpu {
 
     /// `SUB src`: subtracts a register or `M` from `A`.
     fn sub(&mut self, memory: &mut impl MemoryBus, src: Operand) -> u32 {
+        let a = self.registers.a;
         let value = self.read_operand(memory, src);
-        self.subtract_from_a(value, false);
+        (self.registers.a, self.registers.flags) = alu::subtract(a, value, false);
         if src == Operand::M {
             cycles::SUB_M
         } else {
@@ -132,8 +140,10 @@ impl Cpu {
 
     /// `SBB src`: subtracts a register or `M` and the carry flag from `A`.
     fn sbb(&mut self, memory: &mut impl MemoryBus, src: Operand) -> u32 {
+        let a = self.registers.a;
         let value = self.read_operand(memory, src);
-        self.subtract_from_a(value, self.registers.flags.carry);
+        (self.registers.a, self.registers.flags) =
+            alu::subtract(a, value, self.registers.flags.carry);
         if src == Operand::M {
             cycles::SBB_M
         } else {
@@ -141,32 +151,53 @@ impl Cpu {
         }
     }
 
-    /// Adds `value` and `carry_in` to `A` and sets every flag from the sum.
-    fn add_to_a(&mut self, value: u8, carry_in: bool) {
+    /// `ANA src`: `A = A AND src`, with a register or `M` as `src`.
+    fn ana(&mut self, memory: &mut impl MemoryBus, src: Operand) -> u32 {
         let a = self.registers.a;
-        let carry_in = u8::from(carry_in);
-        // A u16 holds the full sum, so bit 8 is the carry out of bit 7.
-        let sum = u16::from(a) + u16::from(value) + u16::from(carry_in);
-        let [carry_out, result] = sum.to_be_bytes();
-
-        self.registers.a = result;
-        self.registers.flags = Flags {
-            sign: result & 0x80 != 0,
-            zero: result == 0,
-            aux_carry: (a & 0x0F) + (value & 0x0F) + carry_in > 0x0F,
-            parity: result.count_ones() % 2 == 0,
-            carry: carry_out != 0,
-        };
+        let value = self.read_operand(memory, src);
+        (self.registers.a, self.registers.flags) = alu::and(a, value);
+        if src == Operand::M {
+            cycles::ANA_M
+        } else {
+            cycles::ANA
+        }
     }
 
-    /// Subtracts `value` and `borrow_in` from `A` and sets every flag.
-    ///
-    /// The 8080 subtracts with its adder: `A - value` equals
-    /// `A + !value + 1`. `AC` comes out of that addition as it is, and `CY`
-    /// comes out inverted, so `CY = 1` means the subtraction borrowed.
-    fn subtract_from_a(&mut self, value: u8, borrow_in: bool) {
-        self.add_to_a(!value, !borrow_in);
-        self.registers.flags.carry = !self.registers.flags.carry;
+    /// `XRA src`: `A = A XOR src`, with a register or `M` as `src`.
+    fn xra(&mut self, memory: &mut impl MemoryBus, src: Operand) -> u32 {
+        let a = self.registers.a;
+        let value = self.read_operand(memory, src);
+        (self.registers.a, self.registers.flags) = alu::xor(a, value);
+        if src == Operand::M {
+            cycles::XRA_M
+        } else {
+            cycles::XRA
+        }
+    }
+
+    /// `ORA src`: `A = A OR src`, with a register or `M` as `src`.
+    fn ora(&mut self, memory: &mut impl MemoryBus, src: Operand) -> u32 {
+        let a = self.registers.a;
+        let value = self.read_operand(memory, src);
+        (self.registers.a, self.registers.flags) = alu::or(a, value);
+        if src == Operand::M {
+            cycles::ORA_M
+        } else {
+            cycles::ORA
+        }
+    }
+
+    /// `CMP src`: compares `A` with a register or `M`: sets the flags
+    /// from `A - src` and leaves `A` as it was.
+    fn cmp(&mut self, memory: &mut impl MemoryBus, src: Operand) -> u32 {
+        let a = self.registers.a;
+        let value = self.read_operand(memory, src);
+        (_, self.registers.flags) = alu::subtract(a, value, false);
+        if src == Operand::M {
+            cycles::CMP_M
+        } else {
+            cycles::CMP
+        }
     }
 
     /// Reads an 8-bit operand. `M` reads memory at the address in `HL`.
@@ -210,6 +241,7 @@ impl Cpu {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Flags;
 
     /// Registers holding distinct values, so a test notices when an
     /// instruction writes to the wrong register. PC starts at 0100H.
@@ -874,14 +906,18 @@ mod tests {
     }
 
     #[test]
-    fn arithmetic_with_m_reads_memory_at_hl() {
-        // Each case: an opcode with M as the source, the result it should
+    fn alu_with_m_reads_memory_at_hl() {
+        // Each case: an opcode with M as the source, the value it should
         // leave in A and its cycle count. A starts at 10H, memory at HL
         // holds 05H and the carry flag is 1.
         let cases = [
             (0x8E, 0x16, cycles::ADC_M), // ADC M: 10H + 05H + 1
             (0x96, 0x0B, cycles::SUB_M), // SUB M: 10H - 05H
             (0x9E, 0x0A, cycles::SBB_M), // SBB M: 10H - 05H - 1
+            (0xA6, 0x00, cycles::ANA_M), // ANA M: 10H AND 05H
+            (0xAE, 0x15, cycles::XRA_M), // XRA M: 10H XOR 05H
+            (0xB6, 0x15, cycles::ORA_M), // ORA M: 10H OR 05H
+            (0xBE, 0x10, cycles::CMP_M), // CMP M: A stays 10H
         ];
 
         for (opcode, result, expected_cycles) in cases {
@@ -905,10 +941,370 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "opcode 0xA0 is not supported yet")]
+    fn ana_combines_register_with_a() {
+        // Opcodes from the Intel manual, each with the value it should leave
+        // in A. A starts at 0AH.
+        let cases = [
+            (0xA0, 0x0A & 0x0B), // ANA B
+            (0xA1, 0x0A & 0x0C), // ANA C
+            (0xA2, 0x0A & 0x0D), // ANA D
+            (0xA3, 0x0A & 0x0E), // ANA E
+            (0xA4, 0x0A & 0x01), // ANA H
+            (0xA5, 0x0A & 0x02), // ANA L
+            (0xA7, 0x0A & 0x0A), // ANA A
+        ];
+
+        for (opcode, result) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0x0100] = opcode;
+            let mut cpu = Cpu::new();
+            cpu.registers = distinct_registers();
+
+            let cycles = cpu.step(&mut memory);
+
+            assert_eq!(cpu.registers.a, result, "opcode {opcode:#04X}");
+            assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
+            assert_eq!(cycles, cycles::ANA, "opcode {opcode:#04X}");
+        }
+    }
+
+    #[test]
+    fn ana_sets_flags_from_result() {
+        // Each case: A, B, the result and the flags it should leave behind.
+        // The CPU starts with every flag set, so a flag that should clear
+        // does.
+        let none = Flags::default();
+        let cases = [
+            // The ANA example from the Intel manual: FCH AND 0FH = 0CH.
+            (
+                0xFC,
+                0x0F,
+                0x0C,
+                Flags {
+                    aux_carry: true,
+                    parity: true,
+                    ..none
+                },
+            ),
+            // Bit 3 is 0 in both operands, so AC is 0.
+            (0x81, 0x80, 0x80, Flags { sign: true, ..none }),
+            (
+                0xF0,
+                0x0F,
+                0x00,
+                Flags {
+                    zero: true,
+                    aux_carry: true,
+                    parity: true,
+                    ..none
+                },
+            ),
+        ];
+
+        for (a, b, result, flags) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0x0100] = 0xA0; // ANA B
+            let mut cpu = Cpu::new();
+            cpu.registers = Registers {
+                a,
+                b,
+                flags: Flags {
+                    sign: true,
+                    zero: true,
+                    aux_carry: true,
+                    parity: true,
+                    carry: true,
+                },
+                ..distinct_registers()
+            };
+
+            cpu.step(&mut memory);
+
+            assert_eq!(cpu.registers.a, result, "{a:#04X} ANA {b:#04X}");
+            assert_eq!(cpu.registers.flags, flags, "{a:#04X} ANA {b:#04X}");
+        }
+    }
+
+    #[test]
+    fn xra_combines_register_with_a() {
+        // Opcodes from the Intel manual, each with the value it should leave
+        // in A. A starts at 0AH.
+        let cases = [
+            (0xA8, 0x0A ^ 0x0B), // XRA B
+            (0xA9, 0x0A ^ 0x0C), // XRA C
+            (0xAA, 0x0A ^ 0x0D), // XRA D
+            (0xAB, 0x0A ^ 0x0E), // XRA E
+            (0xAC, 0x0A ^ 0x01), // XRA H
+            (0xAD, 0x0A ^ 0x02), // XRA L
+            (0xAF, 0x0A ^ 0x0A), // XRA A
+        ];
+
+        for (opcode, result) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0x0100] = opcode;
+            let mut cpu = Cpu::new();
+            cpu.registers = distinct_registers();
+
+            let cycles = cpu.step(&mut memory);
+
+            assert_eq!(cpu.registers.a, result, "opcode {opcode:#04X}");
+            assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
+            assert_eq!(cycles, cycles::XRA, "opcode {opcode:#04X}");
+        }
+    }
+
+    #[test]
+    fn xra_sets_flags_from_result() {
+        // Each case: A, B, the result and the flags it should leave behind.
+        // The CPU starts with every flag set, so a flag that should clear
+        // does.
+        let none = Flags::default();
+        let cases = [
+            // A value XOR itself is 0.
+            (
+                0x5C,
+                0x5C,
+                0x00,
+                Flags {
+                    zero: true,
+                    parity: true,
+                    ..none
+                },
+            ),
+            // XOR with FFH inverts every bit.
+            (
+                0x5C,
+                0xFF,
+                0xA3,
+                Flags {
+                    sign: true,
+                    parity: true,
+                    ..none
+                },
+            ),
+            (
+                0x01,
+                0x02,
+                0x03,
+                Flags {
+                    parity: true,
+                    ..none
+                },
+            ),
+        ];
+
+        for (a, b, result, flags) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0x0100] = 0xA8; // XRA B
+            let mut cpu = Cpu::new();
+            cpu.registers = Registers {
+                a,
+                b,
+                flags: Flags {
+                    sign: true,
+                    zero: true,
+                    aux_carry: true,
+                    parity: true,
+                    carry: true,
+                },
+                ..distinct_registers()
+            };
+
+            cpu.step(&mut memory);
+
+            assert_eq!(cpu.registers.a, result, "{a:#04X} XRA {b:#04X}");
+            assert_eq!(cpu.registers.flags, flags, "{a:#04X} XRA {b:#04X}");
+        }
+    }
+
+    #[test]
+    fn ora_combines_register_with_a() {
+        // Opcodes from the Intel manual, each with the value it should leave
+        // in A. A starts at 0AH.
+        let cases = [
+            (0xB0, 0x0A | 0x0B), // ORA B
+            (0xB1, 0x0A | 0x0C), // ORA C
+            (0xB2, 0x0A | 0x0D), // ORA D
+            (0xB3, 0x0A | 0x0E), // ORA E
+            (0xB4, 0x0A | 0x01), // ORA H
+            (0xB5, 0x0A | 0x02), // ORA L
+            (0xB7, 0x0A | 0x0A), // ORA A
+        ];
+
+        for (opcode, result) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0x0100] = opcode;
+            let mut cpu = Cpu::new();
+            cpu.registers = distinct_registers();
+
+            let cycles = cpu.step(&mut memory);
+
+            assert_eq!(cpu.registers.a, result, "opcode {opcode:#04X}");
+            assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
+            assert_eq!(cycles, cycles::ORA, "opcode {opcode:#04X}");
+        }
+    }
+
+    #[test]
+    fn ora_sets_flags_from_result() {
+        // Each case: A, B, the result and the flags it should leave behind.
+        // The CPU starts with every flag set, so a flag that should clear
+        // does.
+        let none = Flags::default();
+        let cases = [
+            // The ORA example from the Intel manual: 33H OR 0FH = 3FH.
+            (
+                0x33,
+                0x0F,
+                0x3F,
+                Flags {
+                    parity: true,
+                    ..none
+                },
+            ),
+            (
+                0x80,
+                0x01,
+                0x81,
+                Flags {
+                    sign: true,
+                    parity: true,
+                    ..none
+                },
+            ),
+            (
+                0x00,
+                0x00,
+                0x00,
+                Flags {
+                    zero: true,
+                    parity: true,
+                    ..none
+                },
+            ),
+            (
+                0x01,
+                0x02,
+                0x03,
+                Flags {
+                    parity: true,
+                    ..none
+                },
+            ),
+        ];
+
+        for (a, b, result, flags) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0x0100] = 0xB0; // ORA B
+            let mut cpu = Cpu::new();
+            cpu.registers = Registers {
+                a,
+                b,
+                flags: Flags {
+                    sign: true,
+                    zero: true,
+                    aux_carry: true,
+                    parity: true,
+                    carry: true,
+                },
+                ..distinct_registers()
+            };
+
+            cpu.step(&mut memory);
+
+            assert_eq!(cpu.registers.a, result, "{a:#04X} ORA {b:#04X}");
+            assert_eq!(cpu.registers.flags, flags, "{a:#04X} ORA {b:#04X}");
+        }
+    }
+
+    #[test]
+    fn cmp_keeps_a_and_compares_register() {
+        // Opcodes from the Intel manual, each with the Z and CY flags it
+        // should leave behind. A starts at 0AH: Z = 1 means equal, CY = 1
+        // means the register is larger.
+        let cases = [
+            (0xB8, false, true),  // CMP B: 0AH < 0BH
+            (0xB9, false, true),  // CMP C: 0AH < 0CH
+            (0xBA, false, true),  // CMP D: 0AH < 0DH
+            (0xBB, false, true),  // CMP E: 0AH < 0EH
+            (0xBC, false, false), // CMP H: 0AH > 01H
+            (0xBD, false, false), // CMP L: 0AH > 02H
+            (0xBF, true, false),  // CMP A: 0AH = 0AH
+        ];
+
+        for (opcode, zero, carry) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0x0100] = opcode;
+            let mut cpu = Cpu::new();
+            cpu.registers = distinct_registers();
+
+            let cycles = cpu.step(&mut memory);
+
+            assert_eq!(cpu.registers.a, 0x0A, "opcode {opcode:#04X}");
+            assert_eq!(cpu.registers.flags.zero, zero, "opcode {opcode:#04X}");
+            assert_eq!(cpu.registers.flags.carry, carry, "opcode {opcode:#04X}");
+            assert_eq!(cycles, cycles::CMP, "opcode {opcode:#04X}");
+        }
+    }
+
+    #[test]
+    fn cmp_sets_flags_like_sub() {
+        // The CMP E examples from the Intel manual. Each case: A, E and the
+        // flags CMP should leave behind. CMP compares unsigned values, so
+        // E5H counts as larger than 05H.
+        let none = Flags::default();
+        let cases = [
+            (
+                0x0A,
+                0x05,
+                Flags {
+                    aux_carry: true,
+                    parity: true,
+                    ..none
+                },
+            ),
+            (
+                0x02,
+                0x05,
+                Flags {
+                    sign: true,
+                    carry: true,
+                    ..none
+                },
+            ),
+            (
+                0xE5,
+                0x05,
+                Flags {
+                    sign: true,
+                    aux_carry: true,
+                    ..none
+                },
+            ),
+        ];
+
+        for (a, e, flags) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0x0100] = 0xBB; // CMP E
+            let mut cpu = Cpu::new();
+            cpu.registers = Registers {
+                a,
+                e,
+                ..distinct_registers()
+            };
+
+            cpu.step(&mut memory);
+
+            assert_eq!(cpu.registers.a, a, "{a:#04X} CMP {e:#04X}");
+            assert_eq!(cpu.registers.flags, flags, "{a:#04X} CMP {e:#04X}");
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "opcode 0x01 is not supported yet")]
     fn unsupported_opcode_panics() {
         let mut memory = [0u8; 0x10000];
-        memory[0] = 0xA0; // ANA B, not implemented yet
+        memory[0] = 0x01; // LXI B,nn, not implemented yet
         let mut cpu = Cpu::new();
 
         cpu.step(&mut memory);
