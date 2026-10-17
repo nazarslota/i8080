@@ -11,6 +11,12 @@ pub(crate) enum Instruction {
     Hlt,
     /// `ADD src`: adds `src` to `A`.
     Add { src: Operand },
+    /// `ADC src`: adds `src` and the carry flag to `A`.
+    Adc { src: Operand },
+    /// `SUB src`: subtracts `src` from `A`.
+    Sub { src: Operand },
+    /// `SBB src`: subtracts `src` and the carry flag from `A`.
+    Sbb { src: Operand },
 }
 
 impl Instruction {
@@ -58,6 +64,18 @@ impl Instruction {
             },
             // ADD sss: 10 000 sss
             (0b10, 0b000, sss) => Self::Add {
+                src: Operand::from_code(sss),
+            },
+            // ADC sss: 10 001 sss
+            (0b10, 0b001, sss) => Self::Adc {
+                src: Operand::from_code(sss),
+            },
+            // SUB sss: 10 010 sss
+            (0b10, 0b010, sss) => Self::Sub {
+                src: Operand::from_code(sss),
+            },
+            // SBB sss: 10 011 sss
+            (0b10, 0b011, sss) => Self::Sbb {
                 src: Operand::from_code(sss),
             },
             _ => unimplemented!("opcode {opcode:#04X} is not supported yet"),

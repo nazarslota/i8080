@@ -50,11 +50,11 @@ applies when the condition holds.
 |-------------|-------|--------|-------------|-----------------------------------------|--------|
 | `ADD r`     | 1     | 4 / 7  | S Z AC P CY | `A = A + r`                             | ✅     |
 | `ADI n`     | 2     | 7      | S Z AC P CY | `A = A + n`                             | ⬜     |
-| `ADC r`     | 1     | 4 / 7  | S Z AC P CY | `A = A + r + CY`                        | ⬜     |
+| `ADC r`     | 1     | 4 / 7  | S Z AC P CY | `A = A + r + CY`                        | ✅     |
 | `ACI n`     | 2     | 7      | S Z AC P CY | `A = A + n + CY`                        | ⬜     |
-| `SUB r`     | 1     | 4 / 7  | S Z AC P CY | `A = A - r`                             | ⬜     |
+| `SUB r`     | 1     | 4 / 7  | S Z AC P CY | `A = A - r`                             | ✅     |
 | `SUI n`     | 2     | 7      | S Z AC P CY | `A = A - n`                             | ⬜     |
-| `SBB r`     | 1     | 4 / 7  | S Z AC P CY | `A = A - r - CY`                        | ⬜     |
+| `SBB r`     | 1     | 4 / 7  | S Z AC P CY | `A = A - r - CY`                        | ✅     |
 | `SBI n`     | 2     | 7      | S Z AC P CY | `A = A - n - CY`                        | ⬜     |
 | `INR r`     | 1     | 5 / 10 | S Z AC P    | `r = r + 1`, carry unchanged            | ⬜     |
 | `DCR r`     | 1     | 5 / 10 | S Z AC P    | `r = r - 1`, carry unchanged            | ⬜     |
@@ -287,3 +287,129 @@ doubles `A`.
 In `ADD D`, `CH + EH = 1AH` carries out of the low 4 bits, so `AC` is 1.
 `9AH` is `1001 1010`: bit 7 gives `S`, and four 1 bits give `P`. In `ADD A`,
 the sum `134H` needs 9 bits, so `CY` is 1 and `A` keeps `34H`.
+
+### ADC: add with carry
+
+`ADC src` · opcode `10 001 sss` · 1 byte · 4 cycles (7 with `M`) ·
+flags: S Z AC P CY
+
+`ADC` adds `src` and the carry flag to `A`. It sets the flags the way `ADD`
+does, with the carry counted in the sum.
+
+| Instruction | Opcode | Instruction | Opcode |
+|-------------|--------|-------------|--------|
+| `ADC B`     | `88H`  | `ADC H`     | `8CH`  |
+| `ADC C`     | `89H`  | `ADC L`     | `8DH`  |
+| `ADC D`     | `8AH`  | `ADC M`     | `8EH`  |
+| `ADC E`     | `8BH`  | `ADC A`     | `8FH`  |
+
+Programs use `ADC` to add numbers wider than 8 bits: `ADD` sums the low
+bytes, and `ADC` sums the next bytes together with the carry from below.
+This program adds `00FFH` and `0001H` and puts `0100H` in `HL`:
+
+```asm
+0100H   MVI  A,0FFH  ; A = low byte of 00FFH            bytes: 3E FF
+0102H   MVI  B,01H   ; B = low byte of 0001H            bytes: 06 01
+0104H   ADD  B       ; FFH + 01H = 100H: A = 00H        bytes: 80
+0105H   MOV  L,A     ; L = 00H                          bytes: 6F
+0106H   MVI  A,00H   ; A = high byte of 00FFH           bytes: 3E 00
+0108H   MVI  B,00H   ; B = high byte of 0001H           bytes: 06 00
+010AH   ADC  B       ; A = 00H + 00H + CY = 01H         bytes: 88
+010BH   MOV  H,A     ; H = 01H, so HL = 0100H           bytes: 67
+```
+
+| After        | `PC`    | `A`   | `B`   | `HL`    | `S` | `Z` | `AC` | `P` | `CY` |
+|--------------|---------|-------|-------|---------|-----|-----|------|-----|------|
+| `MVI A,0FFH` | `0102H` | `FFH` | `00H` | `0000H` | 0   | 0   | 0    | 0   | 0    |
+| `MVI B,01H`  | `0104H` | `FFH` | `01H` | `0000H` | 0   | 0   | 0    | 0   | 0    |
+| `ADD B`      | `0105H` | `00H` | `01H` | `0000H` | 0   | 1   | 1    | 1   | 1    |
+| `MOV L,A`    | `0106H` | `00H` | `01H` | `0000H` | 0   | 1   | 1    | 1   | 1    |
+| `MVI A,00H`  | `0108H` | `00H` | `01H` | `0000H` | 0   | 1   | 1    | 1   | 1    |
+| `MVI B,00H`  | `010AH` | `00H` | `00H` | `0000H` | 0   | 1   | 1    | 1   | 1    |
+| `ADC B`      | `010BH` | `01H` | `00H` | `0000H` | 0   | 0   | 0    | 0   | 0    |
+| `MOV H,A`    | `010CH` | `01H` | `00H` | `0100H` | 0   | 0   | 0    | 0   | 0    |
+
+`MOV` and `MVI` leave the flags alone, so the carry from `ADD B` survives
+until `ADC B` reads it.
+
+### SUB: subtract from the accumulator
+
+`SUB src` · opcode `10 010 sss` · 1 byte · 4 cycles (7 with `M`) ·
+flags: S Z AC P CY
+
+`SUB` subtracts `src` from `A` and keeps the low 8 bits of the difference
+in `A`. `SUB A` clears `A`, and programs used it for that.
+
+| Instruction | Opcode | Instruction | Opcode |
+|-------------|--------|-------------|--------|
+| `SUB B`     | `90H`  | `SUB H`     | `94H`  |
+| `SUB C`     | `91H`  | `SUB L`     | `95H`  |
+| `SUB D`     | `92H`  | `SUB M`     | `96H`  |
+| `SUB E`     | `93H`  | `SUB A`     | `97H`  |
+
+The 8080 has no subtractor. It adds the two's complement instead:
+`A - src = A + NOT src + 1`. The flags come from that addition:
+
+- `CY` is the carry out of bit 7, inverted. `CY = 1` means `src` was larger
+  than `A` and the subtraction borrowed.
+- `AC` is the carry out of bit 3, as it is. `AC = 0` means the low 4 bits
+  borrowed.
+- `S`, `Z` and `P` follow the result, as in `ADD`.
+
+The first `SUB` below repeats the example from the Intel manual.
+
+```asm
+0100H   MVI  A,3EH   ; A = 3EH                      bytes: 3E 3E
+0102H   SUB  A       ; A = 3EH - 3EH = 00H          bytes: 97
+0103H   MVI  B,01H   ; B = 01H                      bytes: 06 01
+0105H   SUB  B       ; A = 00H - 01H = FFH          bytes: 90
+```
+
+| After       | `PC`    | `A`   | `B`   | `S` | `Z` | `AC` | `P` | `CY` |
+|-------------|---------|-------|-------|-----|-----|------|-----|------|
+| `MVI A,3EH` | `0102H` | `3EH` | `00H` | 0   | 0   | 0    | 0   | 0    |
+| `SUB A`     | `0103H` | `00H` | `00H` | 0   | 1   | 1    | 1   | 0    |
+| `MVI B,01H` | `0105H` | `00H` | `01H` | 0   | 1   | 1    | 1   | 0    |
+| `SUB B`     | `0106H` | `FFH` | `01H` | 1   | 0   | 0    | 1   | 1    |
+
+In `SUB A`, the CPU computes `3EH + C1H + 1 = 100H`. The carry out of bit 7
+inverts to `CY = 0`: no borrow. In `SUB B`, `00H + FEH + 1 = FFH` gives no
+carry out, so `CY = 1`.
+
+### SBB: subtract with borrow
+
+`SBB src` · opcode `10 011 sss` · 1 byte · 4 cycles (7 with `M`) ·
+flags: S Z AC P CY
+
+`SBB` subtracts `src` and the carry flag from `A`. It sets the flags the
+way `SUB` does. Programs pair it with `SUB` the way they pair `ADC` with
+`ADD`: `SUB` for the low bytes, `SBB` for the rest.
+
+| Instruction | Opcode | Instruction | Opcode |
+|-------------|--------|-------------|--------|
+| `SBB B`     | `98H`  | `SBB H`     | `9CH`  |
+| `SBB C`     | `99H`  | `SBB L`     | `9DH`  |
+| `SBB D`     | `9AH`  | `SBB M`     | `9EH`  |
+| `SBB E`     | `9BH`  | `SBB A`     | `9FH`  |
+
+The `SBB L` below repeats the example from the Intel manual. The `SUB L`
+before it sets the carry.
+
+```asm
+0100H   MVI  L,01H   ; L = 01H                      bytes: 2E 01
+0102H   SUB  L       ; A = 00H - 01H = FFH, CY = 1  bytes: 95
+0103H   MVI  A,04H   ; A = 04H                      bytes: 3E 04
+0105H   MVI  L,02H   ; L = 02H                      bytes: 2E 02
+0107H   SBB  L       ; A = 04H - 02H - CY = 01H     bytes: 9D
+```
+
+| After       | `PC`    | `A`   | `L`   | `S` | `Z` | `AC` | `P` | `CY` |
+|-------------|---------|-------|-------|-----|-----|------|-----|------|
+| `MVI L,01H` | `0102H` | `00H` | `01H` | 0   | 0   | 0    | 0   | 0    |
+| `SUB L`     | `0103H` | `FFH` | `01H` | 1   | 0   | 0    | 1   | 1    |
+| `MVI A,04H` | `0105H` | `04H` | `01H` | 1   | 0   | 0    | 1   | 1    |
+| `MVI L,02H` | `0107H` | `04H` | `02H` | 1   | 0   | 0    | 1   | 1    |
+| `SBB L`     | `0108H` | `01H` | `02H` | 0   | 0   | 1    | 0   | 0    |
+
+In `SBB L`, the CPU computes `04H + FDH + 0 = 101H`. The carry into the sum
+is `NOT CY`, so a set carry flag takes 1 away.

@@ -27,6 +27,21 @@ pub(crate) const ADD: u32 = 4;
 /// `ADD M`: `ADD` plus a memory read.
 pub(crate) const ADD_M: u32 = 7;
 
+/// `ADC r`.
+pub(crate) const ADC: u32 = 4;
+/// `ADC M`: `ADC` plus a memory read.
+pub(crate) const ADC_M: u32 = 7;
+
+/// `SUB r`.
+pub(crate) const SUB: u32 = 4;
+/// `SUB M`: `SUB` plus a memory read.
+pub(crate) const SUB_M: u32 = 7;
+
+/// `SBB r`.
+pub(crate) const SBB: u32 = 4;
+/// `SBB M`: `SBB` plus a memory read.
+pub(crate) const SBB_M: u32 = 7;
+
 /// `HLT`.
 pub(crate) const HLT: u32 = 7;
 

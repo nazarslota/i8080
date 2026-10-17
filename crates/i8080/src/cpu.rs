@@ -64,6 +64,9 @@ impl Cpu {
             Instruction::Mov { dst, src } => self.mov(memory, dst, src),
             Instruction::Hlt => self.hlt(),
             Instruction::Add { src } => self.add(memory, src),
+            Instruction::Adc { src } => self.adc(memory, src),
+            Instruction::Sub { src } => self.sub(memory, src),
+            Instruction::Sbb { src } => self.sbb(memory, src),
         }
     }
 
@@ -94,26 +97,76 @@ impl Cpu {
         cycles::HLT
     }
 
-    /// `ADD src`: adds a register or `M` to `A` and sets every flag.
+    /// `ADD src`: adds a register or `M` to `A`.
     fn add(&mut self, memory: &mut impl MemoryBus, src: Operand) -> u32 {
-        let a = self.registers.a;
         let value = self.read_operand(memory, src);
-        let (result, carry) = a.overflowing_add(value);
-
-        self.registers.a = result;
-        self.registers.flags = Flags {
-            sign: result & 0x80 != 0,
-            zero: result == 0,
-            aux_carry: (a & 0x0F) + (value & 0x0F) > 0x0F,
-            parity: result.count_ones() % 2 == 0,
-            carry,
-        };
-
+        self.add_to_a(value, false);
         if src == Operand::M {
             cycles::ADD_M
         } else {
             cycles::ADD
         }
+    }
+
+    /// `ADC src`: adds a register or `M` and the carry flag to `A`.
+    fn adc(&mut self, memory: &mut impl MemoryBus, src: Operand) -> u32 {
+        let value = self.read_operand(memory, src);
+        self.add_to_a(value, self.registers.flags.carry);
+        if src == Operand::M {
+            cycles::ADC_M
+        } else {
+            cycles::ADC
+        }
+    }
+
+    /// `SUB src`: subtracts a register or `M` from `A`.
+    fn sub(&mut self, memory: &mut impl MemoryBus, src: Operand) -> u32 {
+        let value = self.read_operand(memory, src);
+        self.subtract_from_a(value, false);
+        if src == Operand::M {
+            cycles::SUB_M
+        } else {
+            cycles::SUB
+        }
+    }
+
+    /// `SBB src`: subtracts a register or `M` and the carry flag from `A`.
+    fn sbb(&mut self, memory: &mut impl MemoryBus, src: Operand) -> u32 {
+        let value = self.read_operand(memory, src);
+        self.subtract_from_a(value, self.registers.flags.carry);
+        if src == Operand::M {
+            cycles::SBB_M
+        } else {
+            cycles::SBB
+        }
+    }
+
+    /// Adds `value` and `carry_in` to `A` and sets every flag from the sum.
+    fn add_to_a(&mut self, value: u8, carry_in: bool) {
+        let a = self.registers.a;
+        let carry_in = u8::from(carry_in);
+        // A u16 holds the full sum, so bit 8 is the carry out of bit 7.
+        let sum = u16::from(a) + u16::from(value) + u16::from(carry_in);
+        let [carry_out, result] = sum.to_be_bytes();
+
+        self.registers.a = result;
+        self.registers.flags = Flags {
+            sign: result & 0x80 != 0,
+            zero: result == 0,
+            aux_carry: (a & 0x0F) + (value & 0x0F) + carry_in > 0x0F,
+            parity: result.count_ones() % 2 == 0,
+            carry: carry_out != 0,
+        };
+    }
+
+    /// Subtracts `value` and `borrow_in` from `A` and sets every flag.
+    ///
+    /// The 8080 subtracts with its adder: `A - value` equals
+    /// `A + !value + 1`. `AC` comes out of that addition as it is, and `CY`
+    /// comes out inverted, so `CY = 1` means the subtraction borrowed.
+    fn subtract_from_a(&mut self, value: u8, borrow_in: bool) {
+        self.add_to_a(!value, !borrow_in);
+        self.registers.flags.carry = !self.registers.flags.carry;
     }
 
     /// Reads an 8-bit operand. `M` reads memory at the address in `HL`.
@@ -542,10 +595,320 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "opcode 0x88 is not supported yet")]
+    fn adc_adds_register_and_carry_to_a() {
+        // Opcodes from the Intel manual, each with the carry flag before the
+        // step and the sum it should leave in A. A starts at 0AH.
+        let cases = [
+            (0x88, false, 0x0A + 0x0B),    // ADC B
+            (0x89, true, 0x0A + 0x0C + 1), // ADC C
+            (0x8A, true, 0x0A + 0x0D + 1), // ADC D
+            (0x8B, false, 0x0A + 0x0E),    // ADC E
+            (0x8C, true, 0x0A + 0x01 + 1), // ADC H
+            (0x8D, false, 0x0A + 0x02),    // ADC L
+            (0x8F, true, 0x0A + 0x0A + 1), // ADC A
+        ];
+
+        for (opcode, carry, sum) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0x0100] = opcode;
+            let mut cpu = Cpu::new();
+            cpu.registers = distinct_registers();
+            cpu.registers.flags.carry = carry;
+
+            let cycles = cpu.step(&mut memory);
+
+            assert_eq!(cpu.registers.a, sum, "opcode {opcode:#04X}");
+            assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
+            assert_eq!(cycles, cycles::ADC, "opcode {opcode:#04X}");
+        }
+    }
+
+    #[test]
+    fn adc_sets_flags_from_result() {
+        // Each case: A, B and the carry before the step, then the sum and
+        // the flags it should leave behind.
+        let none = Flags::default();
+        let cases = [
+            // The carry pushes the low 4 bits past 0FH.
+            (
+                0x0F,
+                0x00,
+                true,
+                0x10,
+                Flags {
+                    aux_carry: true,
+                    ..none
+                },
+            ),
+            // The carry pushes the sum past FFH.
+            (
+                0xFF,
+                0x00,
+                true,
+                0x00,
+                Flags {
+                    zero: true,
+                    aux_carry: true,
+                    parity: true,
+                    carry: true,
+                    ..none
+                },
+            ),
+            // The ADC examples from the Intel manual: 42H + 3DH, first with
+            // the carry at 0, then at 1.
+            (0x42, 0x3D, false, 0x7F, none),
+            (
+                0x42,
+                0x3D,
+                true,
+                0x80,
+                Flags {
+                    sign: true,
+                    aux_carry: true,
+                    ..none
+                },
+            ),
+        ];
+
+        for (a, b, carry, sum, flags) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0x0100] = 0x88; // ADC B
+            let mut cpu = Cpu::new();
+            cpu.registers = Registers {
+                a,
+                b,
+                flags: Flags { carry, ..none },
+                ..distinct_registers()
+            };
+
+            cpu.step(&mut memory);
+
+            assert_eq!(cpu.registers.a, sum, "{a:#04X} + {b:#04X} + {carry}");
+            assert_eq!(cpu.registers.flags, flags, "{a:#04X} + {b:#04X} + {carry}");
+        }
+    }
+
+    #[test]
+    fn sub_subtracts_register_from_a() {
+        // Opcodes from the Intel manual, each with the difference it should
+        // leave in A. A starts at 0AH, so some differences wrap below 00H.
+        let cases = [
+            (0x90, 0xFF), // SUB B: 0AH - 0BH
+            (0x91, 0xFE), // SUB C: 0AH - 0CH
+            (0x92, 0xFD), // SUB D: 0AH - 0DH
+            (0x93, 0xFC), // SUB E: 0AH - 0EH
+            (0x94, 0x09), // SUB H: 0AH - 01H
+            (0x95, 0x08), // SUB L: 0AH - 02H
+            (0x97, 0x00), // SUB A: 0AH - 0AH
+        ];
+
+        for (opcode, difference) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0x0100] = opcode;
+            let mut cpu = Cpu::new();
+            cpu.registers = distinct_registers();
+
+            let cycles = cpu.step(&mut memory);
+
+            assert_eq!(cpu.registers.a, difference, "opcode {opcode:#04X}");
+            assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
+            assert_eq!(cycles, cycles::SUB, "opcode {opcode:#04X}");
+        }
+    }
+
+    #[test]
+    fn sub_sets_flags_from_result() {
+        // Each case: A, B, the difference and the flags it should leave
+        // behind. The CPU starts with every flag set, so a flag that should
+        // clear does.
+        let none = Flags::default();
+        let cases = [
+            // The SUB example from the Intel manual: 3EH - 3EH = 00H.
+            (
+                0x3E,
+                0x3E,
+                0x00,
+                Flags {
+                    zero: true,
+                    aux_carry: true,
+                    parity: true,
+                    ..none
+                },
+            ),
+            // 05H - 06H borrows: the result wraps to FFH and CY is 1.
+            (
+                0x05,
+                0x06,
+                0xFF,
+                Flags {
+                    sign: true,
+                    parity: true,
+                    carry: true,
+                    ..none
+                },
+            ),
+            // 10H - 01H borrows from the high 4 bits, so AC is 0.
+            (
+                0x10,
+                0x01,
+                0x0F,
+                Flags {
+                    parity: true,
+                    ..none
+                },
+            ),
+            // 12H - 01H needs no borrow from the high 4 bits, so AC is 1.
+            (
+                0x12,
+                0x01,
+                0x11,
+                Flags {
+                    aux_carry: true,
+                    parity: true,
+                    ..none
+                },
+            ),
+        ];
+
+        for (a, b, difference, flags) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0x0100] = 0x90; // SUB B
+            let mut cpu = Cpu::new();
+            cpu.registers = Registers {
+                a,
+                b,
+                flags: Flags {
+                    sign: true,
+                    zero: true,
+                    aux_carry: true,
+                    parity: true,
+                    carry: true,
+                },
+                ..distinct_registers()
+            };
+
+            cpu.step(&mut memory);
+
+            assert_eq!(cpu.registers.a, difference, "{a:#04X} - {b:#04X}");
+            assert_eq!(cpu.registers.flags, flags, "{a:#04X} - {b:#04X}");
+        }
+    }
+
+    #[test]
+    fn sbb_subtracts_register_and_carry_from_a() {
+        // Opcodes from the Intel manual, each with the carry flag before the
+        // step and the difference it should leave in A. A starts at 0AH.
+        let cases = [
+            (0x98, true, 0xFE),  // SBB B: 0AH - 0BH - 1
+            (0x99, false, 0xFE), // SBB C: 0AH - 0CH
+            (0x9A, true, 0xFC),  // SBB D: 0AH - 0DH - 1
+            (0x9B, false, 0xFC), // SBB E: 0AH - 0EH
+            (0x9C, true, 0x08),  // SBB H: 0AH - 01H - 1
+            (0x9D, false, 0x08), // SBB L: 0AH - 02H
+            (0x9F, true, 0xFF),  // SBB A: 0AH - 0AH - 1
+        ];
+
+        for (opcode, carry, difference) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0x0100] = opcode;
+            let mut cpu = Cpu::new();
+            cpu.registers = distinct_registers();
+            cpu.registers.flags.carry = carry;
+
+            let cycles = cpu.step(&mut memory);
+
+            assert_eq!(cpu.registers.a, difference, "opcode {opcode:#04X}");
+            assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");
+            assert_eq!(cycles, cycles::SBB, "opcode {opcode:#04X}");
+        }
+    }
+
+    #[test]
+    fn sbb_sets_flags_from_result() {
+        // Each case: A, L and the carry before the step, then the difference
+        // and the flags it should leave behind.
+        let none = Flags::default();
+        let cases = [
+            // The SBB example from the Intel manual: 04H - 02H - 1 = 01H.
+            (
+                0x04,
+                0x02,
+                true,
+                0x01,
+                Flags {
+                    aux_carry: true,
+                    ..none
+                },
+            ),
+            // The carry alone makes 00H - 00H borrow.
+            (
+                0x00,
+                0x00,
+                true,
+                0xFF,
+                Flags {
+                    sign: true,
+                    parity: true,
+                    carry: true,
+                    ..none
+                },
+            ),
+        ];
+
+        for (a, l, carry, difference, flags) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0x0100] = 0x9D; // SBB L
+            let mut cpu = Cpu::new();
+            cpu.registers = Registers {
+                a,
+                l,
+                flags: Flags { carry, ..none },
+                ..distinct_registers()
+            };
+
+            cpu.step(&mut memory);
+
+            assert_eq!(cpu.registers.a, difference, "{a:#04X} - {l:#04X} - {carry}");
+            assert_eq!(cpu.registers.flags, flags, "{a:#04X} - {l:#04X} - {carry}");
+        }
+    }
+
+    #[test]
+    fn arithmetic_with_m_reads_memory_at_hl() {
+        // Each case: an opcode with M as the source, the result it should
+        // leave in A and its cycle count. A starts at 10H, memory at HL
+        // holds 05H and the carry flag is 1.
+        let cases = [
+            (0x8E, 0x16, cycles::ADC_M), // ADC M: 10H + 05H + 1
+            (0x96, 0x0B, cycles::SUB_M), // SUB M: 10H - 05H
+            (0x9E, 0x0A, cycles::SBB_M), // SBB M: 10H - 05H - 1
+        ];
+
+        for (opcode, result, expected_cycles) in cases {
+            let mut memory = [0u8; 0x10000];
+            memory[0x0100] = opcode;
+            memory[0x2000] = 0x05;
+            let mut cpu = Cpu::new();
+            cpu.registers = Registers {
+                a: 0x10,
+                h: 0x20,
+                l: 0x00,
+                ..distinct_registers()
+            };
+            cpu.registers.flags.carry = true;
+
+            let cycles = cpu.step(&mut memory);
+
+            assert_eq!(cpu.registers.a, result, "opcode {opcode:#04X}");
+            assert_eq!(cycles, expected_cycles, "opcode {opcode:#04X}");
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "opcode 0xA0 is not supported yet")]
     fn unsupported_opcode_panics() {
         let mut memory = [0u8; 0x10000];
-        memory[0] = 0x88; // ADC B, not implemented yet
+        memory[0] = 0xA0; // ANA B, not implemented yet
         let mut cpu = Cpu::new();
 
         cpu.step(&mut memory);
