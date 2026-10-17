@@ -1,0 +1,10 @@
+[package]
+name = "i8080"
+description = "Intel 8080 CPU core: decoder, executor and disassembler, independent of any machine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true

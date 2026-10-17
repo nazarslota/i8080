@@ -1,0 +1,9 @@
+/target
+
+# User-supplied ROMs and disk images (see roms/README.md)
+/roms/*
+!/roms/README.md
+
+# Editor and OS files
+/.idea/
+.DS_Store

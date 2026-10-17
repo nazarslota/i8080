@@ -1,0 +1,56 @@
+# i8080
+
+An Intel 8080 emulator written in Rust, built to run the MITS Altair 8800:
+from Altair BASIC in your terminal to a real CP/M booted from a floppy image.
+
+> **Status:** early work in progress. Nothing runs yet.
+
+## Roadmap
+
+- [ ] **CPU core.** The full 8080 instruction set, verified with the classic
+      diagnostic programs (TST8080, 8080PRE, CPUTEST, 8080EXM).
+- [ ] **Altair BASIC.** An Altair with memory and an 88-2SIO serial board,
+      wired to your terminal.
+- [ ] **Floppy disks.** The 88-DCDD controller, enough to boot Altair Disk
+      BASIC, Altair DOS and CP/M 2.2.
+- [ ] Later: a window with a retro monitor, the front panel, Space Invaders.
+
+## Workspace
+
+| Crate | What it is |
+|---|---|
+| [`i8080`](crates/i8080) | The CPU core. `no_std`, no dependencies, knows nothing about any machine. |
+| [`cpm`](crates/cpm) | A minimal CP/M environment that runs `.COM` programs without emulated hardware. Used to test the CPU. |
+| [`altair`](crates/altair) | Altair 8800 hardware: the S-100 backplane and its cards. |
+| [`app`](crates/app) | The `altair` command-line program. |
+
+See [docs/architecture.md](docs/architecture.md) for how the pieces fit
+together.
+
+## Building
+
+Requires Rust 1.85 or newer.
+
+```sh
+cargo build
+cargo test
+```
+
+## ROMs and disk images
+
+This repository contains no copyrighted software. The CPU diagnostic
+programs go into [`roms/`](roms), which is ignored by git.
+See [roms/README.md](roms/README.md) for what goes there.
+
+## License
+
+Licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally
+submitted for inclusion in this work, as defined in the Apache-2.0 license,
+shall be dual licensed as above, without any additional terms or conditions.

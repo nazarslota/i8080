@@ -1,0 +1,138 @@
+# Architecture
+
+This document explains how the emulator fits together and why we built it
+this way. Read it before you change code. Sections marked **(planned)**
+describe designs we agreed on but haven't written yet.
+
+## The big picture
+
+A computer has a processor, memory and devices such as a terminal or a floppy
+drive. The processor reads instructions from memory one after another and
+talks to devices through I/O ports.
+
+The emulator copies that split. `i8080` plays the processor. A machine crate
+plays everything around it. `app` connects the machine to your real computer.
+
+```
+                ┌──────────────────────────┐
+                │ app                      │  your terminal, files,
+                └────────────┬─────────────┘  command line
+                             │
+  ┌──────────────────────────┴─┐   ┌────────────────────────────┐
+  │ altair                     │   │ cpm                        │
+  │ Altair 8800 hardware:      │   │ fake CP/M for the CPU      │
+  │ memory, serial card,       │   │ test programs: handles     │
+  │ floppy controller          │   │ system calls in Rust       │
+  └─────────────┬──────────────┘   └──────────────┬─────────────┘
+                └────────────────┬────────────────┘
+                          ┌──────┴──────┐
+                          │ i8080       │  the processor
+                          └─────────────┘
+```
+
+## Crates
+
+| Crate    | Plays the role of                    | Depends on | Touches the host                            |
+|----------|--------------------------------------|------------|---------------------------------------------|
+| `i8080`  | the Intel 8080 processor             | nothing    | no                                          |
+| `cpm`    | a minimal CP/M, for testing the CPU  | `i8080`    | no (its small `cpm` binary prints output)   |
+| `altair` | the MITS Altair 8800 computer        | `i8080`    | no                                          |
+| `app`    | you, sitting at the terminal         | `altair`   | yes                                         |
+
+Arrows in the diagram point down. A crate never depends on a crate above it
+or beside it, and the compiler enforces this: `altair/Cargo.toml` doesn't list
+`cpm`, so code in `altair` can't call it.
+
+## Three rules
+
+### 1. The processor knows nothing about the machine
+
+The CPU reads and writes memory and I/O ports through the `Bus` trait. The
+machine implements `Bus` and decides what each address means: RAM, ROM, a
+device register or nothing at all. To add a new machine, you implement `Bus`
+and leave `i8080` alone.
+
+### 2. We emulate hardware and run original software
+
+`altair` copies the Altair's circuits: memory boards, the serial card, the
+floppy controller. Altair BASIC, Altair DOS and CP/M run unmodified from ROM
+and disk images, byte for byte the programs people ran in the 1970s. We write
+none of them.
+
+`cpm` breaks this rule on purpose. It fakes the operating system so that the
+CPU diagnostic programs can run without emulated hardware. Treat it as a test
+tool.
+
+### 3. Libraries do no I/O
+
+`i8080`, `cpm` and `altair` never open files, read the keyboard or print. You
+hand them bytes and read bytes back, so tests can run them without a terminal
+or a disk. All contact with your real computer lives in `app`.
+
+## Walkthrough: BASIC prints a letter (planned)
+
+Follow one character through the layers. Altair BASIC wants to print `A` on
+the terminal:
+
+1. BASIC loads `0x41` (the ASCII code for `A`) into register A and executes
+   `OUT 0x11`.
+2. `i8080` decodes the instruction and calls `bus.output(0x11, 0x41)`.
+3. The `altair` backplane finds the card that claims port `0x11`: the 88-2SIO
+   serial card. The card puts the byte in its transmit buffer.
+4. After each batch of instructions, `app` takes the bytes from the serial
+   card and writes them to your terminal.
+
+A keystroke travels the other way. `app` hands the key to the serial card,
+and the card sets the "data ready" bit in its status port. BASIC reads that
+port in a loop, sees the bit and reads the key with `IN 0x11`.
+
+## CPU core (planned)
+
+- **The machine lends the bus to the CPU.** `Cpu::step(&mut self, bus: &mut
+  impl Bus)` borrows the bus for one instruction and doesn't keep it. We need
+  no shared ownership (`Rc<RefCell<…>>`), and Rust resolves every bus call at
+  compile time.
+- **Decode first, then execute.** `step` turns the bytes at `PC` into an
+  `Instruction` value and then executes that value. Decoding depends on the
+  bytes alone, so the same code drives the disassembler (`impl Display for
+  Instruction`) and execution traces.
+- **Decoding can't fail.** The 8080 treats all 256 opcodes as valid. The 12
+  undocumented ones duplicate documented ones: `0x08` acts as `NOP`, `0xCB` as
+  `JMP`. `step` returns no `Result`.
+- **Each step reports clock cycles.** A machine needs the count to run at the
+  original speed and to time interrupts. Conditional `CALL` and `RET` take
+  longer when the condition holds, so the count depends on the flags too.
+
+## Altair (planned)
+
+The real Altair is a box with a backplane: a row of 100-pin S-100 slots. You
+plug in cards for memory, for a serial port to a terminal, for a floppy
+controller. The code follows the same shape:
+
+- Each card implements the `Device` trait and claims a range of memory
+  addresses or I/O ports.
+- The `Backplane` implements the CPU's `Bus` trait. On each access it finds
+  the card that claims the address and forwards the access to it. An address
+  that no card claims reads as `0xFF`, like an empty slot on the real bus.
+
+To add hardware, you write a new card and plug it into the backplane. The CPU
+and the other cards stay as they are.
+
+## Glossary
+
+**Bus.** The wires between the processor and everything else. In code, a
+trait with four methods: read a byte, write a byte, read a port, write a port.
+
+**I/O port.** A numbered channel, 0 to 255 on the 8080. The processor talks
+to devices through ports with the `IN` and `OUT` instructions.
+
+**CP/M.** The most popular operating system for 8080 and Z80 computers in the
+late 1970s. It runs programs stored as `.COM` files.
+
+**HLE (high-level emulation).** Emulating what an operating system does
+instead of the hardware it runs on. `cpm` works this way.
+
+**S-100.** The Altair's 100-pin expansion bus. Other manufacturers copied it,
+and it became an industry standard.
+
+**Host.** Your real computer, the one running the emulator.

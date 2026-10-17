@@ -1,0 +1,18 @@
+[package]
+name = "app"
+description = "Command-line Altair 8800 emulator"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "altair"
+path = "src/main.rs"
+
+[dependencies]
+altair.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,13 @@
+[package]
+name = "altair"
+description = "MITS Altair 8800 hardware: S-100 backplane and expansion cards on top of the i8080 core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+i8080.workspace = true
+
+[lints]
+workspace = true
