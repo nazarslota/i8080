@@ -45,7 +45,7 @@
 //! character out, one bit at a time. The emulated card sends at once, so
 //! the loop never waits.
 
-use crate::Device;
+use crate::{Device, Terminal};
 
 /// The port that returns the status byte on `IN` and takes control bytes on
 /// `OUT`.
@@ -65,18 +65,6 @@ const NO_BITS: u8 = 0b0000_0000;
 
 /// What the data port returns when no character waits.
 const EMPTY_DATA: u8 = 0x00;
-
-/// The other end of the serial cable: the terminal you type on.
-///
-/// The `altair` crate does no host I/O, so the application implements this
-/// trait and connects it to your real keyboard and screen.
-pub trait Terminal {
-    /// Returns the next key you typed, or `None` if you typed nothing.
-    fn receive(&mut self) -> Option<u8>;
-
-    /// Shows `byte` on the screen.
-    fn send(&mut self, byte: u8);
-}
 
 /// The MITS 88-2SIO serial card, port A at `10H` and `11H`.
 ///
