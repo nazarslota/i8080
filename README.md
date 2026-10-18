@@ -14,9 +14,9 @@ from Altair BASIC in your terminal to a real CP/M booted from a floppy image.
 - [x] **Altair BASIC.** An Altair with memory and an 88-2SIO serial board,
   wired to your terminal.
 - [x] **CP/M 2.2.** The 88-DCDD floppy controller and a PROM card with the
-  MITS disk boot loader. CP/M boots and saves files to the disk image.
-- [ ] **More disks.** Run the CPU diagnostics under CP/M, then try Altair
-  Disk BASIC and Altair DOS.
+  MITS disk boot loader. CP/M boots, saves files to the disk image and runs
+  the four CPU diagnostics.
+- [ ] **More disks.** Altair Disk BASIC and Altair DOS.
 - [ ] **CPU extras.** Interrupts, which Space Invaders needs, and a
   disassembler for execution traces.
 - [ ] Later: a window with a retro monitor, the front panel, Space Invaders.
