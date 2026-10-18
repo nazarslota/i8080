@@ -1,13 +1,13 @@
 # Builds the C programs in this folder for CP/M on the 8080 and runs them in
 # the emulator. Each program lives in a folder of its own, such as
-# main/main.c. ../docs/guide/cpm.md explains the steps.
+# main/main.c. docs/guide/cpm.md explains the steps.
 #
 #   make                       build every program into a .COM file
-#   make run                   build main, copy it to ../b.dsk, boot CP/M
+#   make run                   build main, copy it to b.dsk, boot CP/M
 #   make run PROGRAM=name      the same for name/name.c
 #   make clean                 remove the .COM files
 
-ROOT     := ..
+ROOT     := ../..
 ALTAIR   := cargo run --release --
 ZCC      := docker run --rm -v "$(CURDIR)":/src -w /src z88dk/z88dk zcc +cpm -clib=8080 -lm
 PROGRAM  := main

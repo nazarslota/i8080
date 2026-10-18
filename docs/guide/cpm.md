@@ -73,14 +73,14 @@ so you run its Docker image. Start Docker Desktop and fetch the image once:
 docker pull z88dk/z88dk
 ```
 
-C programs live in [`examples`](../../examples), each in a folder of its
-own: `examples/main/main.c`. In `examples`, `make run` compiles `main.c`,
-copies it to drive B: and boots CP/M with `a.dsk` and `b.dsk` from the root
-of the repository. It makes either disk first if it is missing. At `A>`,
-run the program from drive B: with `B:MAIN`.
+C programs live in [`examples/c`](../../examples/c), each in a folder of
+its own: `examples/c/main/main.c`. In `examples/c`, `make run` compiles
+`main.c`, copies it to drive B: and boots CP/M with `a.dsk` and `b.dsk`
+from the root of the repository. It makes either disk first if it is
+missing. At `A>`, run the program from drive B: with `B:MAIN`.
 
 ```sh
-cd examples
+cd examples/c
 make run
 ```
 
@@ -91,7 +91,7 @@ make run
 | `make run PROGRAM=name` | the same for `name/name.c`                     |
 | `make clean`            | removes the built `.COM` files                 |
 
-The [Makefile](../../examples/Makefile) calls z88dk as
+The [Makefile](../../examples/c/Makefile) calls z88dk as
 `zcc +cpm -clib=8080 -lm main.c -o main.COM`. `+cpm` builds a `.COM` file
 for CP/M, and `-clib=8080` keeps the code to 8080 instructions: without it
 z88dk writes Z80 code, which the 8080 can't run. `-lm` links the math
