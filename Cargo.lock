@@ -17,12 +17,5 @@ dependencies = [
 ]
 
 [[package]]
-name = "cpm"
-version = "0.1.0"
-dependencies = [
- "i8080",
-]
-
-[[package]]
 name = "i8080"
 version = "0.1.0"

@@ -18,16 +18,13 @@ plays everything around it. `app` connects the machine to your real computer.
                 │ app                      │  your terminal, files,
                 └────────────┬─────────────┘  command line
                              │
-  ┌──────────────────────────┴─┐   ┌────────────────────────────┐
-  │ altair                     │   │ cpm                        │
-  │ Altair 8800 hardware:      │   │ fake CP/M for the CPU      │
-  │ memory, serial card,       │   │ test programs: handles     │
-  │ floppy controller          │   │ system calls in Rust       │
-  └─────────────┬──────────────┘   └──────────────┬─────────────┘
-                └────────────────┬────────────────┘
-                          ┌──────┴──────┐
-                          │ i8080       │  the processor
-                          └─────────────┘
+                ┌────────────┴─────────────┐
+                │ altair                   │  memory, serial card,
+                └────────────┬─────────────┘  floppy controller
+                             │
+                ┌────────────┴─────────────┐
+                │ i8080                    │  the processor
+                └──────────────────────────┘
 ```
 
 ## Crates
@@ -35,13 +32,12 @@ plays everything around it. `app` connects the machine to your real computer.
 | Crate    | Plays the role of                    | Depends on | Touches the host                            |
 |----------|--------------------------------------|------------|---------------------------------------------|
 | `i8080`  | the Intel 8080 processor             | nothing    | no                                          |
-| `cpm`    | a minimal CP/M, for testing the CPU  | `i8080`    | no (its small `cpm` binary prints output)   |
 | `altair` | the MITS Altair 8800 computer        | `i8080`    | no                                          |
 | `app`    | you, sitting at the terminal         | `altair`   | yes                                         |
 
-Arrows in the diagram point down. A crate never depends on a crate above it
-or beside it, and the compiler enforces this: `altair/Cargo.toml` doesn't list
-`cpm`, so code in `altair` can't call it.
+Arrows in the diagram point down. A crate never depends on a crate above it,
+and the compiler enforces this: `i8080/Cargo.toml` lists no dependencies, so
+code in `i8080` can't call `altair`.
 
 ## Three rules
 
@@ -60,13 +56,13 @@ floppy controller. Altair BASIC, Altair DOS and CP/M run unmodified from ROM
 and disk images, byte for byte the programs people ran in the 1970s. We write
 none of them.
 
-`cpm` breaks this rule on purpose. It fakes the operating system so that the
-CPU diagnostic programs can run without emulated hardware. Treat it as a test
-tool.
+The diagnostics test bends this rule. `crates/i8080/tests/diagnostics.rs`
+fakes the two CP/M system calls that the diagnostic programs make, so you can
+run them without emulated hardware. No library crate contains this code.
 
 ### 3. Libraries do no I/O
 
-`i8080`, `cpm` and `altair` never open files, read the keyboard or print. You
+`i8080` and `altair` never open files, read the keyboard or print. You
 hand them bytes and read bytes back, so tests can run them without a terminal
 or a disk. All contact with your real computer lives in `app`.
 
@@ -121,10 +117,10 @@ What works and what's left:
   can't accept an interrupt yet: a device can't make it run an `RST`, and
   `EI` doesn't wait one instruction before interrupts take effect. The
   Altair runs without interrupts. Space Invaders needs them.
-- [ ] **Diagnostics.** TST8080, 8080PRE, CPUTEST and 8080EXM test every
-  instruction and flag against a real 8080. They run under CP/M, so they
-  need the `cpm` crate first. The unit tests check the CPU against the
-  manual; the diagnostics check it against the chip.
+- [x] **Diagnostics.** TST8080, 8080PRE, CPUTEST and 8080EXM pass. They
+  test every instruction and flag against a real 8080, and
+  `crates/i8080/tests/diagnostics.rs` runs them. The unit tests check the
+  CPU against the manual; the diagnostics check it against the chip.
 - [ ] **Disassembler.** `impl Display for Instruction`, so a trace shows
   `MVI A,42H` and not raw bytes. It helps to find the instruction where a
   diagnostic fails.
@@ -157,8 +153,17 @@ to devices through ports with the `IN` and `OUT` instructions.
 **CP/M.** The most popular operating system for 8080 and Z80 computers in the
 late 1970s. It runs programs stored as `.COM` files.
 
+**BDOS (Basic Disk Operating System).** The part of CP/M that programs call
+for files and the console, with `CALL 0005H`. It calls the BIOS, which drives
+the hardware.
+
+**TPA (Transient Program Area).** The memory where CP/M loads and runs a
+program, from `0100H` up to CP/M itself. A program stays there only while it
+runs; the next one replaces it.
+
 **HLE (high-level emulation).** Emulating what an operating system does
-instead of the hardware it runs on. `cpm` works this way.
+instead of the hardware it runs on. The diagnostics test uses it for two
+CP/M system calls.
 
 **S-100.** The Altair's 100-pin expansion bus. Other manufacturers copied it,
 and it became an industry standard.

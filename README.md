@@ -4,7 +4,7 @@ An Intel 8080 emulator written in Rust, built to run the MITS Altair 8800:
 from Altair BASIC in your terminal to a real CP/M booted from a floppy image.
 
 > **Status:** early work in progress. The CPU core runs every instruction
-> and awaits the diagnostic programs. No machine runs yet.
+> and passes all four diagnostic programs. No machine runs yet.
 
 ## Roadmap
 
@@ -21,7 +21,6 @@ from Altair BASIC in your terminal to a real CP/M booted from a floppy image.
 | Crate                     | What it is                                                                                            |
 |---------------------------|-------------------------------------------------------------------------------------------------------|
 | [`i8080`](crates/i8080)   | The CPU core. `no_std`, no dependencies, knows nothing about any machine.                             |
-| [`cpm`](crates/cpm)       | A minimal CP/M environment that runs `.COM` programs without emulated hardware. Used to test the CPU. |
 | [`altair`](crates/altair) | Altair 8800 hardware: the S-100 backplane and its cards.                                              |
 | [`app`](crates/app)       | The `altair` command-line program.                                                                    |
 
@@ -43,6 +42,13 @@ cargo test
 This repository contains no copyrighted software. The CPU diagnostic
 programs go into [`roms/`](roms), which is ignored by git.
 See [roms/README.md](roms/README.md) for what goes there.
+
+`cargo test` runs TST8080, 8080PRE and CPUTEST. 8080EXM takes minutes in a
+debug build, so you run it on its own:
+
+```sh
+cargo test --release -p i8080 --test diagnostics -- --ignored
+```
 
 ## References
 

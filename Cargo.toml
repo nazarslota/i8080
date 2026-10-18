@@ -10,7 +10,6 @@ license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 i8080 = { path = "crates/i8080" }
-cpm = { path = "crates/cpm" }
 altair = { path = "crates/altair" }
 
 [workspace.lints.rust]
