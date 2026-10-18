@@ -1,11 +1,8 @@
 # i8080
 
-An Intel 8080 emulator written in Rust, built to run the MITS Altair 8800:
-from Altair BASIC in your terminal to a real CP/M booted from a floppy image.
-
-> **Status:** work in progress. The CPU core passes all four diagnostic
-> programs, and the Altair runs Altair BASIC in your terminal, loaded from
-> its original paper tape, and CP/M 2.2 boots from a floppy image.
+An Intel 8080 emulator in Rust that runs the MITS Altair 8800 in your
+terminal: Altair BASIC from its original paper tape, and CP/M 2.2 from its
+original floppy image.
 
 ## Roadmap
 
@@ -21,6 +18,44 @@ from Altair BASIC in your terminal to a real CP/M booted from a floppy image.
   disassembler for execution traces.
 - [ ] Later: a window with a retro monitor, the front panel, Space Invaders.
 
+## Quick start
+
+You need Rust 1.99 or newer, and the tapes, the boot loader and the disk
+image in [`roms/`](roms). This repository ships no copyrighted software;
+[roms/README.md](roms/README.md) says where to get each file.
+
+```sh
+cargo run --release -- basic 8k-4.0 "roms/8K BASIC Ver 4-0.tap"   # Altair BASIC
+cp roms/cpm22b23-56k.dsk a.dsk
+cargo run --release -- cpm a.dsk                                   # CP/M
+cargo run --release -- image roms/hello.bin                        # a memory image
+```
+
+Press Ctrl+] to quit. `altair --help` lists every command and option.
+
+`cargo test` runs the tests and three CPU diagnostics. The fourth, 8080EXM,
+takes minutes in a debug build, so it runs on its own:
+
+```sh
+cargo test --release -p i8080 --test diagnostics -- --ignored
+```
+
+## Documentation
+
+| Read                                                          | To learn                                               |
+|---------------------------------------------------------------|--------------------------------------------------------|
+| [guide/basic.md](docs/guide/basic.md)                         | how to run Altair BASIC                                |
+| [guide/cpm.md](docs/guide/cpm.md)                             | how to run CP/M, add disks and copy programs onto them |
+| [architecture.md](docs/architecture.md)                       | how the code splits into layers, and why               |
+| [boot.md](docs/boot.md)                                       | what happens between RUN and `OK` or `A>`              |
+| [altair/front-panel.md](docs/altair/front-panel.md)           | the Altair's switches and lights                       |
+| [altair/memory-and-ports.md](docs/altair/memory-and-ports.md) | the memory map and the I/O ports                       |
+| [i8080/instructions.md](docs/i8080/instructions.md)           | every 8080 instruction                                 |
+| [glossary.md](docs/glossary.md)                               | PROM, BDOS, sense switches and the other terms         |
+
+`cargo doc --open` documents the code, with an example for each public
+function.
+
 ## Workspace
 
 | Crate                     | What it is                                                                |
@@ -28,134 +63,6 @@ from Altair BASIC in your terminal to a real CP/M booted from a floppy image.
 | [`i8080`](crates/i8080)   | The CPU core. `no_std`, no dependencies, knows nothing about any machine. |
 | [`altair`](crates/altair) | Altair 8800 hardware: the S-100 backplane and its cards.                  |
 | [`app`](app)              | The `altair` command-line program.                                        |
-
-See [docs/architecture.md](docs/architecture.md) for how the pieces fit
-together, [docs/i8080/instructions.md](docs/i8080/instructions.md) for the
-instruction set of the 8080,
-[docs/altair/memory-and-ports.md](docs/altair/memory-and-ports.md) for the
-memory map and the I/O ports, and
-[docs/altair/front-panel.md](docs/altair/front-panel.md) for the Altair's
-switches and lights.
-
-## Building
-
-Requires Rust 1.99 or newer.
-
-```sh
-cargo build
-cargo test
-```
-
-## Running
-
-Load Altair BASIC from its paper tape:
-
-```sh
-cargo run --release -- basic 8k-4.0 "roms/8K BASIC Ver 4-0.tap"
-```
-
-The emulator toggles in the MITS bootstrap loader for that BASIC, and the
-loader reads the tape through the 88-2SIO serial card. You name the BASIC
-first: `4k-4.0`, `8k-4.0`, `extended-4.0` or `extended-4.1`. Press Ctrl+]
-to quit.
-
-BASIC then asks a few questions. Keep Caps Lock on: BASIC wants capitals.
-
-| Question                | Answer                                      |
-|-------------------------|---------------------------------------------|
-| `MEMORY SIZE?`          | Enter, for all the memory                   |
-| `TERMINAL WIDTH?`       | Enter, for 72 columns (4K and 8K)           |
-| `LINEPRINTER?`          | `O` (Extended): the emulator has no printer |
-| `WANT SIN-COS-TAN-ATN?` | `Y` keeps the functions, `N` drops them     |
-
-In 4K BASIC the last question splits into `SIN?`, `SQR?` and `RND?`.
-
-```text
-OK
-10 FOR I=1 TO 3
-20 PRINT "HELLO";I
-30 NEXT I
-RUN
-HELLO 1
-HELLO 2
-HELLO 3
-OK
-```
-
-Boot CP/M 2.2 from a floppy image. The emulator writes each change to the
-image file at once, so copy the image first and boot the copy:
-
-```sh
-cp roms/cpm22b23-56k.dsk a.dsk
-cargo run --release -- cpm a.dsk
-```
-
-The emulator installs the MITS disk boot loader, `roms/DBL.HEX`, as a PROM
-at FF00H, inserts `a.dsk` in drive A: and starts the CPU at FF00H. The
-loader reads CP/M from the disk, and CP/M greets you with `A>`. The files
-you create in CP/M stay in `a.dsk`. Git ignores it, and you start over with
-a fresh `cp`.
-
-| Command           | What it does                                     |
-|-------------------|--------------------------------------------------|
-| `DIR`             | lists the files on the disk                      |
-| `TYPE IOBYTE.TXT` | shows a text file                                |
-| `STAT`            | shows the free space                             |
-| `MBASIC`          | starts Microsoft BASIC; `SYSTEM` returns to `A>` |
-| `ERA X.COM`       | erases a file                                    |
-| `B:`              | switches to drive B:                             |
-
-Ctrl+C at `A>` reloads CP/M from the disk. Backspace erases a character:
-the emulator sends Ctrl+H for it, as CP/M and MBASIC expect.
-
-The CP/M disk has 26 KB free. For your own programs, make an empty disk for
-drive B:, copy files onto it and boot with both disks:
-
-```sh
-cargo run --release -- disk format b.dsk
-cargo run --release -- disk put b.dsk roms/TST8080.COM roms/CPUTEST.COM
-cargo run --release -- disk ls b.dsk
-cargo run --release -- cpm a.dsk b.dsk
-```
-
-```text
-A>B:TST8080
-MICROCOSM ASSOCIATES 8080/8085 CPU DIAGNOSTIC
- VERSION 1.0  (C) 1980
-
- CPU IS OPERATIONAL
-```
-
-An empty disk holds 296 KB. `put` keeps the file name in capitals and
-replaces a file with the same name. You can name up to four disks, for A:
-to D:. A disk from `format` holds no system, so CP/M can't boot from it.
-On a drive without a disk, CP/M prints `Bdos Err On C: Bad Sector`, and
-Ctrl+C brings back `A>`.
-
-CPUTEST computes for minutes at the 2 MHz of the real Altair. Add `--fast`
-to run the CPU as fast as your computer can:
-
-```sh
-cargo run --release -- --fast cpm a.dsk b.dsk
-```
-
-You can also load a memory image at 0000H with
-`cargo run --release -- image roms/hello.bin`. Run `altair --help` for every
-option.
-
-## ROMs and disk images
-
-This repository contains no copyrighted software. You put the CPU
-diagnostic programs, the BASIC tapes, the boot loader and the CP/M disk into
-[`roms/`](roms), which git ignores.
-See [roms/README.md](roms/README.md) for what goes there.
-
-`cargo test` runs TST8080, 8080PRE and CPUTEST. 8080EXM takes minutes in a
-debug build, so you run it on its own:
-
-```sh
-cargo test --release -p i8080 --test diagnostics -- --ignored
-```
 
 ## References
 

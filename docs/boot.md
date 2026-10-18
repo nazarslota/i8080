@@ -1,0 +1,154 @@
+# How the Altair boots
+
+A new Altair had nothing in memory: no ROM, no monitor. Its owner put a
+first program in by hand with the front panel switches, and that program
+loaded the next one. `app` does the same steps for you. Each way to boot
+starts with EXAMINE and RUN at a different address:
+
+| Command        | What the owner brought                 | RUN at | What runs first      |
+|----------------|----------------------------------------|--------|----------------------|
+| `altair image` | a program, toggled in byte by byte     | 0000H  | the program          |
+| `altair basic` | a paper tape, and a 28-byte loader     | 0000H  | the bootstrap loader |
+| `altair cpm`   | a PROM card with DBL, and floppy disks | FF00H  | the disk boot loader |
+
+A memory image needs no loader: it runs as soon as RUN lets the CPU go.
+The other two load in three programs, each loading the next.
+
+## BASIC loads from a paper tape
+
+The addresses below are those of 8K BASIC 4.0; the other versions move the
+checksum loader to another page.
+
+```mermaid
+sequenceDiagram
+    participant App as app
+    participant Mem as memory
+    participant CPU
+    participant Sio as Sio2 and Console
+    participant Sw as FrontPanel
+    App ->> Mem: toggle in the bootstrap loader at 0000H
+    App ->> CPU: EXAMINE 0000H, RUN
+    Note over CPU: 1. bootstrap loader, 28 bytes
+    loop until the checksum loader is in
+        CPU ->> Sio: IN 10H, IN 11H
+        Sio -->> CPU: the next tape byte
+    end
+    CPU ->> Mem: checksum loader at 1F00H-1FC1H
+    CPU ->> CPU: PCHL to 1F00H
+    Note over CPU: 2. checksum loader, 194 bytes
+    CPU ->> Sw: IN 0FFH: which card carries the tape?
+    Sw -->> CPU: 00H, the 88-2SIO
+    loop every record
+        CPU ->> Sio: IN 11H
+        CPU ->> Mem: BASIC
+    end
+    CPU ->> CPU: Go record: jump to 0000H
+    Note over CPU: 3. Altair BASIC
+    CPU ->> Sw: IN 0FFH: which card has the terminal?
+    Sw -->> CPU: 00H, the 88-2SIO
+    CPU ->> Sio: OUT 11H: MEMORY SIZE?
+```
+
+1. **The bootstrap loader.** The owner toggled these 28 bytes in with the
+   front panel switches, and `app` does the same through `FrontPanel`. The
+   loader skips the tape's leader, bytes of `C2H`, and stores the next 194 bytes downward
+   from 1FC1H. Then it jumps to them.
+2. **The checksum loader.** It reads the sense switches to learn which card
+   carries the tape, then reads BASIC in records. Each record holds `3CH`, a
+   byte count, a load address, the data and a checksum. A bad checksum stops
+   the load with a `C`. A Go record, `78H` and an address, ends the tape.
+   With the switches at `FFH` the loader finds no card it knows and prints
+   `I` again and again.
+3. **Altair BASIC.** It reads the switches again to find the terminal and
+   asks `MEMORY SIZE?`. The tape has run out, so your keys answer.
+
+Memory at each stage:
+
+```text
+               bootstrap        checksum loader    BASIC
+               loader runs      runs               runs
+0000H-001BH    bootstrap        bootstrap          BASIC
+001CH-1EFFH    zeros            BASIC arrives      BASIC, your program
+1F00H-1FC1H    zeros            checksum loader    free memory
+1FC2H-FFFFH    zeros            zeros              free memory
+```
+
+The record for 0000H comes last on the tape, so the bootstrap loader stays in
+memory until the rest of BASIC is in. Martin Eberhard describes the loaders
+and the tape format in
+[Loading Basic with the 88-2SIO Board](https://deramp.com/downloads/mfe_archive/010-S100%20Computers%20and%20Boards/00-MITS/10-MITS%20S100%20Boards/88-2SIO%20Dual%20Serial%20Board/Loading%20Basic%20with%20the%2088-2SIO%20Board.pdf)
+and
+[Altair Software Development using CP/M](https://deramp.com/downloads/altair/software/papertape_cassette/Checksum%20Loader/Altair%20Paper%20Tape%20Format.pdf).
+
+## CP/M boots from a floppy
+
+The three programs here are the disk boot loader (DBL) in the PROM, the
+cold boot loader from the disk, and CP/M itself. The addresses below
+are those of the 56 KB CP/M 2.2b.
+
+```mermaid
+sequenceDiagram
+    participant App as app
+    participant CPU
+    participant Mem as memory
+    participant Disk as Dcdd
+    participant Sio as Sio2 and Console
+    App ->> CPU: EXAMINE FF00H, RUN
+    Note over CPU: 1. DBL in the PROM
+    CPU ->> Mem: copy DBL from FF00H to 2C00H
+    CPU ->> CPU: JMP 2C00H
+    Note over CPU: 2. DBL in RAM
+    CPU ->> Disk: OUT 08H, OUT 09H: select drive 0, load the head
+    CPU ->> Disk: OUT 09H: step out to track 0
+    loop every sector of the cold boot loader
+        CPU ->> Disk: IN 09H until the sector comes up
+        CPU ->> Disk: IN 0AH, the bytes of the sector
+        CPU ->> Mem: the data, from 0000H up
+    end
+    CPU ->> Disk: OUT 08H: deselect the drive
+    CPU ->> CPU: JMP 0000H
+    Note over CPU: 3. cold boot loader
+    loop the rest of tracks 0 and 1
+        CPU ->> Disk: IN 09H, IN 0AH
+        CPU ->> Mem: CP/M, from B100H up
+    end
+    CPU ->> CPU: JMP C700H, the BIOS
+    Note over CPU: 4. CP/M
+    CPU ->> Sio: OUT 11H: the banner and A>
+```
+
+1. **DBL in the PROM.** `app` examines FF00H and presses RUN. DBL copies
+   itself to 2C00H and jumps there. Its source explains why: the EPROM
+   answered too slow for the disk.
+2. **DBL in RAM.** It selects drive 0, loads the head and steps out to
+   track 0. Then it reads sectors and moves their data into memory from 0000H
+   up, as many bytes as the count in the sector header says. A bad
+   checksum makes DBL read the sector again, and after sixteen tries it
+   stops with a `C`. At the end it deselects the drive and jumps to 0000H.
+3. **The cold boot loader.** Mike Douglas wrote it for this CP/M. It reads
+   the CP/M image from the rest of the two system tracks into high memory
+   and jumps to the BIOS.
+4. **CP/M.** The BIOS sets up the 88-2SIO, prints the banner and starts the
+   CCP, which prints `A>` and waits for your command.
+
+Memory once CP/M runs:
+
+```text
+0000H-00FFH    page zero: the cold boot loader during the boot, then
+               the jumps to the BIOS and the BDOS
+0100H-B0FFH    the TPA, where CP/M runs your program; DBL works at
+               2C00H during the boot
+B100H-B8FFH    the CCP, the command line
+B900H-C6FFH    the BDOS
+C700H-DFFFH    the BIOS for the 8-inch floppy
+E000H-FEFFH    RAM that this CP/M leaves unused
+FF00H-FFFFH    the PROM with DBL
+```
+
+DBL comes from [DBL.ASM](https://deramp.com/downloads/altair/software/roms/orginal_roms/DBL.ASM),
+which Martin Eberhard disassembled from a MITS EPROM. The cold boot loader
+and the memory layout come from
+[BOOT.ASM](https://deramp.com/downloads/altair/software/8_inch_floppy/CPM/CPM%202.2/CPM%202.2B/BOOT.ASM)
+and
+[BIOS.ASM](https://deramp.com/downloads/altair/software/8_inch_floppy/CPM/CPM%202.2/CPM%202.2B/BIOS.ASM)
+by Mike Douglas.

@@ -30,12 +30,12 @@ A 16-bit address gives 65,536 bytes, from 0000H to FFFFH. The high byte of
 an address names a page of 256 bytes: FF00H to FFFFH make up page FFH, the
 top page.
 
-`app` plugs in two RAM cards. When you boot from a disk, a PROM card with
-the disk boot loader takes the top page, and the second RAM card stops
-below it:
+`app` plugs in two RAM cards. When you boot CP/M, a PROM card with the
+disk boot loader takes the top page, and the second RAM card stops below
+it:
 
 ```text
-         image, tape                     disk
+         image, basic                    cpm
 0000H  ┌──────────────────────┐        ┌──────────────────────┐
        │ Ram, 32 KB           │        │ Ram, 32 KB           │
 7FFFH  ├──────────────────────┤        ├──────────────────────┤
@@ -55,9 +55,8 @@ FFFFH  └──────────────────────┘ 
 
 DBL fills the 256 bytes of the PROM, and MITS built it for FF00H: its first
 instruction, `LXI H,FF13H`, points into that page. `app/src/machine.rs`
-names each range: `LOW_RAM`, `HIGH_RAM`, `HIGH_RAM_BELOW_PROM` and
-`PROM_ADDRESS`. `PROGRAM_ADDRESS`, 0000H, is where `app` toggles in an image
-or a bootstrap loader and starts the CPU.
+names the ranges `LOW_RAM`, `HIGH_RAM` and `HIGH_RAM_BELOW_PROM`, and the
+PROM's address `PROM_ADDRESS`.
 
 ### Why the PROM sits at the top
 

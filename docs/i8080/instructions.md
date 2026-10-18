@@ -2,14 +2,12 @@
 
 The full 8080 instruction set, grouped the way the
 [Intel 8080 Microcomputer Systems User's Manual](https://bitsavers.org/components/intel/MCS80/98-153B_Intel_8080_Microcomputer_Systems_Users_Manual_197509.pdf)
-groups it. The catalog shows what each instruction does and whether the
-emulator supports it yet. Details follow for the instructions the emulator
-runs.
+groups it. The catalog lists every instruction on one line, and the
+details show its opcodes, its flags and a short program with the registers
+after each step. The emulator runs them all.
 
-After you change an instruction, update its status in the catalog, its
-section under [Details](#details) and its link in [Contents](#contents).
-
-**Status:** ✅ supported · ⬜ not yet
+After you change an instruction, update its catalog row, its section under
+[Details](#details) and its link in [Contents](#contents).
 
 ## Contents
 
@@ -21,16 +19,11 @@ section under [Details](#details) and its link in [Contents](#contents).
     - [Branch](#branch)
     - [Stack, I/O and machine control](#stack-io-and-machine-control)
 - [Details](#details)
-    - Data transfer: [`MOV`](#mov-copy-a-byte) · [`MVI`](#mvi-load-a-constant-byte) · [`LXI`](#lxi-load-a-register-pair) · [`LDA`](#lda-load-a-from-an-address) · [`STA`](#sta-store-a-at-an-address) · [`LHLD`](#lhld-load-hl-from-an-address) · [
-      `SHLD`](#shld-store-hl-at-an-address) · [`LDAX`](#ldax-load-a-through-bc-or-de) · [`STAX`](#stax-store-a-through-bc-or-de) · [`XCHG`](#xchg-swap-hl-and-de)
-    - Arithmetic: [`ADD`](#add-add-to-the-accumulator) · [`ADI…CPI`](#adi-aci-sui-sbi-ani-xri-ori-cpi-arithmetic-and-logic-with-a-constant) · [`ADC`](#adc-add-with-carry) · [`SUB`](#sub-subtract-from-the-accumulator) · [
-      `SBB`](#sbb-subtract-with-borrow) · [`INR`](#inr-increment) · [`DCR`](#dcr-decrement) · [`INX`](#inx-increment-a-register-pair) · [`DCX`](#dcx-decrement-a-register-pair) · [`DAD`](#dad-add-a-register-pair-to-hl) · [`DAA`](#daa-decimal-adjust-a)
-    - Logical: [`ANA`](#ana-and-with-the-accumulator) · [`XRA`](#xra-exclusive-or-with-the-accumulator) · [`ORA`](#ora-or-with-the-accumulator) · [`CMP`](#cmp-compare-with-the-accumulator) · [`RLC…RAR`](#rlc-rrc-ral-rar-rotate-a) · [
-      `CMA`](#cma-complement-a) · [`CMC`](#cmc-complement-carry) · [`STC`](#stc-set-carry)
-    - Branch: [`JMP`](#jmp-jump) · [`Jcc`](#jcc-jump-if-a-condition-holds) · [`CALL`](#call-call-a-subroutine) · [`Ccc`](#ccc-call-if-a-condition-holds) · [`RET`](#ret-return-from-a-subroutine) · [`Rcc`](#rcc-return-if-a-condition-holds) · [
-      `RST`](#rst-restart) · [`PCHL`](#pchl-jump-to-the-address-in-hl)
-    - Stack, I/O and machine control: [`PUSH`](#push-push-onto-the-stack) · [`POP`](#pop-pop-from-the-stack) · [`XTHL`](#xthl-swap-hl-with-the-top-of-the-stack) · [`SPHL`](#sphl-copy-hl-into-sp) · [`IN`](#in-read-an-io-port) · [
-      `OUT`](#out-write-an-io-port) · [`EI`](#ei-enable-interrupts) · [`DI`](#di-disable-interrupts) · [`HLT`](#hlt-stop-the-cpu) · [`NOP`](#nop-do-nothing)
+    - Data transfer: [`MOV`](#mov-copy-a-byte) · [`MVI`](#mvi-load-a-constant-byte) · [`LXI`](#lxi-load-a-register-pair) · [`LDA`](#lda-load-a-from-an-address) · [`STA`](#sta-store-a-at-an-address) · [`LHLD`](#lhld-load-hl-from-an-address) · [`SHLD`](#shld-store-hl-at-an-address) · [`LDAX`](#ldax-load-a-through-bc-or-de) · [`STAX`](#stax-store-a-through-bc-or-de) · [`XCHG`](#xchg-swap-hl-and-de)
+    - Arithmetic: [`ADD`](#add-add-to-the-accumulator) · [`ADI…CPI`](#adi-aci-sui-sbi-ani-xri-ori-cpi-arithmetic-and-logic-with-a-constant) · [`ADC`](#adc-add-with-carry) · [`SUB`](#sub-subtract-from-the-accumulator) · [`SBB`](#sbb-subtract-with-borrow) · [`INR`](#inr-increment) · [`DCR`](#dcr-decrement) · [`INX`](#inx-increment-a-register-pair) · [`DCX`](#dcx-decrement-a-register-pair) · [`DAD`](#dad-add-a-register-pair-to-hl) · [`DAA`](#daa-decimal-adjust-a)
+    - Logical: [`ANA`](#ana-and-with-the-accumulator) · [`XRA`](#xra-exclusive-or-with-the-accumulator) · [`ORA`](#ora-or-with-the-accumulator) · [`CMP`](#cmp-compare-with-the-accumulator) · [`RLC…RAR`](#rlc-rrc-ral-rar-rotate-a) · [`CMA`](#cma-complement-a) · [`CMC`](#cmc-complement-carry) · [`STC`](#stc-set-carry)
+    - Branch: [`JMP`](#jmp-jump) · [`Jcc`](#jcc-jump-if-a-condition-holds) · [`CALL`](#call-call-a-subroutine) · [`Ccc`](#ccc-call-if-a-condition-holds) · [`RET`](#ret-return-from-a-subroutine) · [`Rcc`](#rcc-return-if-a-condition-holds) · [`RST`](#rst-restart) · [`PCHL`](#pchl-jump-to-the-address-in-hl)
+    - Stack, I/O and machine control: [`PUSH`](#push-push-onto-the-stack) · [`POP`](#pop-pop-from-the-stack) · [`XTHL`](#xthl-swap-hl-with-the-top-of-the-stack) · [`SPHL`](#sphl-copy-hl-into-sp) · [`IN`](#in-read-an-io-port) · [`OUT`](#out-write-an-io-port) · [`EI`](#ei-enable-interrupts) · [`DI`](#di-disable-interrupts) · [`HLT`](#hlt-stop-the-cpu) · [`NOP`](#nop-do-nothing)
 
 ## Notation
 
@@ -52,85 +45,85 @@ applies when the condition holds.
 
 ### Data transfer
 
-| Instruction | Bytes | Cycles | Flags | What it does                                 | Status |
-|-------------|-------|--------|-------|----------------------------------------------|--------|
-| `MOV r,r`   | 1     | 5 / 7  | none  | Copies a byte between registers and `M`      | ✅     |
-| `MVI r,n`   | 2     | 7 / 10 | none  | Loads a constant byte into a register or `M` | ✅     |
-| `LXI rp,nn` | 3     | 10     | none  | Loads a 16-bit constant into a register pair | ✅     |
-| `LDA nn`    | 3     | 13     | none  | Loads `A` from address `nn`                  | ✅     |
-| `STA nn`    | 3     | 13     | none  | Stores `A` at address `nn`                   | ✅     |
-| `LHLD nn`   | 3     | 16     | none  | Loads `L` from `nn` and `H` from `nn + 1`    | ✅     |
-| `SHLD nn`   | 3     | 16     | none  | Stores `L` at `nn` and `H` at `nn + 1`       | ✅     |
-| `LDAX rp`   | 1     | 7      | none  | Loads `A` from the address in `BC` or `DE`   | ✅     |
-| `STAX rp`   | 1     | 7      | none  | Stores `A` at the address in `BC` or `DE`    | ✅     |
-| `XCHG`      | 1     | 4      | none  | Swaps `HL` and `DE`                          | ✅     |
+| Instruction | Bytes | Cycles | Flags | What it does                                 |
+|-------------|-------|--------|-------|----------------------------------------------|
+| `MOV r,r`   | 1     | 5 / 7  | none  | Copies a byte between registers and `M`      |
+| `MVI r,n`   | 2     | 7 / 10 | none  | Loads a constant byte into a register or `M` |
+| `LXI rp,nn` | 3     | 10     | none  | Loads a 16-bit constant into a register pair |
+| `LDA nn`    | 3     | 13     | none  | Loads `A` from address `nn`                  |
+| `STA nn`    | 3     | 13     | none  | Stores `A` at address `nn`                   |
+| `LHLD nn`   | 3     | 16     | none  | Loads `L` from `nn` and `H` from `nn + 1`    |
+| `SHLD nn`   | 3     | 16     | none  | Stores `L` at `nn` and `H` at `nn + 1`       |
+| `LDAX rp`   | 1     | 7      | none  | Loads `A` from the address in `BC` or `DE`   |
+| `STAX rp`   | 1     | 7      | none  | Stores `A` at the address in `BC` or `DE`    |
+| `XCHG`      | 1     | 4      | none  | Swaps `HL` and `DE`                          |
 
 ### Arithmetic
 
-| Instruction | Bytes | Cycles | Flags       | What it does                            | Status |
-|-------------|-------|--------|-------------|-----------------------------------------|--------|
-| `ADD r`     | 1     | 4 / 7  | S Z AC P CY | `A = A + r`                             | ✅     |
-| `ADI n`     | 2     | 7      | S Z AC P CY | `A = A + n`                             | ✅     |
-| `ADC r`     | 1     | 4 / 7  | S Z AC P CY | `A = A + r + CY`                        | ✅     |
-| `ACI n`     | 2     | 7      | S Z AC P CY | `A = A + n + CY`                        | ✅     |
-| `SUB r`     | 1     | 4 / 7  | S Z AC P CY | `A = A - r`                             | ✅     |
-| `SUI n`     | 2     | 7      | S Z AC P CY | `A = A - n`                             | ✅     |
-| `SBB r`     | 1     | 4 / 7  | S Z AC P CY | `A = A - r - CY`                        | ✅     |
-| `SBI n`     | 2     | 7      | S Z AC P CY | `A = A - n - CY`                        | ✅     |
-| `INR r`     | 1     | 5 / 10 | S Z AC P    | `r = r + 1`, carry unchanged            | ✅     |
-| `DCR r`     | 1     | 5 / 10 | S Z AC P    | `r = r - 1`, carry unchanged            | ✅     |
-| `INX rp`    | 1     | 5      | none        | `rp = rp + 1`                           | ✅     |
-| `DCX rp`    | 1     | 5      | none        | `rp = rp - 1`                           | ✅     |
-| `DAD rp`    | 1     | 10     | CY          | `HL = HL + rp`                          | ✅     |
-| `DAA`       | 1     | 4      | S Z AC P CY | Adjusts `A` to two decimal digits (BCD) | ✅     |
+| Instruction | Bytes | Cycles | Flags       | What it does                            |
+|-------------|-------|--------|-------------|-----------------------------------------|
+| `ADD r`     | 1     | 4 / 7  | S Z AC P CY | `A = A + r`                             |
+| `ADI n`     | 2     | 7      | S Z AC P CY | `A = A + n`                             |
+| `ADC r`     | 1     | 4 / 7  | S Z AC P CY | `A = A + r + CY`                        |
+| `ACI n`     | 2     | 7      | S Z AC P CY | `A = A + n + CY`                        |
+| `SUB r`     | 1     | 4 / 7  | S Z AC P CY | `A = A - r`                             |
+| `SUI n`     | 2     | 7      | S Z AC P CY | `A = A - n`                             |
+| `SBB r`     | 1     | 4 / 7  | S Z AC P CY | `A = A - r - CY`                        |
+| `SBI n`     | 2     | 7      | S Z AC P CY | `A = A - n - CY`                        |
+| `INR r`     | 1     | 5 / 10 | S Z AC P    | `r = r + 1`, carry unchanged            |
+| `DCR r`     | 1     | 5 / 10 | S Z AC P    | `r = r - 1`, carry unchanged            |
+| `INX rp`    | 1     | 5      | none        | `rp = rp + 1`                           |
+| `DCX rp`    | 1     | 5      | none        | `rp = rp - 1`                           |
+| `DAD rp`    | 1     | 10     | CY          | `HL = HL + rp`                          |
+| `DAA`       | 1     | 4      | S Z AC P CY | Adjusts `A` to two decimal digits (BCD) |
 
 ### Logical
 
-| Instruction | Bytes | Cycles | Flags       | What it does                       | Status |
-|-------------|-------|--------|-------------|------------------------------------|--------|
-| `ANA r`     | 1     | 4 / 7  | S Z AC P CY | `A = A AND r`                      | ✅     |
-| `ANI n`     | 2     | 7      | S Z AC P CY | `A = A AND n`                      | ✅     |
-| `XRA r`     | 1     | 4 / 7  | S Z AC P CY | `A = A XOR r`                      | ✅     |
-| `XRI n`     | 2     | 7      | S Z AC P CY | `A = A XOR n`                      | ✅     |
-| `ORA r`     | 1     | 4 / 7  | S Z AC P CY | `A = A OR r`                       | ✅     |
-| `ORI n`     | 2     | 7      | S Z AC P CY | `A = A OR n`                       | ✅     |
-| `CMP r`     | 1     | 4 / 7  | S Z AC P CY | Sets flags from `A - r`, keeps `A` | ✅     |
-| `CPI n`     | 2     | 7      | S Z AC P CY | Sets flags from `A - n`, keeps `A` | ✅     |
-| `RLC`       | 1     | 4      | CY          | Rotates `A` left, bit 7 into `CY`  | ✅     |
-| `RRC`       | 1     | 4      | CY          | Rotates `A` right, bit 0 into `CY` | ✅     |
-| `RAL`       | 1     | 4      | CY          | Rotates `A` left through `CY`      | ✅     |
-| `RAR`       | 1     | 4      | CY          | Rotates `A` right through `CY`     | ✅     |
-| `CMA`       | 1     | 4      | none        | Inverts every bit of `A`           | ✅     |
-| `CMC`       | 1     | 4      | CY          | Inverts `CY`                       | ✅     |
-| `STC`       | 1     | 4      | CY          | Sets `CY` to 1                     | ✅     |
+| Instruction | Bytes | Cycles | Flags       | What it does                       |
+|-------------|-------|--------|-------------|------------------------------------|
+| `ANA r`     | 1     | 4 / 7  | S Z AC P CY | `A = A AND r`                      |
+| `ANI n`     | 2     | 7      | S Z AC P CY | `A = A AND n`                      |
+| `XRA r`     | 1     | 4 / 7  | S Z AC P CY | `A = A XOR r`                      |
+| `XRI n`     | 2     | 7      | S Z AC P CY | `A = A XOR n`                      |
+| `ORA r`     | 1     | 4 / 7  | S Z AC P CY | `A = A OR r`                       |
+| `ORI n`     | 2     | 7      | S Z AC P CY | `A = A OR n`                       |
+| `CMP r`     | 1     | 4 / 7  | S Z AC P CY | Sets flags from `A - r`, keeps `A` |
+| `CPI n`     | 2     | 7      | S Z AC P CY | Sets flags from `A - n`, keeps `A` |
+| `RLC`       | 1     | 4      | CY          | Rotates `A` left, bit 7 into `CY`  |
+| `RRC`       | 1     | 4      | CY          | Rotates `A` right, bit 0 into `CY` |
+| `RAL`       | 1     | 4      | CY          | Rotates `A` left through `CY`      |
+| `RAR`       | 1     | 4      | CY          | Rotates `A` right through `CY`     |
+| `CMA`       | 1     | 4      | none        | Inverts every bit of `A`           |
+| `CMC`       | 1     | 4      | CY          | Inverts `CY`                       |
+| `STC`       | 1     | 4      | CY          | Sets `CY` to 1                     |
 
 ### Branch
 
-| Instruction | Bytes | Cycles  | Flags | What it does                               | Status |
-|-------------|-------|---------|-------|--------------------------------------------|--------|
-| `JMP nn`    | 3     | 10      | none  | Jumps to `nn`                              | ✅     |
-| `Jcc nn`    | 3     | 10      | none  | Jumps to `nn` if condition `cc` holds      | ✅     |
-| `CALL nn`   | 3     | 17      | none  | Pushes `PC` and jumps to `nn`              | ✅     |
-| `Ccc nn`    | 3     | 17 / 11 | none  | Calls `nn` if condition `cc` holds         | ✅     |
-| `RET`       | 1     | 10      | none  | Pops `PC`, returning from a call           | ✅     |
-| `Rcc`       | 1     | 11 / 5  | none  | Returns if condition `cc` holds            | ✅     |
-| `RST n`     | 1     | 11      | none  | Calls address `8 × n`, for `n` from 0 to 7 | ✅     |
-| `PCHL`      | 1     | 5       | none  | Jumps to the address in `HL`               | ✅     |
+| Instruction | Bytes | Cycles  | Flags | What it does                               |
+|-------------|-------|---------|-------|--------------------------------------------|
+| `JMP nn`    | 3     | 10      | none  | Jumps to `nn`                              |
+| `Jcc nn`    | 3     | 10      | none  | Jumps to `nn` if condition `cc` holds      |
+| `CALL nn`   | 3     | 17      | none  | Pushes `PC` and jumps to `nn`              |
+| `Ccc nn`    | 3     | 17 / 11 | none  | Calls `nn` if condition `cc` holds         |
+| `RET`       | 1     | 10      | none  | Pops `PC`, returning from a call           |
+| `Rcc`       | 1     | 11 / 5  | none  | Returns if condition `cc` holds            |
+| `RST n`     | 1     | 11      | none  | Calls address `8 × n`, for `n` from 0 to 7 |
+| `PCHL`      | 1     | 5       | none  | Jumps to the address in `HL`               |
 
 ### Stack, I/O and machine control
 
-| Instruction | Bytes | Cycles | Flags              | What it does                                   | Status |
-|-------------|-------|--------|--------------------|------------------------------------------------|--------|
-| `PUSH rp`   | 1     | 11     | none               | Pushes `BC`, `DE`, `HL` or `PSW` (A and flags) | ✅     |
-| `POP rp`    | 1     | 10     | all, for `POP PSW` | Pops `BC`, `DE`, `HL` or `PSW`                 | ✅     |
-| `XTHL`      | 1     | 18     | none               | Swaps `HL` with the two bytes on top of stack  | ✅     |
-| `SPHL`      | 1     | 5      | none               | Copies `HL` into `SP`                          | ✅     |
-| `IN n`      | 2     | 10     | none               | Reads port `n` into `A`                        | ✅     |
-| `OUT n`     | 2     | 10     | none               | Writes `A` to port `n`                         | ✅     |
-| `EI`        | 1     | 4      | none               | Enables interrupts after the next instruction  | ✅     |
-| `DI`        | 1     | 4      | none               | Disables interrupts                            | ✅     |
-| `HLT`       | 1     | 7      | none               | Stops the CPU until an interrupt arrives       | ✅     |
-| `NOP`       | 1     | 4      | none               | Does nothing                                   | ✅     |
+| Instruction | Bytes | Cycles | Flags              | What it does                                   |
+|-------------|-------|--------|--------------------|------------------------------------------------|
+| `PUSH rp`   | 1     | 11     | none               | Pushes `BC`, `DE`, `HL` or `PSW` (A and flags) |
+| `POP rp`    | 1     | 10     | all, for `POP PSW` | Pops `BC`, `DE`, `HL` or `PSW`                 |
+| `XTHL`      | 1     | 18     | none               | Swaps `HL` with the two bytes on top of stack  |
+| `SPHL`      | 1     | 5      | none               | Copies `HL` into `SP`                          |
+| `IN n`      | 2     | 10     | none               | Reads port `n` into `A`                        |
+| `OUT n`     | 2     | 10     | none               | Writes `A` to port `n`                         |
+| `EI`        | 1     | 4      | none               | Enables interrupts after the next instruction  |
+| `DI`        | 1     | 4      | none               | Disables interrupts                            |
+| `HLT`       | 1     | 7      | none               | Stops the CPU until an interrupt arrives       |
+| `NOP`       | 1     | 4      | none               | Does nothing                                   |
 
 ## Details
 

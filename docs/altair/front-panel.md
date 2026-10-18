@@ -18,7 +18,7 @@ MITS floppy controller, two 16K memory cards, the 88-2SIO serial card, a
 PROM card and the 8080 CPU card.
 
 This page explains the switches and the lights, and how `altair::FrontPanel`
-emulates them.
+emulates them. [glossary.md](../glossary.md) explains the terms.
 
 ## The switches
 
@@ -110,13 +110,13 @@ The panel has no wire to the program counter. It controls the CPU through
 two things: the READY line, which makes the CPU wait, and the data bus. To
 change `PC`, it feeds the CPU an instruction:
 
-| Switch       | What the panel does                                                     |
-|--------------|-------------------------------------------------------------------------|
-| EXAMINE      | Puts `JMP` (`303`) on the data bus, then A0 to A7, then A8 to A15       |
-| EXAMINE NEXT | Puts `NOP` (`000`) on the data bus                                      |
-| DEPOSIT      | Puts A0 to A7 on the data bus and pulses MWRITE, without the CPU        |
-| DEPOSIT NEXT | Runs EXAMINE NEXT, then DEPOSIT                                         |
-| SINGLE STEP  | Releases READY for one machine cycle                                    |
+| Switch       | What the panel does                                               |
+|--------------|-------------------------------------------------------------------|
+| EXAMINE      | Puts `JMP` (`303`) on the data bus, then A0 to A7, then A8 to A15 |
+| EXAMINE NEXT | Puts `NOP` (`000`) on the data bus                                |
+| DEPOSIT      | Puts A0 to A7 on the data bus and pulses MWRITE, without the CPU  |
+| DEPOSIT NEXT | Runs EXAMINE NEXT, then DEPOSIT                                   |
+| SINGLE STEP  | Releases READY for one machine cycle                              |
 
 The CPU fetches the `JMP` as if it came from memory and jumps to the address
 on the switches. A `NOP` moves `PC` one byte on. The CPU then waits on the
@@ -129,7 +129,8 @@ pages 5 and 6.
 
 ## In the emulator
 
-`Altair::front_panel()` returns a `FrontPanel`, with one method per command:
+`altair::FrontPanel` has one method per switch, and its documentation shows
+an example for each:
 
 | Switch       | `FrontPanel` method |
 |--------------|---------------------|
@@ -143,15 +144,8 @@ pages 5 and 6.
 | SINGLE STEP  | `single_step()`     |
 | RESET        | `reset()`           |
 
-`examine` and `examine_next` feed the CPU a `JMP` or a `NOP` and let it
-execute, as the panel does. `reset` pulses the CPU's RESET pin, which also
-wakes a CPU that executed `HLT`. `single_step` executes a whole instruction,
-not one machine cycle.
-
-The four EXAMINE and DEPOSIT methods return the byte that the data lights
-show. `toggle_in(address, bytes)` presses EXAMINE, DEPOSIT and DEPOSIT NEXT
-for you, the way you would enter a program by hand.
-
-The emulator leaves out PROTECT, UNPROTECT and AUX, which no program we run
-needs, and has no lights to show yet. A window with the panel is on the
-roadmap.
+`toggle_in(address, bytes)` enters a program the way the steps above do.
+The emulator differs from the panel in three places: `single_step` executes
+a whole instruction, not one machine cycle; PROTECT, UNPROTECT and AUX are
+missing, since no program here needs them; and the lights exist only as the
+byte each EXAMINE and DEPOSIT method returns.
