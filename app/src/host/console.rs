@@ -1,4 +1,24 @@
 //! Your terminal window as the [`Terminal`] at the end of the serial cable.
+//!
+//! ```text
+//!   keyboard ──► thread ──► channel ──┐
+//!                                     ├──► receive() ──► 88-2SIO ──► the program
+//!   paper tape ───────────────────────┘    tape first, then keys
+//!
+//!   the program ──► 88-2SIO ──► send() ──► your screen
+//! ```
+//!
+//! The thread drops non-ASCII bytes, turns Backspace into the erase key the
+//! program expects, and sets the quit flag on Ctrl+].
+//!
+//! ```
+//! use altair::cards::Terminal;
+//! use app::host::console::{Console, RUBOUT_KEY};
+//!
+//! let (mut console, _quit) = Console::start(b"10 PRINT", RUBOUT_KEY);
+//!
+//! assert_eq!(console.receive(), Some(b'1')); // the tape comes before your keys
+//! ```
 
 use std::collections::VecDeque;
 use std::io::{self, Read, Stdout, Write};
@@ -29,6 +49,15 @@ pub struct RawMode;
 
 impl RawMode {
     /// Switches the terminal to raw mode.
+    ///
+    /// ```no_run
+    /// use app::host::console::RawMode;
+    ///
+    /// let raw_mode = RawMode::enable()?;
+    /// // Each key now reaches the emulator at once, without an echo.
+    /// drop(raw_mode);
+    /// # Ok::<(), std::io::Error>(())
+    /// ```
     pub fn enable() -> io::Result<Self> {
         crossterm::terminal::enable_raw_mode()?;
         Ok(Self)
@@ -42,18 +71,13 @@ impl Drop for RawMode {
     }
 }
 
-/// Keys from your keyboard and bytes to your screen, plus a paper tape
-/// reader.
+/// Keys from your keyboard and bytes to your screen, plus the paper tape
+/// reader that sat on the same serial line of the Teletype.
 ///
-/// A background thread reads the keyboard and sends each key over a channel,
-/// so [`receive`](Terminal::receive) never waits. The thread drops bytes
-/// above 7FH: a Teletype sends 7-bit ASCII, and a letter from another
-/// keyboard layout arrives as such bytes, which BASIC would read as junk.
-/// It also turns your Backspace key into the erase key the program expects.
-///
-/// The tape reader sits on the same serial line, as on the Teletype that
-/// Altair owners used: the console sends the whole tape first and your keys
-/// after it.
+/// [`receive`](Terminal::receive) never waits: the keyboard thread hands
+/// over each key through a channel. The thread drops bytes above 7FH,
+/// because a Teletype sends 7-bit ASCII and a letter from another keyboard
+/// layout would reach BASIC as junk.
 pub struct Console {
     tape: VecDeque<u8>,
     keys: Receiver<u8>,
@@ -63,7 +87,19 @@ pub struct Console {
 impl Console {
     /// Starts the keyboard thread with `tape` in the reader. The thread
     /// sends `erase_key` for each [`RUBOUT_KEY`]. Returns the console and a
-    /// flag that turns `true` when you press [`QUIT_KEY`].
+    /// flag that turns `true` when you press Ctrl+].
+    ///
+    /// ```
+    /// use std::sync::atomic::Ordering;
+    ///
+    /// use altair::cards::Terminal;
+    /// use app::host::console::{BACKSPACE_KEY, Console};
+    ///
+    /// let (mut console, quit) = Console::start(b"", BACKSPACE_KEY);
+    ///
+    /// assert_eq!(console.receive(), None); // no tape, and you typed nothing yet
+    /// assert!(!quit.load(Ordering::Relaxed));
+    /// ```
     pub fn start(tape: &[u8], erase_key: u8) -> (Self, Arc<AtomicBool>) {
         let (sender, keys) = mpsc::channel();
         let quit = Arc::new(AtomicBool::new(false));

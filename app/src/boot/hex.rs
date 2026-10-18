@@ -1,4 +1,5 @@
-//! Intel HEX files: how Altair owners stored programs for PROMs.
+//! Intel HEX files: how Altair owners stored programs for PROMs. The disk
+//! boot loader comes as `DBL.HEX`, so only [`cpm`](super::cpm) reads them.
 //!
 //! A HEX file is text, one record per line:
 //!
@@ -20,6 +21,8 @@
 //!
 //! [Hexadecimal Object File Format Specification]: https://archive.org/details/IntelHEXStandard
 
+use super::Program;
+
 /// A data record.
 const DATA_RECORD: u8 = 0x00;
 /// The end-of-file record.
@@ -28,18 +31,9 @@ const END_OF_FILE_RECORD: u8 = 0x01;
 /// type.
 const HEADER_BYTES: usize = 4;
 
-/// A program from a HEX file: its bytes in one run from `start` up.
-#[derive(Debug, PartialEq, Eq)]
-pub struct Program {
-    /// The address of the first byte.
-    pub start: u16,
-    /// The bytes of the program.
-    pub bytes: Vec<u8>,
-}
-
 /// Reads the program in `text`. The records must follow each other with no
 /// gaps, as in a PROM image.
-pub fn parse(text: &str) -> Result<Program, String> {
+pub(super) fn parse(text: &str) -> Result<Program, String> {
     let mut program: Option<Program> = None;
 
     for (index, line) in text.lines().enumerate() {

@@ -1,8 +1,8 @@
-//! A disk image file as the [`Disk`] in the boot drive.
+//! A disk image file as the [`Disk`] in a drive of the 88-DCDD.
 //!
 //! An image holds the bytes of an 8-inch floppy in order: track 0 sector 0
 //! first, then sector 1, up to sector 31 of track 76. Each sector takes 137
-//! bytes, so a full image takes 337,664 bytes. The 88-DCDD finds a byte by
+//! bytes, so a full image takes 337,568 bytes. The 88-DCDD finds a byte by
 //! its track, its sector and its place in the sector:
 //!
 //! ```text
@@ -29,6 +29,21 @@
 //! Keep a copy of the original. [`DiskFile::open`] fails on a read-only
 //! image and on one too short for a disk, so you learn about it at start,
 //! before CP/M tries to read or write.
+//!
+//! ```
+//! use altair::cards::{DISK_BYTES, Disk};
+//! use app::host::disk_file::DiskFile;
+//!
+//! let image = std::env::temp_dir().join(format!("app-doc-{}-disk-file.dsk", std::process::id()));
+//! std::fs::write(&image, vec![0; DISK_BYTES])?;
+//! let mut disk = DiskFile::open(&image)?;
+//!
+//! disk.write(0, 0x42);
+//!
+//! assert_eq!(std::fs::read(&image)?[0], 0x42); // the file has the byte already
+//! # std::fs::remove_file(&image)?;
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
 
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
@@ -50,6 +65,19 @@ impl DiskFile {
     /// Opens the image at `path` for reading and writing. Fails when the
     /// image holds less than a disk. An image can run past the disk: the
     /// one on deramp.com pads it to a multiple of 256 bytes.
+    ///
+    /// ```
+    /// use app::host::disk_file::DiskFile;
+    ///
+    /// let image = std::env::temp_dir().join(format!("app-doc-{}-disk-file-short.dsk", std::process::id()));
+    /// std::fs::write(&image, [0; 100])?;
+    ///
+    /// let disk = DiskFile::open(&image);
+    ///
+    /// assert!(disk.is_err()); // 100 bytes hold no disk
+    /// # std::fs::remove_file(&image)?;
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn open(path: &Path) -> io::Result<Self> {
         let mut file = OpenOptions::new().read(true).write(true).open(path)?;
         let mut bytes = Vec::new();

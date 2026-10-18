@@ -1,9 +1,35 @@
 //! Keeps the emulated Altair at the speed of the real one.
 //!
 //! Your computer runs the 8080 faster than 2 MHz. So the clock runs the CPU
-//! for the cycles of one slice, 10 ms on the real Altair, and sleeps until
-//! those 10 ms are up. With [`Speed::Unlimited`] it skips the sleep, and a
-//! diagnostic that takes hours on the real Altair ends in seconds.
+//! for the cycles of one slice, then sleeps until the slice is up:
+//!
+//! ```text
+//!   │◄──────────── 10 ms ────────────►│◄──────────── 10 ms ───────────►│
+//!   │ CPU: 20,000 cycles │   sleep    │ CPU: 20,000 cycles │   sleep   │
+//! ```
+//!
+//! With [`Speed::Unlimited`] the clock skips the sleep, and a diagnostic
+//! that takes hours on the real Altair ends in seconds.
+//!
+//! ```
+//! use std::sync::atomic::AtomicBool;
+//!
+//! use altair::Altair;
+//! use altair::cards::Ram;
+//! use app::host::clock::{self, Exit, Speed};
+//!
+//! let mut altair = Altair::builder().plug(Ram::new(0x0000..=0xFFFF)?).build();
+//! let mut panel = altair.front_panel();
+//! panel.toggle_in(0x0000, &[0x76]); // HLT
+//! panel.set_switches(0x0000);
+//! panel.examine();
+//! panel.run();
+//!
+//! let exit = clock::run(&mut altair, &AtomicBool::new(false), Speed::Unlimited);
+//!
+//! assert!(matches!(exit, Exit::Halted));
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -37,6 +63,22 @@ pub enum Exit {
 }
 
 /// Runs `altair` at `speed` until `quit` turns `true` or the CPU halts.
+///
+/// ```
+/// use std::sync::atomic::AtomicBool;
+///
+/// use altair::Altair;
+/// use altair::cards::Ram;
+/// use app::host::clock::{self, Exit, Speed};
+///
+/// let mut altair = Altair::builder().plug(Ram::new(0x0000..=0xFFFF)?).build();
+/// altair.front_panel().run(); // NOP after NOP from 0000H
+///
+/// let exit = clock::run(&mut altair, &AtomicBool::new(true), Speed::Altair);
+///
+/// assert!(matches!(exit, Exit::Quit)); // the flag says you pressed Ctrl+]
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub fn run(altair: &mut Altair, quit: &AtomicBool, speed: Speed) -> Exit {
     let mut next_slice = Instant::now();
     loop {

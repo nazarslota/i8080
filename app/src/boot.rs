@@ -1,126 +1,64 @@
-//! What you bring to the Altair to boot it: a memory image, a paper tape or
-//! a floppy disk with its boot loader.
+//! What the Altair owner brought and did before pressing RUN: toggled in a
+//! memory image, put a BASIC tape in the reader, or inserted CP/M disks
+//! with the boot loader in a PROM.
+//!
+//! Each way to boot reads and checks its files into a [`Setup`], before
+//! your terminal switches to raw mode. [`crate::machine::start`] then puts
+//! the setup into an Altair:
+//!
+//! | Boot    | `toggle_in`               | `prom`      | `disks`  | `tape`   | `start` | `erase_key` |
+//! |---------|---------------------------|-------------|----------|----------|---------|-------------|
+//! | `image` | the image at 0000H        |             |          |          | 0000H   | RUBOUT      |
+//! | `basic` | the bootstrap loader      |             |          | the tape | 0000H   | RUBOUT      |
+//! | `cpm`   |                           | DBL, FF00H  | A: to D: |          | FF00H   | Ctrl+H      |
+//!
+//! ```
+//! let image = std::env::temp_dir().join(format!("app-doc-{}-boot.bin", std::process::id()));
+//! std::fs::write(&image, [0x76])?; // HLT
+//!
+//! let setup = app::boot::image::setup(&image)?;
+//!
+//! assert_eq!(setup.start, 0x0000);
+//! assert!(setup.prom.is_none() && setup.disks.is_empty());
+//! # std::fs::remove_file(&image)?;
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
 
+pub mod basic;
+pub mod cpm;
 mod hex;
-mod tape;
+pub mod image;
 
-use std::error::Error;
-use std::path::Path;
-use std::{fmt, fs};
+use crate::host::disk_file::DiskFile;
 
-pub use hex::Program;
-pub use tape::{Basic, bootstrap_loader};
-
-use crate::args::BootCommand;
-use crate::console::{BACKSPACE_KEY, RUBOUT_KEY};
-use crate::disk_file::DiskFile;
-use crate::machine::PROM_ADDRESS;
-
-/// The sense switches for an image or a disk when you don't set them: all
-/// down.
+/// The sense switches when a program doesn't need them: all down.
 const SWITCHES_DOWN: u8 = 0x00;
-/// The largest memory image: the 64 KB that the 8080 addresses.
-const IMAGE_MAX_BYTES: usize = 0x10000;
 
-/// How the Altair boots, with the files read and checked.
-pub enum Boot {
-    /// A memory image to toggle in at 0000H.
-    Image(Vec<u8>),
-    /// A BASIC tape for the reader, read by the bootstrap loader for
-    /// `basic`.
-    Tape { basic: Basic, tape: Vec<u8> },
-    /// A floppy disk for drive 0, read by the boot loader in the PROM.
-    Disk { loader: Program, disk: DiskFile },
+/// A program for the Altair's memory: its bytes in one run from `start` up.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Program {
+    /// The address of the first byte.
+    pub start: u16,
+    /// The bytes of the program.
+    pub bytes: Vec<u8>,
 }
 
-impl Boot {
-    /// Reads the files that `command` names and checks that they fit.
-    pub fn load(command: &BootCommand) -> Result<Self, Box<dyn Error>> {
-        match command {
-            BootCommand::Image { image } => load_image(image),
-            BootCommand::Tape { basic, tape } => load_tape(*basic, tape),
-            BootCommand::Disk { loader, disk } => load_disk(loader, disk),
-        }
-    }
-
-    /// Returns the paper tape for the reader. Empty unless you boot from a
-    /// tape.
-    pub fn tape(&self) -> &[u8] {
-        match self {
-            Self::Tape { tape, .. } => tape,
-            Self::Image(_) | Self::Disk { .. } => &[],
-        }
-    }
-
-    /// Returns the sense switches that the program expects.
-    pub const fn sense_switches(&self) -> u8 {
-        match self {
-            Self::Tape { .. } => Basic::SENSE_SWITCHES,
-            Self::Image(_) | Self::Disk { .. } => SWITCHES_DOWN,
-        }
-    }
-
-    /// Returns the byte that the program erases a character on, for your
-    /// Backspace key. Altair BASIC ignores [`BACKSPACE_KEY`], so a tape and
-    /// an image get [`RUBOUT_KEY`] as the key sends it.
-    pub const fn erase_key(&self) -> u8 {
-        match self {
-            Self::Disk { .. } => BACKSPACE_KEY,
-            Self::Image(_) | Self::Tape { .. } => RUBOUT_KEY,
-        }
-    }
-}
-
-/// Reads the memory image at `path`.
-fn load_image(path: &Path) -> Result<Boot, Box<dyn Error>> {
-    let image = read(path)?;
-    if image.len() > IMAGE_MAX_BYTES {
-        return Err(format!("{}: the image is larger than 64 KB", path.display()).into());
-    }
-    Ok(Boot::Image(image))
-}
-
-/// Reads the tape at `path` and checks that it holds `basic`.
-fn load_tape(basic: Basic, path: &Path) -> Result<Boot, Box<dyn Error>> {
-    let tape = read(path)?;
-    if tape.first() != Some(&basic.leader()) {
-        return Err(format!(
-            "{}: not a {basic} tape, which starts with {:02X}H",
-            path.display(),
-            basic.leader()
-        )
-        .into());
-    }
-    Ok(Boot::Tape { basic, tape })
-}
-
-/// Reads the boot loader at `loader`, checks that it fits the PROM, and
-/// opens the disk at `disk` for reading and writing.
-fn load_disk(loader: &Path, disk: &Path) -> Result<Boot, Box<dyn Error>> {
-    let text = fs::read_to_string(loader).map_err(|error| in_file(loader, error))?;
-    let program = hex::parse(&text).map_err(|error| in_file(loader, error))?;
-    if program.start < PROM_ADDRESS {
-        return Err(in_file(
-            loader,
-            format!(
-                "the loader starts at {:04X}H, below the PROM at {PROM_ADDRESS:04X}H",
-                program.start
-            ),
-        )
-        .into());
-    }
-    Ok(Boot::Disk {
-        loader: program,
-        disk: DiskFile::open(disk).map_err(|error| in_file(disk, error))?,
-    })
-}
-
-/// Reads a file and puts its path into the error message.
-pub fn read(path: &Path) -> Result<Vec<u8>, String> {
-    fs::read(path).map_err(|error| in_file(path, error))
-}
-
-/// Puts `path` in front of `error`.
-pub fn in_file(path: &Path, error: impl fmt::Display) -> String {
-    format!("{}: {error}", path.display())
+/// The Altair as its owner set it up for one way to boot.
+pub struct Setup {
+    /// The program the owner toggles in with the front panel switches.
+    pub toggle_in: Option<Program>,
+    /// The PROM card, with the program it holds.
+    pub prom: Option<Program>,
+    /// The disks for drives 0 and up. Without disks the Altair gets no
+    /// 88-DCDD.
+    pub disks: Vec<DiskFile>,
+    /// The paper tape in the reader, empty without one.
+    pub tape: Vec<u8>,
+    /// Where RUN starts the CPU.
+    pub start: u16,
+    /// The sense switches A8 to A15 that the program expects.
+    pub sense_switches: u8,
+    /// The byte that the program erases a character on, for your Backspace
+    /// key.
+    pub erase_key: u8,
 }

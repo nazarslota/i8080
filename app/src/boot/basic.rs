@@ -1,4 +1,4 @@
-//! The bootstrap loader that reads Altair BASIC from a paper tape.
+//! Altair BASIC from a paper tape, and the bootstrap loader that reads it.
 //!
 //! A new Altair had nothing in memory. To load BASIC you toggled this
 //! 28-byte loader in with the front panel switches, put the BASIC tape in the
@@ -29,12 +29,28 @@
 //! as MITS printed them, and so does the code below. His [Altair Software
 //! Development using CP/M] describes the tape format.
 //!
+//! ```
+//! use app::boot::basic::Basic;
+//!
+//! assert_eq!(Basic::EightK40.loader_address(), 0x1FC2);
+//! assert_eq!(Basic::EightK40.leader(), 0xC2);
+//! ```
+//!
 //! [Loading Basic with the 88-2SIO Board]: https://deramp.com/downloads/mfe_archive/010-S100%20Computers%20and%20Boards/00-MITS/10-MITS%20S100%20Boards/88-2SIO%20Dual%20Serial%20Board/Loading%20Basic%20with%20the%2088-2SIO%20Board.pdf
 //! [Altair Software Development using CP/M]: https://deramp.com/downloads/altair/software/papertape_cassette/Checksum%20Loader/Altair%20Paper%20Tape%20Format.pdf
 
+use std::error::Error;
 use std::fmt;
+use std::path::Path;
 
 use clap::ValueEnum;
+
+use super::{Program, Setup};
+use crate::host::console::RUBOUT_KEY;
+use crate::host::{in_file, read};
+
+/// Where the owner toggles in the bootstrap loader and starts it.
+const BOOTSTRAP_ADDRESS: u16 = 0x0000;
 
 /// An Altair BASIC tape that the bootstrap loader reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -60,6 +76,12 @@ impl Basic {
 
     /// Returns the loader address: the checksum loader on the tape fills the
     /// bytes below it.
+    ///
+    /// ```
+    /// use app::boot::basic::Basic;
+    ///
+    /// assert_eq!(Basic::Extended41.loader_address(), 0x3FC2);
+    /// ```
     pub const fn loader_address(self) -> u16 {
         match self {
             Self::FourK40 => 0x0FC2,
@@ -70,6 +92,12 @@ impl Basic {
 
     /// Returns the byte that the tape's leader repeats: the low byte of the
     /// loader address.
+    ///
+    /// ```
+    /// use app::boot::basic::Basic;
+    ///
+    /// assert_eq!(Basic::FourK40.leader(), 0xC2); // 0FC2H
+    /// ```
     pub const fn leader(self) -> u8 {
         let [low, _] = self.loader_address().to_le_bytes();
         low
@@ -88,9 +116,50 @@ impl fmt::Display for Basic {
     }
 }
 
+/// Reads the tape at `path`, checks that it holds `basic`, and sets the
+/// Altair up as the owner did: the tape in the reader, the bootstrap loader
+/// toggled in at 0000H. Altair BASIC erases a character on RUBOUT, the byte
+/// your Backspace key sends.
+///
+/// ```
+/// use app::boot::basic::{Basic, setup};
+///
+/// let tape = std::env::temp_dir().join(format!("app-doc-{}-basic.tap", std::process::id()));
+/// std::fs::write(&tape, [0xC2, 0xC2, 0xC2])?; // the leader of a BASIC 4.0 tape
+///
+/// let setup = setup(Basic::EightK40, &tape)?;
+///
+/// assert_eq!(setup.tape, [0xC2, 0xC2, 0xC2]);
+/// assert_eq!(setup.toggle_in.unwrap().bytes.len(), 28); // the bootstrap loader
+/// # std::fs::remove_file(&tape)?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+pub fn setup(basic: Basic, path: &Path) -> Result<Setup, Box<dyn Error>> {
+    let tape = read(path)?;
+    if tape.first() != Some(&basic.leader()) {
+        let error = format!(
+            "not a {basic} tape, which starts with {:02X}H",
+            basic.leader()
+        );
+        return Err(in_file(path, error).into());
+    }
+    Ok(Setup {
+        toggle_in: Some(Program {
+            start: BOOTSTRAP_ADDRESS,
+            bytes: bootstrap_loader(basic).to_vec(),
+        }),
+        prom: None,
+        disks: Vec::new(),
+        tape,
+        start: BOOTSTRAP_ADDRESS,
+        sense_switches: Basic::SENSE_SWITCHES,
+        erase_key: RUBOUT_KEY,
+    })
+}
+
 /// Returns the bootstrap loader that reads the `basic` tape. Load it at
 /// 0000H and start the CPU there.
-pub fn bootstrap_loader(basic: Basic) -> [u8; 28] {
+fn bootstrap_loader(basic: Basic) -> [u8; 28] {
     let [low, high] = basic.loader_address().to_le_bytes();
     [
         0o076, 0o003, // 000  MVI A,3      reset command for the ACIA

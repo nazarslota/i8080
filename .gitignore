@@ -4,8 +4,8 @@
 /roms/*
 !/roms/README.md
 
-# The working copy of the CP/M disk (see README.md)
-/cpm.dsk
+# The working CP/M disks (see README.md)
+/*.dsk
 
 # Editor and OS files
 /.idea/

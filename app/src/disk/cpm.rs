@@ -1,5 +1,6 @@
-//! The CP/M file system on an Altair 8-inch disk image, enough for
-//! `altair put` to copy files onto it.
+//! The CP/M 2.2 file system on an Altair 8-inch disk image, enough for
+//! `altair disk` to make an empty disk, copy files onto it and list them.
+//! The module works on the bytes of an image in memory and opens no files.
 //!
 //! The layout comes from Mike Douglas's CP/M 2.2b BIOS, [BIOS.ASM]. A track
 //! holds 32 sectors of 137 bytes, and each sector carries one CP/M record
@@ -39,12 +40,26 @@
 //! A directory entry names a file and lists its blocks. One entry, an
 //! extent, holds up to 16 KB: a bigger file takes an entry for each 16 KB.
 //!
+//! ```
+//! use app::disk::cpm::CpmDisk;
+//!
+//! let mut disk = CpmDisk::format();
+//! disk.put("hello.com", &[0xC9])?; // RET
+//!
+//! let files = disk.files();
+//!
+//! assert_eq!((files[0].name.as_str(), files[0].bytes), ("HELLO.COM", 128));
+//! # Ok::<(), String>(())
+//! ```
+//!
 //! [BIOS.ASM]: https://deramp.com/downloads/altair/software/8_inch_floppy/CPM/CPM%202.2/CPM%202.2B/BIOS.ASM
 
 use altair::cards::DISK_BYTES;
 
 /// The bytes of a sector on the disk.
 const SECTOR_BYTES: usize = 137;
+/// The tracks on the disk.
+const TRACKS: usize = 77;
 /// The sectors on a track.
 const SECTORS: usize = 32;
 /// The bytes of a CP/M record, the data in a sector.
@@ -74,6 +89,9 @@ const EXTENT_BLOCKS: usize = EXTENT_RECORDS / BLOCK_RECORDS;
 const EXTENTS_PER_S2: usize = 32;
 /// The user byte of a free directory entry.
 const FREE_ENTRY: u8 = 0xE5;
+/// The byte that fills each record of a new disk. CP/M reads a directory
+/// of such records as empty.
+const FORMAT_BYTE: u8 = 0xE5;
 /// The user area that `put` writes to: user 0, the one `A>` starts in.
 const USER: u8 = 0x00;
 /// The bytes of a file name, eight for the name and three for the type.
@@ -138,6 +156,16 @@ mod entry {
     pub const BLOCKS: usize = 16;
 }
 
+/// A file in the directory of a [`CpmDisk`].
+#[derive(Debug, PartialEq, Eq)]
+pub struct File {
+    /// The name with its type, such as `CPUTEST.COM`.
+    pub name: String,
+    /// The size in bytes. CP/M stores whole records, so the size is a
+    /// multiple of 128.
+    pub bytes: usize,
+}
+
 /// An Altair 8-inch disk image with CP/M 2.2 on it, held in memory.
 pub struct CpmDisk {
     bytes: Vec<u8>,
@@ -147,6 +175,12 @@ impl CpmDisk {
     /// Takes the bytes of a disk image. Fails when they don't fill an
     /// 8-inch disk. An image can run past the disk: the one on deramp.com
     /// pads it to a multiple of 256 bytes.
+    ///
+    /// ```
+    /// let disk = app::disk::cpm::CpmDisk::new(vec![0; 1000]);
+    ///
+    /// assert!(disk.is_err()); // 1000 bytes hold no disk
+    /// ```
     pub fn new(bytes: Vec<u8>) -> Result<Self, String> {
         if bytes.len() < DISK_BYTES {
             return Err(format!(
@@ -157,7 +191,34 @@ impl CpmDisk {
         Ok(Self { bytes })
     }
 
+    /// Returns an empty disk with no files: each sector in the format of
+    /// its track, holding a record of E5H bytes. The tracks for the
+    /// system stay empty too, so CP/M can't boot from the disk.
+    ///
+    /// ```
+    /// let disk = app::disk::cpm::CpmDisk::format();
+    ///
+    /// assert_eq!(disk.free_bytes(), 296 * 1024);
+    /// ```
+    pub fn format() -> Self {
+        let mut disk = Self {
+            bytes: vec![0; DISK_BYTES],
+        };
+        for track in 0..TRACKS {
+            for sector in 0..SECTORS {
+                disk.write_sector(&Place::at(track, sector), &[FORMAT_BYTE; RECORD_BYTES]);
+            }
+        }
+        disk
+    }
+
     /// Returns the bytes of the image.
+    ///
+    /// ```
+    /// let bytes = app::disk::cpm::CpmDisk::format().into_bytes();
+    ///
+    /// assert_eq!(bytes.len(), altair::cards::DISK_BYTES);
+    /// ```
     pub fn into_bytes(self) -> Vec<u8> {
         self.bytes
     }
@@ -165,6 +226,15 @@ impl CpmDisk {
     /// Puts `data` on the disk as file `name` in user 0, in place of a
     /// file with that name. Leaves the disk as it was when the file
     /// doesn't fit.
+    ///
+    /// ```
+    /// let mut disk = app::disk::cpm::CpmDisk::format();
+    ///
+    /// let too_big = disk.put("big.dat", &vec![0; 300 * 1024]);
+    ///
+    /// assert!(too_big.is_err());
+    /// assert!(disk.files().is_empty()); // the disk stays as it was
+    /// ```
     pub fn put(&mut self, name: &str, data: &[u8]) -> Result<(), String> {
         let name = file_name(name)?;
         let records = data.len().div_ceil(RECORD_BYTES);
@@ -211,6 +281,50 @@ impl CpmDisk {
             self.write_entry(index, &new);
         }
         Ok(())
+    }
+
+    /// Returns the files in user 0, sorted by name.
+    ///
+    /// ```
+    /// let mut disk = app::disk::cpm::CpmDisk::format();
+    /// disk.put("b.txt", b"B")?;
+    /// disk.put("a.txt", b"A")?;
+    ///
+    /// let names: Vec<String> = disk.files().into_iter().map(|file| file.name).collect();
+    ///
+    /// assert_eq!(names, ["A.TXT", "B.TXT"]);
+    /// # Ok::<(), String>(())
+    /// ```
+    pub fn files(&self) -> Vec<File> {
+        let mut files: Vec<File> = Vec::new();
+        for index in 0..DIRECTORY_ENTRIES {
+            let entry = self.entry(index);
+            if entry[entry::USER] != USER {
+                continue;
+            }
+            let name = display_name(&entry[entry::NAME..entry::NAME + NAME_BYTES]);
+            let bytes = usize::from(entry[entry::RECORDS]) * RECORD_BYTES;
+            match files.iter_mut().find(|file| file.name == name) {
+                Some(file) => file.bytes += bytes,
+                None => files.push(File { name, bytes }),
+            }
+        }
+        files.sort_by(|a, b| a.name.cmp(&b.name));
+        files
+    }
+
+    /// Returns the bytes that new files can still take.
+    ///
+    /// ```
+    /// let mut disk = app::disk::cpm::CpmDisk::format();
+    ///
+    /// disk.put("a.com", &[0xC9])?; // one record takes a whole 2 KB block
+    ///
+    /// assert_eq!(disk.free_bytes(), 294 * 1024);
+    /// # Ok::<(), String>(())
+    /// ```
+    pub fn free_bytes(&self) -> usize {
+        self.free_blocks(&[]).len() * BLOCK_RECORDS * RECORD_BYTES
     }
 
     /// Returns the directory entries of file `name` in user 0.
@@ -282,10 +396,14 @@ impl CpmDisk {
         record
     }
 
-    /// Writes `data` into record `number`, with the header, the sum and the
-    /// stop byte that the BIOS writes.
+    /// Writes `data` into record `number`.
     fn write_record(&mut self, number: usize, data: &[u8; RECORD_BYTES]) {
-        let place = Place::of(number);
+        self.write_sector(&Place::of(number), data);
+    }
+
+    /// Writes `data` into the sector at `place`, with the header, the sum
+    /// and the stop byte that the BIOS writes.
+    fn write_sector(&mut self, place: &Place, data: &[u8; RECORD_BYTES]) {
         let sum = data.iter().fold(0, |sum: u8, byte| sum.wrapping_add(*byte));
         let mut sector = [0; SECTOR_BYTES];
         sector[offset::TRACK] = SYNC_BIT | place.track as u8;
@@ -320,8 +438,12 @@ impl Place {
     /// Finds record `number`, counted from the first track after the
     /// reserved ones.
     fn of(number: usize) -> Self {
-        let track = RESERVED_TRACKS + number / SECTORS;
-        let sector = TRANSLATE[number % SECTORS];
+        Self::at(RESERVED_TRACKS + number / SECTORS, number % SECTORS)
+    }
+
+    /// Finds CP/M sector `sector` of `track`.
+    fn at(track: usize, sector: usize) -> Self {
+        let sector = TRANSLATE[sector];
         let position = if track >= DATA_FORMAT_TRACK && sector % 2 == 1 {
             sector ^ SKEW_BIT
         } else {
@@ -374,18 +496,20 @@ fn file_name(name: &str) -> Result<[u8; NAME_BYTES], String> {
     Ok(bytes)
 }
 
+/// Turns the 11 bytes of a directory entry, such as `CPUTEST COM`, into
+/// the name you type: `CPUTEST.COM`. Drops the flags in bit 7.
+fn display_name(bytes: &[u8]) -> String {
+    let text: String = bytes.iter().map(|byte| char::from(byte & 0x7F)).collect();
+    let (base, kind) = text.split_at(8);
+    match kind.trim_end() {
+        "" => base.trim_end().to_string(),
+        kind => format!("{}.{kind}", base.trim_end()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Returns a disk with an empty directory.
-    fn empty_disk() -> CpmDisk {
-        let mut disk = CpmDisk::new(vec![0; DISK_BYTES]).unwrap();
-        for index in 0..DIRECTORY_ENTRIES {
-            disk.write_entry(index, &[FREE_ENTRY; ENTRY_BYTES]);
-        }
-        disk
-    }
 
     /// Returns the entries in use, in directory order.
     fn used_entries(disk: &CpmDisk) -> Vec<[u8; ENTRY_BYTES]> {
@@ -458,7 +582,7 @@ mod tests {
 
     #[test]
     fn writes_system_sector_as_bios_does() {
-        let mut disk = empty_disk();
+        let mut disk = CpmDisk::format();
         let data = [0x01; RECORD_BYTES];
 
         disk.write_record(0, &data);
@@ -471,7 +595,7 @@ mod tests {
 
     #[test]
     fn writes_data_sector_as_bios_does() {
-        let mut disk = empty_disk();
+        let mut disk = CpmDisk::format();
         let data = [0x01; RECORD_BYTES];
         let number = 4 * SECTORS + 16;
 
@@ -484,8 +608,57 @@ mod tests {
     }
 
     #[test]
+    fn format_writes_every_sector_as_bios_does() {
+        let disk = CpmDisk::format();
+
+        let first = &disk.bytes[..SECTOR_BYTES];
+        let last = &disk.bytes[DISK_BYTES - SECTOR_BYTES..];
+        assert_eq!(first[..3], [0x80, 0x00, 0x01]);
+        assert_eq!(first[131..133], [0xFF, 0x80]);
+        assert_eq!(last[..7], [0xCC, 0x0F, 0x00, 0x00, 0x80, 0x00, 0x00]);
+        assert!(last[7..135].iter().all(|&byte| byte == FORMAT_BYTE));
+        assert_eq!(last[135], 0xFF);
+    }
+
+    #[test]
+    fn format_leaves_directory_empty_and_blocks_free() {
+        let mut disk = CpmDisk::format();
+
+        let all_blocks = disk.put("big.dat", &vec![0; (BLOCKS - DIRECTORY_BLOCKS) * 2048]);
+
+        assert_eq!(all_blocks, Ok(()));
+        assert_eq!(used_entries(&disk).len(), 19);
+    }
+
+    #[test]
+    fn files_lists_names_and_sizes_by_name() {
+        let mut disk = CpmDisk::format();
+        disk.put("big.dat", &vec![0; 20 * 1024]).unwrap();
+        disk.put("a.com", &[0xC9; 200]).unwrap();
+        disk.put("readme", &[0x41; 10]).unwrap();
+
+        let files = disk.files();
+
+        let names_and_sizes: Vec<_> = files.iter().map(|f| (f.name.as_str(), f.bytes)).collect();
+        assert_eq!(
+            names_and_sizes,
+            [("A.COM", 256), ("BIG.DAT", 20480), ("README", 128)]
+        );
+    }
+
+    #[test]
+    fn free_bytes_counts_blocks_no_file_takes() {
+        let mut disk = CpmDisk::format();
+        disk.put("a.com", &[0xC9; 200]).unwrap();
+
+        let free = disk.free_bytes();
+
+        assert_eq!(free, 147 * 2048);
+    }
+
+    #[test]
     fn put_makes_directory_entry() {
-        let mut disk = empty_disk();
+        let mut disk = CpmDisk::format();
 
         disk.put("hello.com", &[0xC9; 300]).unwrap();
 
@@ -497,7 +670,7 @@ mod tests {
 
     #[test]
     fn put_stores_data_padded_with_end_of_file() {
-        let mut disk = empty_disk();
+        let mut disk = CpmDisk::format();
 
         disk.put("hello.com", &[0xC9; 130]).unwrap();
 
@@ -510,12 +683,14 @@ mod tests {
 
     #[test]
     fn put_gives_each_16_kb_an_entry() {
-        let mut disk = empty_disk();
+        let mut disk = CpmDisk::format();
 
         disk.put("big.dat", &vec![0; 20 * 1024]).unwrap();
 
         let entries = used_entries(&disk);
-        let extents = entries.iter().map(|entry| (entry[entry::EXTENT], entry[entry::RECORDS]));
+        let extents = entries
+            .iter()
+            .map(|entry| (entry[entry::EXTENT], entry[entry::RECORDS]));
         assert_eq!(extents.collect::<Vec<_>>(), [(0, 128), (1, 32)]);
         assert_eq!(entries[0][16..24], [2, 3, 4, 5, 6, 7, 8, 9]);
         assert_eq!(entries[1][16..20], [10, 11, 0, 0]);
@@ -523,7 +698,7 @@ mod tests {
 
     #[test]
     fn put_replaces_file_with_same_name() {
-        let mut disk = empty_disk();
+        let mut disk = CpmDisk::format();
         disk.put("x.com", &[0x11; 4096]).unwrap();
 
         disk.put("X.COM", &[0x22; 10]).unwrap();
@@ -536,7 +711,7 @@ mod tests {
 
     #[test]
     fn put_fails_on_full_disk_and_keeps_it() {
-        let mut disk = empty_disk();
+        let mut disk = CpmDisk::format();
         disk.put("a.dat", &vec![0; 290 * 1024]).unwrap();
         let before = disk.bytes.clone();
 
@@ -548,7 +723,7 @@ mod tests {
 
     #[test]
     fn put_fails_on_full_directory() {
-        let mut disk = empty_disk();
+        let mut disk = CpmDisk::format();
         for index in 0..DIRECTORY_ENTRIES {
             disk.put(&format!("f{index}.txt"), &[]).unwrap();
         }

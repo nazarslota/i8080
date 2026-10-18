@@ -51,7 +51,7 @@ cargo test
 Load Altair BASIC from its paper tape:
 
 ```sh
-cargo run --release -- tape 8k-4.0 "roms/8K BASIC Ver 4-0.tap"
+cargo run --release -- basic 8k-4.0 "roms/8K BASIC Ver 4-0.tap"
 ```
 
 The emulator toggles in the MITS bootstrap loader for that BASIC, and the
@@ -86,16 +86,15 @@ Boot CP/M 2.2 from a floppy image. The emulator writes each change to the
 image file at once, so copy the image first and boot the copy:
 
 ```sh
-cp roms/cpm22b23-56k.dsk cpm.dsk
-cargo run --release -- disk roms/DBL.HEX cpm.dsk
+cp roms/cpm22b23-56k.dsk a.dsk
+cargo run --release -- cpm a.dsk
 ```
 
-You name the boot loader first and the disk second. The emulator plugs a
-PROM card with the MITS disk boot loader at FF00H and an 88-DCDD controller
-with the disk in drive 0, then starts the CPU at FF00H. The loader reads
-CP/M from the disk, and CP/M greets you with `A>`. Type `DIR` to list the
-disk. The files you create in CP/M stay in `cpm.dsk`. Git ignores it, and
-you start over with a fresh `cp`.
+The emulator installs the MITS disk boot loader, `roms/DBL.HEX`, as a PROM
+at FF00H, inserts `a.dsk` in drive A: and starts the CPU at FF00H. The
+loader reads CP/M from the disk, and CP/M greets you with `A>`. The files
+you create in CP/M stay in `a.dsk`. Git ignores it, and you start over with
+a fresh `cp`.
 
 | Command           | What it does                                     |
 |-------------------|--------------------------------------------------|
@@ -104,35 +103,40 @@ you start over with a fresh `cp`.
 | `STAT`            | shows the free space                             |
 | `MBASIC`          | starts Microsoft BASIC; `SYSTEM` returns to `A>` |
 | `ERA X.COM`       | erases a file                                    |
+| `B:`              | switches to drive B:                             |
 
 Ctrl+C at `A>` reloads CP/M from the disk. Backspace erases a character:
 the emulator sends Ctrl+H for it, as CP/M and MBASIC expect.
 
-To run your own program, put it on the disk before you boot, then type its
-name at `A>`:
+The CP/M disk has 26 KB free. For your own programs, make an empty disk for
+drive B:, copy files onto it and boot with both disks:
 
 ```sh
-cargo run --release -- put cpm.dsk roms/TST8080.COM
-cargo run --release -- disk roms/DBL.HEX cpm.dsk
+cargo run --release -- disk format b.dsk
+cargo run --release -- disk put b.dsk roms/TST8080.COM roms/CPUTEST.COM
+cargo run --release -- disk ls b.dsk
+cargo run --release -- cpm a.dsk b.dsk
 ```
 
 ```text
-A>TST8080
+A>B:TST8080
 MICROCOSM ASSOCIATES 8080/8085 CPU DIAGNOSTIC
  VERSION 1.0  (C) 1980
 
  CPU IS OPERATIONAL
 ```
 
-`put` keeps the file name in capitals and replaces a file with the same
-name. The CP/M disk has about 26 KB free, enough for TST8080, 8080PRE and
-CPUTEST together.
+An empty disk holds 296 KB. `put` keeps the file name in capitals and
+replaces a file with the same name. You can name up to four disks, for A:
+to D:. A disk from `format` holds no system, so CP/M can't boot from it.
+On a drive without a disk, CP/M prints `Bdos Err On C: Bad Sector`, and
+Ctrl+C brings back `A>`.
 
 CPUTEST computes for minutes at the 2 MHz of the real Altair. Add `--fast`
 to run the CPU as fast as your computer can:
 
 ```sh
-cargo run --release -- --fast disk roms/DBL.HEX cpm.dsk
+cargo run --release -- --fast cpm a.dsk b.dsk
 ```
 
 You can also load a memory image at 0000H with

@@ -1,7 +1,7 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Altair Extended BASIC (4.1)" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
     <option name="buildProfileId" value="release" />
-    <option name="command" value="run -- tape extended-4.1 &quot;roms/Extended BASIC Ver 4-1.tap&quot;" />
+    <option name="command" value="run -- basic extended-4.1 &quot;roms/Extended BASIC Ver 4-1.tap&quot;" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <envs />
     <option name="emulateTerminal" value="true" />

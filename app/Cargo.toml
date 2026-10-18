@@ -7,9 +7,16 @@ rust-version.workspace = true
 license.workspace = true
 publish = false
 
+[lib]
+name = "app"
+path = "src/lib.rs"
+
+# The library holds the code, so `cargo doc` documents it. A binary named
+# `altair` would write its docs over those of the `altair` crate.
 [[bin]]
 name = "altair"
 path = "src/main.rs"
+doc = false
 
 [dependencies]
 altair.workspace = true

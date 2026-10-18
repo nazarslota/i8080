@@ -153,77 +153,81 @@ maps the memory and the I/O ports.
 
 ## Inside app
 
-`app` is the `altair` command. It reads the command line with `clap`, builds
-the machine and does what an Altair owner did by hand. A subcommand names
-the way you boot:
-
-| Command                         | Cards beyond the CPU, memory and 88-2SIO | `app` does                                                          |
-|---------------------------------|------------------------------------------|---------------------------------------------------------------------|
-| `altair image FILE`             | none                                     | toggles the image in at 0000H and starts there                      |
-| `altair tape 8k-4.0 FILE`       | none                                     | toggles in the bootstrap loader at 0000H and puts the tape in the reader |
-| `altair disk LOADER.HEX FILE`   | the PROM at FF00H and the 88-DCDD        | puts the loader into the PROM and the disk into drive 0, starts at FF00H |
-
-`--switches` sets the sense switches with any of them, and `--fast` runs
-the CPU as fast as your computer can. The machine runs until you press
-Ctrl+] or the CPU halts.
-
-`altair put DISK FILE...` starts no machine. It copies files onto a CP/M
-disk image, and CP/M then runs a `.COM` file by its name. `cpm_disk` writes
-the sectors and the directory entries the way the CP/M BIOS does, and its
-module documentation draws the layout of the disk.
-
-`main.rs` reads top to bottom in four steps:
+`app` is the `altair` command: a library with the code, and a `main.rs`
+that calls `app::run`. The split lets `cargo test` run the examples in the
+documentation.
 
 ```mermaid
 flowchart LR
-    args["Args<br/>the command line"] --> load["Boot::load<br/>read and check the files"]
-    load --> start["machine::start<br/>plug in the cards,<br/>EXAMINE, RUN"]
-    start --> clock["clock::run<br/>2 MHz until you quit"]
+    args["cli::Args<br/>the command line"] --> setup["boot::image, basic, cpm<br/>read and check the files"]
+    setup --> s["Setup"]
+    s --> start["machine::start<br/>plug in the cards,<br/>toggle in, EXAMINE, RUN"]
+    start --> clock["host::clock::run<br/>2 MHz until you quit"]
+    args --> disk["disk::run<br/>format, put, ls"]
+    disk --> cpm["disk::cpm::CpmDisk"]
 ```
 
-`Boot` holds what you bring to the Altair, with the files read and checked:
+| Command                          | `app` does                                                                                 |
+|----------------------------------|--------------------------------------------------------------------------------------------|
+| `altair image FILE`              | toggles the image in at 0000H and starts there                                             |
+| `altair basic 8k-4.0 FILE`       | puts the tape in the reader, toggles in the bootstrap loader at 0000H and starts there     |
+| `altair cpm A.DSK [B.DSK ...]`   | installs `roms/DBL.HEX` as the PROM at FF00H, inserts the disks in A: to D:, starts at FF00H |
+| `altair disk format, put, ls`    | makes, fills and lists a CP/M disk image, with no machine                                   |
+
+`--switches` sets the sense switches, and `--fast` runs the CPU as fast as
+your computer can. The machine runs until you press Ctrl+] or the CPU
+halts.
+
+Each boot fills one struct with what the owner brought, and checks the
+files before your terminal switches to raw mode:
 
 ```rust
-pub enum Boot {
-    Image(Vec<u8>),
-    Tape { basic: Basic, tape: Vec<u8> },
-    Disk { loader: Program, disk: DiskFile },
+pub struct Setup {
+    pub toggle_in: Option<Program>, // the image or the bootstrap loader
+    pub prom: Option<Program>,      // DBL at FF00H
+    pub disks: Vec<DiskFile>,       // drives A: to D:
+    pub tape: Vec<u8>,              // the paper tape in the reader
+    pub start: u16,                 // where RUN starts the CPU
+    pub sense_switches: u8,
+    pub erase_key: u8,              // what Backspace sends
 }
 ```
 
-Each variant carries only what it needs, so `machine::start` matches on it
-and plugs in the cards for that boot. `Boot::load` stops before the machine
-starts if a tape holds another BASIC or the loader sits below FF00H.
+`machine::start` reads the setup top to bottom, with no match on the way
+you boot: it plugs in the RAM, the 88-2SIO, the PROM if there is one and
+the 88-DCDD if there are disks, then toggles in the program and presses
+RUN.
 
-| Module         | What it holds                                                  |
-|----------------|----------------------------------------------------------------|
-| `main`         | `run` with the four steps above, and `put`                     |
-| `args`         | the command line: `Args`, `Command` and `BootCommand`          |
-| `boot`         | `Boot` and `Boot::load`                                        |
-| `boot::tape`   | `Basic` and the MITS bootstrap loaders for the BASIC tapes     |
-| `boot::hex`    | the Intel HEX reader for the disk boot loader                  |
-| `machine`      | the cards for each boot and the front panel steps that start it |
-| `clock`        | the 2 MHz clock and `Exit`                                     |
-| `console`      | `RawMode` and `Console`, your side of the serial line          |
-| `disk_file`    | `DiskFile`, the disk image file in the boot drive              |
-| `cpm_disk`     | `CpmDisk`, the CP/M file system on a disk image, for `put`     |
+| Module            | What it holds                                                  |
+|-------------------|----------------------------------------------------------------|
+| `lib`             | `run`, the flow above                                          |
+| `cli`             | the command line: `Args`, `Command`, `DiskCommand`             |
+| `boot`            | `Setup` and `Program`                                          |
+| `boot::image`     | `setup` for a memory image                                     |
+| `boot::basic`     | `setup` for a tape, `Basic` and the MITS bootstrap loaders     |
+| `boot::cpm`       | `setup` for CP/M disks                                         |
+| `boot::hex`       | the Intel HEX reader for DBL                                   |
+| `machine`         | `start`: the cards and the front panel steps                   |
+| `disk`            | `altair disk`: `format`, `put` and `ls`                        |
+| `disk::cpm`       | `CpmDisk`, the CP/M file system on a disk image                |
+| `host::console`   | `RawMode` and `Console`, your side of the serial line          |
+| `host::clock`     | the 2 MHz clock, `Speed` and `Exit`                            |
+| `host::disk_file` | `DiskFile`, a disk image file in a drive                       |
 
 - **`RawMode`** switches your terminal to raw mode with `crossterm` and back
   when dropped. Each key then reaches the emulator at once, without an echo:
-  Altair BASIC echoes what you type itself.
-- **`Console`** implements `Terminal`. A thread reads the keyboard and sends
-  each key over a channel, so `receive` never waits. The thread drops bytes
-  above 7FH: a Teletype sends 7-bit ASCII, and a Cyrillic letter would reach
-  BASIC as junk. It sends Ctrl+H for your Backspace key when you boot from
-  a disk, because CP/M and MBASIC erase on it, and leaves the key as RUBOUT
-  (7FH) for Altair BASIC. With a tape the console sends the tape first and
-  your keys after it, like the tape reader on a Teletype, which shared the
-  line with the keyboard.
-- **The clock.** Your computer runs the 8080 faster than 2 MHz. So `app`
-  runs the CPU for 20,000 cycles, the work of 10 ms on the real Altair, and
-  sleeps until those 10 ms are up. Programs keep their original speed, and
-  BASIC waiting for a key leaves your CPU idle. `--fast` skips the sleep
-  for programs that compute for hours, such as the CPU diagnostics.
+  the program on the Altair echoes what you type.
+- **`Console`** implements `Terminal`. A thread reads the keyboard and hands
+  each key over a channel, so `receive` never waits. Your Backspace key
+  sends RUBOUT (7FH), which Altair BASIC erases on; for CP/M the console
+  turns it into Ctrl+H. With a tape the console sends the tape first and
+  your keys after it, like the reader on a Teletype.
+- **The clock** runs the CPU for 20,000 cycles, the work of 10 ms on the
+  real Altair, and sleeps until those 10 ms are up. BASIC waiting for a key
+  leaves your CPU idle. `--fast` skips the sleep.
+- **`CpmDisk`** writes the sectors and the directory entries the way the
+  CP/M BIOS does, on the bytes of the image in memory. Its module
+  documentation draws the layout of the disk.
 
 ## You press a key, BASIC prints it
 
