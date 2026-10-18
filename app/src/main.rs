@@ -1,7 +1,7 @@
 //! `altair`: runs the emulated Altair 8800 in your terminal.
 //!
 //! ```text
-//! cargo run --release -p app -- <image.bin>
+//! cargo run --release -- <image.bin>
 //! ```
 //!
 //! The program toggles the memory image in at 0000H with the front panel

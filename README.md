@@ -23,7 +23,7 @@ from Altair BASIC in your terminal to a real CP/M booted from a floppy image.
 |---------------------------|---------------------------------------------------------------------------|
 | [`i8080`](crates/i8080)   | The CPU core. `no_std`, no dependencies, knows nothing about any machine. |
 | [`altair`](crates/altair) | Altair 8800 hardware: the S-100 backplane and its cards.                  |
-| [`app`](crates/app)       | The `altair` command-line program.                                        |
+| [`app`](app)              | The `altair` command-line program.                                        |
 
 See [docs/architecture.md](docs/architecture.md) for how the pieces fit
 together and [docs/instructions.md](docs/instructions.md) for the 8080
@@ -41,7 +41,7 @@ cargo test
 ## Running
 
 ```sh
-cargo run --release -p app -- <image.bin>
+cargo run --release -- <image.bin>
 ```
 
 The emulator loads the memory image at 0000H, starts the CPU there and

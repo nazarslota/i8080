@@ -172,7 +172,8 @@ What works and what's left:
 
 ## App
 
-`app` is the `altair` command. It parses the command line with `clap`, loads
+`app` is the `altair` command. It lives in `app/` at the root of the
+repository, apart from the libraries in `crates/`. It parses the command line with `clap`, loads
 the memory image at 0000H and runs the machine until you press Ctrl+] or the
 CPU halts.
 
