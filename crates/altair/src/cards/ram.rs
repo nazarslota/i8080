@@ -1,6 +1,6 @@
 use core::ops::RangeInclusive;
 
-use crate::Device;
+use super::Card;
 
 /// A memory card: RAM that claims one range of addresses.
 ///
@@ -8,7 +8,8 @@ use crate::Device;
 /// You pick the range of addresses when you create the card.
 ///
 /// ```
-/// use altair::{Backplane, Ram};
+/// use altair::Backplane;
+/// use altair::cards::Ram;
 /// use i8080::MemoryBus;
 ///
 /// let mut backplane = Backplane::new();
@@ -50,7 +51,7 @@ impl Ram {
     }
 }
 
-impl Device for Ram {
+impl Card for Ram {
     fn read(&mut self, addr: u16) -> Option<u8> {
         self.index(addr).map(|index| self.bytes[index])
     }

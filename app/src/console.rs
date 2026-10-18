@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 
-use altair::Terminal;
+use altair::cards::Terminal;
 
 /// The key that quits the emulator: Ctrl+], as in telnet. The Altair
 /// programs don't use it, so every other key reaches the machine.

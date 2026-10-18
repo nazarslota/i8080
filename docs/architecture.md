@@ -139,7 +139,7 @@ The real Altair is a box with a backplane: a row of 100-pin S-100 slots. You
 plug in cards for memory, for a serial port to a terminal, for a floppy
 controller. The code follows the same shape:
 
-- Each card implements the `Device` trait and claims a range of memory
+- Each card implements the `Card` trait and claims a range of memory
   addresses or I/O ports.
 - The `Backplane` implements `MemoryBus` and `IoBus`. It passes each access
   to every card, and each card's address decoder decides whether to answer,
@@ -150,12 +150,39 @@ controller. The code follows the same shape:
 To add hardware, you write a new card and plug it into the backplane. The CPU
 and the other cards stay as they are.
 
-`Altair` assembles one machine from these parts: the CPU, two 32 KB memory
-cards and the 88-2SIO. The serial card talks to a `Terminal`, a trait with
-two methods: `receive` returns the next key or `None`, `send` shows a byte.
-`altair` only declares the trait. `app` implements it for your real
-keyboard and screen, and tests implement it with a list of keys and a
-`Vec` for the screen.
+You assemble a machine with `Altair::builder()` and plug in cards, as an
+Altair owner did:
+
+```rust
+let mut altair = Altair::builder()
+    .plug(cards::Cpu::new())
+    .plug(cards::Ram::new(0x0000..=0xFFFF))
+    .plug(cards::Sio2::new(console))
+    .build();
+```
+
+The CPU card, `cards::Cpu`, wraps an `i8080::Cpu` and gives you all of its
+fields and methods. It adds what the real card adds to the chip: the 2 MHz
+clock, `Cpu::CLOCK_HZ`. It doesn't implement `Card`: the CPU drives the bus,
+and the other cards answer it. So the machine keeps the CPU card apart from
+the backplane and lends it the backplane on each step. `build()` panics if
+you plug in no CPU card, and `plug` panics on a second one.
+
+The serial card talks to a `Terminal`, a trait with two methods: `receive`
+returns the next key or `None`, `send` shows a byte. `altair` only declares
+the trait. `app` implements it for your real keyboard and screen, and tests
+implement it with a list of keys and a `Vec` for the screen.
+
+The code follows the box:
+
+| Module    | What it holds                                             |
+|-----------|-----------------------------------------------------------|
+| `machine` | `Altair` and the chassis: `Backplane`, `FrontPanel`       |
+| `cards`   | What you plug in: `Cpu`, `Ram`, `Sio2` and its `Terminal` |
+
+The front panel can't set `PC` itself, on the real Altair and here. EXAMINE
+feeds the CPU a `JMP` through the data bus and EXAMINE NEXT a `NOP`, and
+the CPU executes them.
 
 What works and what's left:
 
@@ -163,7 +190,7 @@ What works and what's left:
 - [x] The 88-2SIO serial card (`Sio2`), port A at `10H` and `11H`. It talks
   to a `Terminal`, a trait that `app` implements for your real keyboard and
   screen.
-- [x] `Altair`: the machine with two 32 KB memory cards and the 88-2SIO.
+- [x] `Altair` and its builder, the CPU card and the front panel.
 - [x] `app` runs a memory image at the Altair's 2 MHz. Its `Console` puts
   your terminal in raw mode and implements `Terminal`; Ctrl+] quits.
 - [ ] **Altair BASIC.** Load it into RAM and run it on the serial card.

@@ -1,6 +1,6 @@
 use i8080::{IoBus, MemoryBus};
 
-use crate::Device;
+use crate::cards::Card;
 
 /// What a read returns when no card claims the address or port. No card
 /// drives the data lines, so the CPU reads all 1s.
@@ -15,7 +15,7 @@ const OPEN_BUS: u8 = 0xFF;
 /// receives the byte.
 #[derive(Default)]
 pub struct Backplane {
-    cards: Vec<Box<dyn Device>>,
+    cards: Vec<Box<dyn Card>>,
 }
 
 impl Backplane {
@@ -25,7 +25,7 @@ impl Backplane {
     }
 
     /// Plugs `card` into the next free slot.
-    pub fn plug(&mut self, card: impl Device + 'static) {
+    pub fn plug(&mut self, card: impl Card + 'static) {
         self.cards.push(Box::new(card));
     }
 }
@@ -78,7 +78,7 @@ mod tests {
         }
     }
 
-    impl Device for Latch {
+    impl Card for Latch {
         fn read(&mut self, addr: u16) -> Option<u8> {
             (addr == self.addr).then_some(self.value)
         }

@@ -1,14 +1,29 @@
+//! The cards you plug into the Altair's backplane.
+//!
+//! The Altair needs the CPU card ([`Cpu`]), a memory card ([`Ram`]) and a
+//! serial card for the terminal ([`Sio2`]). Each card except the CPU
+//! implements [`Card`]. The 88-DCDD floppy
+//! controller comes next.
+
+mod cpu;
+mod ram;
+mod sio2;
+
+pub use cpu::Cpu;
+pub use ram::Ram;
+pub use sio2::{Sio2, Terminal};
+
 /// A card that plugs into the [`Backplane`](crate::Backplane).
 ///
 /// A real S-100 card sees every bus cycle. Its address decoder checks the
-/// address and either answers or stays silent. `Device` works the same way:
+/// address and either answers or stays silent. `Card` works the same way:
 /// the backplane passes every access to every card, and each card returns
 /// `None` from a read it doesn't claim and ignores such a write.
 ///
 /// Every method has a default that claims nothing, so a card implements only
 /// the address space it uses: a memory card implements `read` and `write`, a
 /// serial card `input` and `output`.
-pub trait Device {
+pub trait Card {
     /// Returns the byte at `addr`, or `None` if the card doesn't claim the
     /// address.
     fn read(&mut self, _addr: u16) -> Option<u8> {

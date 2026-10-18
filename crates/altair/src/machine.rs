@@ -1,6 +1,12 @@
-use i8080::{Cpu, IoBus, MemoryBus};
+use i8080::{IoBus, MemoryBus};
 
-use crate::{Backplane, Device, FrontPanel};
+mod backplane;
+mod front_panel;
+
+pub use backplane::Backplane;
+pub use front_panel::FrontPanel;
+
+use crate::cards::{Card, Cpu};
 
 /// The port where a program reads the sense switches, the upper eight front
 /// panel switches.
@@ -12,7 +18,8 @@ const SENSE_SWITCHES_PORT: u8 = 0xFF;
 /// its [`FrontPanel`], as an Altair owner did:
 ///
 /// ```
-/// use altair::{Altair, Ram, Sio2, Terminal};
+/// use altair::Altair;
+/// use altair::cards::{Cpu, Ram, Sio2, Terminal};
 ///
 /// /// A terminal that prints to the standard output and has no keyboard.
 /// struct Screen;
@@ -28,6 +35,7 @@ const SENSE_SWITCHES_PORT: u8 = 0xFF;
 /// }
 ///
 /// let mut altair = Altair::builder()
+///     .plug(Cpu::new())
 ///     .plug(Ram::new(0x0000..=0xFFFF))
 ///     .plug(Sio2::new(Screen))
 ///     .build();
@@ -46,22 +54,19 @@ const SENSE_SWITCHES_PORT: u8 = 0xFF;
 /// }
 /// ```
 pub struct Altair {
-    pub(crate) cpu: Cpu,
-    pub(crate) backplane: Backplane,
+    cpu: Cpu,
+    backplane: Backplane,
     /// The 16 front panel switches A0 to A15, a 1 bit for a switch up.
-    pub(crate) switches: u16,
+    switches: u16,
     /// `true` after RUN, `false` after STOP.
-    pub(crate) running: bool,
+    running: bool,
 }
 
 impl Altair {
-    /// The clock frequency: the Altair's 8080 runs at 2 MHz, so it executes
-    /// 2 million cycles per second.
-    pub const CLOCK_HZ: u64 = 2_000_000;
-
     /// Starts an Altair with empty slots.
     pub fn builder() -> AltairBuilder {
         AltairBuilder {
+            cpu: None,
             backplane: Backplane::new(),
         }
     }
@@ -91,31 +96,64 @@ impl Altair {
     }
 
     /// Returns `true` after a `HLT` instruction stopped the CPU.
-    pub const fn is_halted(&self) -> bool {
+    pub fn is_halted(&self) -> bool {
         self.cpu.is_halted()
     }
 }
 
 /// Collects the cards for an [`Altair`], slot by slot.
 pub struct AltairBuilder {
+    cpu: Option<Cpu>,
     backplane: Backplane,
 }
 
 impl AltairBuilder {
     /// Plugs `card` into the next free slot.
-    pub fn plug(mut self, card: impl Device + 'static) -> Self {
-        self.backplane.plug(card);
+    ///
+    /// # Panics
+    ///
+    /// Panics if you plug in a second CPU card.
+    pub fn plug(mut self, card: impl Plug) -> Self {
+        card.plug_into(&mut self);
         self
     }
 
     /// Builds the machine: every switch down, the CPU stopped, `PC` at 0000H.
+    ///
+    /// # Panics
+    ///
+    /// Panics if you plugged in no CPU card.
     pub fn build(self) -> Altair {
         Altair {
-            cpu: Cpu::new(),
+            cpu: self
+                .cpu
+                .expect("plug in a CPU card: .plug(cards::Cpu::new())"),
             backplane: self.backplane,
             switches: 0x0000,
             running: false,
         }
+    }
+}
+
+/// A card that [`AltairBuilder::plug`] takes: the CPU card or any [`Card`].
+///
+/// The CPU card drives the bus and the other cards answer it, so the machine
+/// keeps them apart.
+pub trait Plug {
+    /// Puts the card into the machine that `builder` assembles.
+    fn plug_into(self, builder: &mut AltairBuilder);
+}
+
+impl Plug for Cpu {
+    fn plug_into(self, builder: &mut AltairBuilder) {
+        assert!(builder.cpu.is_none(), "the Altair takes one CPU card");
+        builder.cpu = Some(self);
+    }
+}
+
+impl<T: Card + 'static> Plug for T {
+    fn plug_into(self, builder: &mut AltairBuilder) {
+        builder.backplane.plug(self);
     }
 }
 
@@ -157,7 +195,7 @@ mod tests {
     use std::rc::Rc;
 
     use super::*;
-    use crate::{Ram, Sio2, Terminal};
+    use crate::cards::{Cpu, Ram, Sio2, Terminal};
 
     /// A terminal that records what the machine sends. The test keeps a
     /// second handle to the screen, because the machine owns the terminal.
@@ -178,6 +216,7 @@ mod tests {
     fn altair_with_screen() -> (Altair, Rc<RefCell<Vec<u8>>>) {
         let screen = Rc::new(RefCell::new(Vec::new()));
         let altair = Altair::builder()
+            .plug(Cpu::new())
             .plug(Ram::new(0x0000..=0x7FFF))
             .plug(Ram::new(0x8000..=0xFFFF))
             .plug(Sio2::new(SharedScreen(Rc::clone(&screen))))
@@ -255,12 +294,27 @@ mod tests {
 
     #[test]
     fn empty_slot_reads_ffh() {
-        let mut altair = Altair::builder().plug(Ram::new(0x0000..=0x00FF)).build();
+        let mut altair = Altair::builder()
+            .plug(Cpu::new())
+            .plug(Ram::new(0x0000..=0x00FF))
+            .build();
         // 0000H: LDA 8000H; HLT
         toggle_in(&mut altair, 0x0000, &[0x3A, 0x00, 0x80, 0x76]);
 
         run_until_halted(&mut altair);
 
         assert_eq!(altair.cpu.registers.a, 0xFF);
+    }
+
+    #[test]
+    #[should_panic(expected = "plug in a CPU card")]
+    fn build_without_cpu_card_panics() {
+        Altair::builder().plug(Ram::new(0x0000..=0xFFFF)).build();
+    }
+
+    #[test]
+    #[should_panic(expected = "one CPU card")]
+    fn second_cpu_card_panics() {
+        Altair::builder().plug(Cpu::new()).plug(Cpu::new());
     }
 }

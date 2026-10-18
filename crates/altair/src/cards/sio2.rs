@@ -52,7 +52,7 @@
 //! [Altair 8800 Monitor]: https://k1.spdns.de/Develop/Projects/zxsp/zxsp.alt10/zasm/Test/8080/original/Altair8800_Monitor.z80
 //! [Loading Basic with the 88-2SIO Board]: https://deramp.com/downloads/mfe_archive/010-S100%20Computers%20and%20Boards/00-MITS/10-MITS%20S100%20Boards/88-2SIO%20Dual%20Serial%20Board/Loading%20Basic%20with%20the%2088-2SIO%20Board.pdf
 
-use crate::{Device, Terminal};
+use super::Card;
 
 /// The port that returns the status byte on `IN` and takes control bytes on
 /// `OUT`.
@@ -90,7 +90,8 @@ const EMPTY_DATA: u8 = 0x00;
 /// needs neither.
 ///
 /// ```
-/// use altair::{Backplane, Ram, Sio2, Terminal};
+/// use altair::Backplane;
+/// use altair::cards::{Ram, Sio2, Terminal};
 /// use i8080::{Cpu, MemoryBus};
 ///
 /// /// A terminal that prints to the standard output and has no keyboard.
@@ -158,7 +159,7 @@ impl<T: Terminal> Sio2<T> {
     }
 }
 
-impl<T: Terminal> Device for Sio2<T> {
+impl<T: Terminal> Card for Sio2<T> {
     fn input(&mut self, port: u8) -> Option<u8> {
         match port {
             STATUS_PORT => Some(self.status()),
@@ -172,6 +173,20 @@ impl<T: Terminal> Device for Sio2<T> {
             self.terminal.send(value);
         }
     }
+}
+
+/// The other end of the serial cable: the terminal you type on.
+///
+/// The [`Sio2`] sends what the program prints to the terminal and takes
+/// the keys you type from it. The `altair` crate does no host I/O, so the
+/// application implements this trait and connects it to your real keyboard
+/// and screen.
+pub trait Terminal {
+    /// Returns the next key you typed, or `None` if you typed nothing.
+    fn receive(&mut self) -> Option<u8>;
+
+    /// Shows `byte` on the screen.
+    fn send(&mut self, byte: u8);
 }
 
 #[cfg(test)]

@@ -16,7 +16,8 @@ use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 use std::{fs, thread};
 
-use altair::{Altair, Ram, Sio2};
+use altair::Altair;
+use altair::cards::{Cpu, Ram, Sio2};
 use clap::Parser;
 
 use crate::console::{Console, RawMode};
@@ -27,7 +28,7 @@ const SLICES_PER_SECOND: u64 = 100;
 /// How long one slice takes on the real Altair.
 const SLICE: Duration = Duration::from_nanos(1_000_000_000 / SLICES_PER_SECOND);
 /// The cycles the real Altair executes in one [`SLICE`].
-const SLICE_CYCLES: u64 = Altair::CLOCK_HZ / SLICES_PER_SECOND;
+const SLICE_CYCLES: u64 = Cpu::CLOCK_HZ / SLICES_PER_SECOND;
 
 /// Runs the emulated Altair 8800 in your terminal. Press Ctrl+] to quit.
 #[derive(Parser)]
@@ -76,6 +77,7 @@ fn run(path: &Path) -> Result<Exit, String> {
         .map_err(|error| format!("can't switch the terminal to raw mode: {error}"))?;
     let (console, quit) = Console::start();
     let mut altair = Altair::builder()
+        .plug(Cpu::new()) // The 88-CPU card
         .plug(Ram::new(0x0000..=0x7FFF)) // First 32 KB card
         .plug(Ram::new(0x8000..=0xFFFF)) // Second 32 KB card
         .plug(Sio2::new(console)) // The 88-2SIO card at ports 10H and 11H

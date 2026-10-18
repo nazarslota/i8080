@@ -43,7 +43,7 @@
 
 use i8080::{IoBus, MemoryBus};
 
-use crate::{Altair, Backplane};
+use super::{Altair, Backplane};
 
 /// The `JMP` opcode, which EXAMINE feeds the CPU.
 const JMP_OPCODE: u8 = 0xC3;
@@ -65,8 +65,8 @@ impl<'a> FrontPanel<'a> {
     /// up.
     ///
     /// ```
-    /// # use altair::{Altair, Ram};
-    /// # let mut altair = Altair::builder().plug(Ram::new(0x0000..=0xFFFF)).build();
+    /// # use altair::{Altair, cards::{Cpu, Ram}};
+    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build();
     /// let mut panel = altair.front_panel();
     /// panel.set_switches(0x2000); // A13 up, the rest down
     /// panel.set_switches(0o076); // A7 to A0 in octal groups: 000 111 110
@@ -79,8 +79,8 @@ impl<'a> FrontPanel<'a> {
     /// EXAMINE: sets `PC` to the address on the switches.
     ///
     /// ```
-    /// # use altair::{Altair, Ram};
-    /// # let mut altair = Altair::builder().plug(Ram::new(0x0000..=0xFFFF)).build();
+    /// # use altair::{Altair, cards::{Cpu, Ram}};
+    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build();
     /// let mut panel = altair.front_panel();
     /// panel.toggle_in(0x2000, &[0x3E]);
     ///
@@ -96,8 +96,8 @@ impl<'a> FrontPanel<'a> {
     /// EXAMINE NEXT: moves `PC` to the next address.
     ///
     /// ```
-    /// # use altair::{Altair, Ram};
-    /// # let mut altair = Altair::builder().plug(Ram::new(0x0000..=0xFFFF)).build();
+    /// # use altair::{Altair, cards::{Cpu, Ram}};
+    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build();
     /// let mut panel = altair.front_panel();
     /// panel.toggle_in(0x2000, &[0x3E, 0x41]);
     /// panel.set_switches(0x2000);
@@ -113,8 +113,8 @@ impl<'a> FrontPanel<'a> {
     /// DEPOSIT: writes the byte on switches A0 to A7 at `PC`.
     ///
     /// ```
-    /// # use altair::{Altair, Ram};
-    /// # let mut altair = Altair::builder().plug(Ram::new(0x0000..=0xFFFF)).build();
+    /// # use altair::{Altair, cards::{Cpu, Ram}};
+    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build();
     /// let mut panel = altair.front_panel();
     /// panel.set_switches(0x2000);
     /// panel.examine();
@@ -133,8 +133,8 @@ impl<'a> FrontPanel<'a> {
     /// switches A0 to A7 there.
     ///
     /// ```
-    /// # use altair::{Altair, Ram};
-    /// # let mut altair = Altair::builder().plug(Ram::new(0x0000..=0xFFFF)).build();
+    /// # use altair::{Altair, cards::{Cpu, Ram}};
+    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build();
     /// let mut panel = altair.front_panel();
     /// panel.set_switches(0x2000);
     /// panel.examine();
@@ -154,8 +154,8 @@ impl<'a> FrontPanel<'a> {
     /// Leaves `PC` at the last byte.
     ///
     /// ```
-    /// # use altair::{Altair, Ram};
-    /// # let mut altair = Altair::builder().plug(Ram::new(0x0000..=0xFFFF)).build();
+    /// # use altair::{Altair, cards::{Cpu, Ram}};
+    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build();
     /// let mut panel = altair.front_panel();
     /// panel.toggle_in(0x2000, &[0x3E, 0x41, 0x76]); // MVI A,41H; HLT
     ///
@@ -180,8 +180,8 @@ impl<'a> FrontPanel<'a> {
     /// RUN: lets the CPU run from `PC`.
     ///
     /// ```
-    /// # use altair::{Altair, Ram};
-    /// # let mut altair = Altair::builder().plug(Ram::new(0x0000..=0xFFFF)).build();
+    /// # use altair::{Altair, cards::{Cpu, Ram}};
+    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build();
     /// let mut panel = altair.front_panel();
     /// panel.run();
     ///
@@ -194,8 +194,8 @@ impl<'a> FrontPanel<'a> {
     /// STOP: stops the CPU.
     ///
     /// ```
-    /// # use altair::{Altair, Ram};
-    /// # let mut altair = Altair::builder().plug(Ram::new(0x0000..=0xFFFF)).build();
+    /// # use altair::{Altair, cards::{Cpu, Ram}};
+    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build();
     /// let mut panel = altair.front_panel();
     /// panel.run();
     /// panel.stop();
@@ -209,8 +209,8 @@ impl<'a> FrontPanel<'a> {
     /// SINGLE STEP: executes one instruction and returns its clock cycles.
     ///
     /// ```
-    /// # use altair::{Altair, Ram};
-    /// # let mut altair = Altair::builder().plug(Ram::new(0x0000..=0xFFFF)).build();
+    /// # use altair::{Altair, cards::{Cpu, Ram}};
+    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build();
     /// let mut panel = altair.front_panel();
     /// panel.toggle_in(0x0000, &[0x3E, 0x41, 0x76]); // MVI A,41H; HLT
     /// panel.set_switches(0x0000);
@@ -228,8 +228,8 @@ impl<'a> FrontPanel<'a> {
     /// CPU.
     ///
     /// ```
-    /// # use altair::{Altair, Ram};
-    /// # let mut altair = Altair::builder().plug(Ram::new(0x0000..=0xFFFF)).build();
+    /// # use altair::{Altair, cards::{Cpu, Ram}};
+    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build();
     /// let mut panel = altair.front_panel();
     /// panel.toggle_in(0x0000, &[0x76]); // HLT
     /// panel.set_switches(0x2000);
@@ -293,10 +293,14 @@ impl IoBus for FedBus<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Altair, Ram};
+    use crate::Altair;
+    use crate::cards::{Cpu, Ram};
 
     fn altair() -> Altair {
-        Altair::builder().plug(Ram::new(0x0000..=0xFFFF)).build()
+        Altair::builder()
+            .plug(Cpu::new())
+            .plug(Ram::new(0x0000..=0xFFFF))
+            .build()
     }
 
     #[test]
