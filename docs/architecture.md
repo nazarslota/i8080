@@ -125,7 +125,7 @@ What works and what's left:
   `MVI A,42H` and not raw bytes. It helps to find the instruction where a
   diagnostic fails.
 
-## Altair (planned)
+## Altair (in progress)
 
 The real Altair is a box with a backplane: a row of 100-pin S-100 slots. You
 plug in cards for memory, for a serial port to a terminal, for a floppy
@@ -133,13 +133,23 @@ controller. The code follows the same shape:
 
 - Each card implements the `Device` trait and claims a range of memory
   addresses or I/O ports.
-- The `Backplane` implements `MemoryBus` and `IoBus`. On each access it finds
-  the card that claims the address or port and forwards the access to it,
-  like the address decoder on each real card. An address that no card claims
-  reads as `0xFF`, like an empty slot on the real bus.
+- The `Backplane` implements `MemoryBus` and `IoBus`. It passes each access
+  to every card, and each card's address decoder decides whether to answer,
+  as on the real bus. On a read, the first card you plugged in that claims
+  the address answers. A read that no card claims returns `0xFF`, like an
+  empty slot on the real bus.
 
 To add hardware, you write a new card and plug it into the backplane. The CPU
 and the other cards stay as they are.
+
+What works and what's left:
+
+- [x] The `Backplane` and the `Ram` card.
+- [ ] **88-2SIO serial card.** Ports `10H` and `11H`, wired to your terminal
+  through `app`.
+- [ ] **Altair BASIC.** Load it into RAM and run it on the serial card.
+- [ ] **88-DCDD floppy controller** and a boot ROM, to boot CP/M from a disk
+  image.
 
 ## Glossary
 

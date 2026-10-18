@@ -8,7 +8,7 @@ from Altair BASIC in your terminal to a real CP/M booted from a floppy image.
 
 ## Roadmap
 
-- [ ] **CPU core.** The full 8080 instruction set, verified with the classic
+- [x] **CPU core.** The full 8080 instruction set, verified with the classic
   diagnostic programs (TST8080, 8080PRE, CPUTEST, 8080EXM).
 - [ ] **Altair BASIC.** An Altair with memory and an 88-2SIO serial board,
   wired to your terminal.
