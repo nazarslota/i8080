@@ -74,14 +74,14 @@ the terminal:
 1. BASIC loads `0x41` (the ASCII code for `A`) into register A and executes
    `OUT 0x11`.
 2. `i8080` decodes the instruction and calls `io.output(0x11, 0x41)`.
-3. The `altair` backplane finds the card that claims port `0x11`: the 88-2SIO
-   serial card. The card puts the byte in its transmit buffer.
-4. After each batch of instructions, `app` takes the bytes from the serial
-   card and writes them to your terminal.
+3. The `altair` backplane passes the access to every card. The 88-2SIO
+   serial card claims port `0x11` and calls `send(0x41)` on its `Terminal`.
+4. `app` implements `Terminal` and writes the byte to your terminal window.
 
-A keystroke travels the other way. `app` hands the key to the serial card,
-and the card sets the "data ready" bit in its status port. BASIC reads that
-port in a loop, sees the bit and reads the key with `IN 0x11`.
+A keystroke travels the other way. BASIC reads the status port `0x10` in a
+loop. On each read the card asks its `Terminal` for a key with `receive()`.
+When you have typed one, the card sets bit 0 of the status byte, and BASIC
+reads the key with `IN 0x11`.
 
 ## CPU core (in progress)
 
@@ -146,8 +146,10 @@ and the other cards stay as they are.
 What works and what's left:
 
 - [x] The `Backplane` and the `Ram` card.
-- [ ] **88-2SIO serial card.** Ports `10H` and `11H`, wired to your terminal
-  through `app`.
+- [x] The 88-2SIO serial card (`Sio2`), port A at `10H` and `11H`. It talks
+  to a `Terminal`, a trait that `app` implements for your real keyboard and
+  screen.
+- [ ] **`app`:** a `Terminal` for your terminal window.
 - [ ] **Altair BASIC.** Load it into RAM and run it on the serial card.
 - [ ] **88-DCDD floppy controller** and a boot ROM, to boot CP/M from a disk
   image.

@@ -12,13 +12,15 @@
 //!
 //! # Status
 //!
-//! Work in progress: the [`Backplane`] and the [`Ram`] card work. The serial
-//! card comes next.
+//! Work in progress: the [`Backplane`], the [`Ram`] card and the [`Sio2`]
+//! serial card work. Altair BASIC comes next.
 
 mod backplane;
 mod device;
 mod ram;
+mod sio2;
 
 pub use backplane::Backplane;
 pub use device::Device;
 pub use ram::Ram;
+pub use sio2::{Sio2, Terminal};
