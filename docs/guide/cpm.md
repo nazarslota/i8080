@@ -74,27 +74,23 @@ docker pull z88dk/z88dk
 ```
 
 C programs live in [`examples/c`](../../examples/c). From the root of the
-repository, compile one, copy it to drive B: and boot:
+repository, `make run` compiles `examples/c/main.c`, copies it to drive B:
+and boots CP/M with `a.dsk` and `b.dsk`. It makes either disk first if it
+is missing. At `A>`, run the program from drive B: with `B:MAIN`.
 
-```sh
-docker run --rm -v "$PWD":/src -w /src z88dk/z88dk \
-  zcc +cpm -clib=8080 examples/c/hello.c -o examples/c/HELLO.COM
-cargo run --release -- disk put b.dsk examples/c/HELLO.COM
-cargo run --release -- cpm a.dsk b.dsk
-```
+| Command                 | What it does                                   |
+|-------------------------|------------------------------------------------|
+| `make`                  | builds every `examples/c/*.c` that changed     |
+| `make run`              | builds `main.c`, puts it on `b.dsk`, boots     |
+| `make run PROGRAM=name` | the same for `examples/c/name.c`               |
+| `make clean`            | removes the built `.COM` files                 |
 
-```text
-A>B:HELLO
-HELLO FROM C, 1
-HELLO FROM C, 2
-HELLO FROM C, 3
-```
-
-`+cpm` builds a `.COM` file for CP/M, and `-clib=8080` keeps the code to
-8080 instructions: without it z88dk writes Z80 code, which the 8080 can't
-run. The library turns `\n` into the CR LF that a terminal expects.
-`HELLO.COM` takes 7.8 KB of the disk. After each change, compile and
-`put` again: `put` replaces the old `HELLO.COM`.
+The [Makefile](../../Makefile) calls z88dk as
+`zcc +cpm -clib=8080 main.c -o main.COM`. `+cpm` builds a `.COM` file for
+CP/M, and `-clib=8080` keeps the code to 8080 instructions: without it
+z88dk writes Z80 code, which the 8080 can't run. The library turns `\n`
+into the CR LF that a terminal expects. `put` replaces the old file on
+`b.dsk`, so `make run` always boots the latest build.
 
 ## Speed
 
