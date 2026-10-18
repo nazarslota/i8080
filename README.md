@@ -42,16 +42,16 @@ cargo test --release -p i8080 --test diagnostics -- --ignored
 
 ## Documentation
 
-| Read                                                          | To learn                                               |
-|---------------------------------------------------------------|--------------------------------------------------------|
-| [guide/basic.md](docs/guide/basic.md)                         | how to run Altair BASIC                                |
-| [guide/cpm.md](docs/guide/cpm.md)                             | how to run CP/M, add disks and copy programs onto them |
-| [architecture.md](docs/architecture.md)                       | how the code splits into layers, and why               |
-| [boot.md](docs/boot.md)                                       | what happens between RUN and `OK` or `A>`              |
-| [altair/front-panel.md](docs/altair/front-panel.md)           | the Altair's switches and lights                       |
-| [altair/memory-and-ports.md](docs/altair/memory-and-ports.md) | the memory map and the I/O ports                       |
-| [i8080/instructions.md](docs/i8080/instructions.md)           | every 8080 instruction                                 |
-| [glossary.md](docs/glossary.md)                               | PROM, BDOS, sense switches and the other terms         |
+| Read                                                          | To learn                                                |
+|---------------------------------------------------------------|---------------------------------------------------------|
+| [guide/basic.md](docs/guide/basic.md)                         | how to run Altair BASIC                                 |
+| [guide/cpm.md](docs/guide/cpm.md)                             | how to run CP/M, add disks, copy programs and compile C |
+| [architecture.md](docs/architecture.md)                       | how the code splits into layers, and why                |
+| [boot.md](docs/boot.md)                                       | what happens between RUN and `OK` or `A>`               |
+| [altair/front-panel.md](docs/altair/front-panel.md)           | the Altair's switches and lights                        |
+| [altair/memory-and-ports.md](docs/altair/memory-and-ports.md) | the memory map and the I/O ports                        |
+| [i8080/instructions.md](docs/i8080/instructions.md)           | every 8080 instruction                                  |
+| [glossary.md](docs/glossary.md)                               | PROM, BDOS, sense switches and the other terms          |
 
 `cargo doc --open` documents the code, with an example for each public
 function.

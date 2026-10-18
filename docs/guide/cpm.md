@@ -64,6 +64,38 @@ You can name up to four disks, for A: to D:. A disk from `format` holds no
 system, so CP/M can't boot from it. On a drive without a disk, CP/M prints
 `Bdos Err On C: Bad Sector`, and Ctrl+C brings back `A>`.
 
+## C programs
+
+z88dk cross-compiles C for CP/M on your Mac. It has no Homebrew formula,
+so you run its Docker image. Start Docker Desktop and fetch the image once:
+
+```sh
+docker pull z88dk/z88dk
+```
+
+C programs live in [`examples/c`](../../examples/c). From the root of the
+repository, compile one, copy it to drive B: and boot:
+
+```sh
+docker run --rm -v "$PWD":/src -w /src z88dk/z88dk \
+  zcc +cpm -clib=8080 examples/c/hello.c -o examples/c/HELLO.COM
+cargo run --release -- disk put b.dsk examples/c/HELLO.COM
+cargo run --release -- cpm a.dsk b.dsk
+```
+
+```text
+A>B:HELLO
+HELLO FROM C, 1
+HELLO FROM C, 2
+HELLO FROM C, 3
+```
+
+`+cpm` builds a `.COM` file for CP/M, and `-clib=8080` keeps the code to
+8080 instructions: without it z88dk writes Z80 code, which the 8080 can't
+run. The library turns `\n` into the CR LF that a terminal expects.
+`HELLO.COM` takes 7.8 KB of the disk. After each change, compile and
+`put` again: `put` replaces the old `HELLO.COM`.
+
 ## Speed
 
 The emulator runs the CPU at the 2 MHz of the real Altair, so CPUTEST
