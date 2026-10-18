@@ -20,4 +20,4 @@
 pub mod cards;
 mod machine;
 
-pub use machine::{Altair, AltairBuilder, Backplane, BuildError, FrontPanel, Plug};
+pub use machine::{Altair, AltairBuilder, Backplane, FrontPanel};

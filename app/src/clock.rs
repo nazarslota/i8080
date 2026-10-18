@@ -10,7 +10,6 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use altair::Altair;
-use altair::cards::Cpu;
 
 /// How many times per second the clock checks the time. Between two checks
 /// it runs the CPU for one [`SLICE`].
@@ -18,7 +17,7 @@ const SLICES_PER_SECOND: u64 = 100;
 /// How long one slice takes on the real Altair.
 const SLICE: Duration = Duration::from_nanos(1_000_000_000 / SLICES_PER_SECOND);
 /// The cycles the real Altair executes in one [`SLICE`].
-const SLICE_CYCLES: u64 = Cpu::CLOCK_HZ / SLICES_PER_SECOND;
+const SLICE_CYCLES: u64 = Altair::CLOCK_HZ / SLICES_PER_SECOND;
 
 /// How fast the clock runs the CPU.
 #[derive(Clone, Copy)]

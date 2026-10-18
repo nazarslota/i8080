@@ -1,18 +1,16 @@
 //! The cards you plug into the Altair's backplane.
 //!
-//! The Altair needs the CPU card ([`Cpu`]), a memory card ([`Ram`]) and a
-//! serial card for the terminal ([`Sio2`]). The floppy disk controller
-//! ([`Dcdd`]) reads and writes a [`Disk`] in each drive, and a PROM card
-//! ([`Rom`]) holds the loader that boots from it. Each card except the CPU implements
-//! [`Card`].
+//! The CPU card comes with every [`Altair`](crate::Altair). Next to it the
+//! Altair needs a memory card ([`Ram`]) and a serial card for the terminal
+//! ([`Sio2`]). The floppy disk controller ([`Dcdd`]) reads and writes a
+//! [`Disk`] in each drive, and a PROM card ([`Rom`]) holds the loader that
+//! boots from it. Each card implements [`Card`].
 
-mod cpu;
 mod dcdd;
 mod ram;
 mod rom;
 mod sio2;
 
-pub use cpu::Cpu;
 pub use dcdd::{DISK_BYTES, Dcdd, Disk, NoSuchDriveError};
 pub use ram::{EmptyRangeError, Ram};
 pub use rom::{Rom, RomError};

@@ -58,7 +58,7 @@ flowchart TB
     end
 
     subgraph altair["altair"]
-        machine["Altair"] --> cpu["cards::Cpu"]
+        machine["Altair"] --> cpu["i8080::Cpu"]
         machine --> panel["FrontPanel<br/>switches A0-A15"]
         machine --> backplane["Backplane"]
         cpu -- "IN 0FFH" --> panel
@@ -89,42 +89,39 @@ The code follows the box:
 | Module    | What it holds                                             |
 |-----------|-----------------------------------------------------------|
 | `machine` | `Altair` and the chassis: `Backplane`, `FrontPanel`       |
-| `cards`   | What you plug in: `Cpu`, `Ram`, `Rom`, `Sio2` and its `Terminal`, `Dcdd` |
+| `cards`   | What you plug in: `Ram`, `Rom`, `Sio2` and its `Terminal`, `Dcdd` |
 
-You plug in the cards with the builder, as an Altair owner did. This Altair
-boots CP/M:
+Every Altair comes with its CPU card, and you plug in the other cards with
+the builder, as an Altair owner did. This Altair boots CP/M:
 
 ```rust
 let mut dcdd = cards::Dcdd::new();
 dcdd.insert(0, disk)?;
 
 let mut altair = Altair::builder()
-    .plug(cards::Cpu::new())
     .plug(cards::Ram::new(0x0000..=0x7FFF)?)
     .plug(cards::Ram::new(0x8000..=0xFEFF)?)
     .plug(cards::Sio2::new(console))
     .plug(cards::Rom::new(0xFF00, dbl)?)
     .plug(dcdd)
-    .build()?;
+    .build();
 ```
 
 The backplane passes each memory access, `IN` and `OUT` to every card, and
 the card that claims the address or port answers, as on the real bus. A read
-that no card claims returns `FFH`, like an empty slot. Each card except the
-CPU implements the `Card` trait:
+that no card claims returns `FFH`, like an empty slot. Each card implements
+the `Card` trait:
 
 | Card       | Claims                       | Plays the role of                       |
 |------------|------------------------------|-----------------------------------------|
-| `Cpu`      | nothing: it drives the bus   | the 88-CPU card with its 2 MHz clock    |
 | `Ram`, two | `0000H-7FFFH`, `8000H-FEFFH` | two memory cards, 64 KB without a PROM  |
 | `Rom`      | `FF00H-FFFFH`                | a PROM card with the disk boot loader   |
 | `Sio2`     | ports `10H` and `11H`        | the 88-2SIO serial card, port A         |
 | `Dcdd`     | ports `08H`, `09H` and `0AH` | the 88-DCDD floppy disk controller      |
 
-The CPU card wraps an `i8080::Cpu`, gives you all of its fields and methods
-and adds the clock, `Cpu::CLOCK_HZ`. The machine keeps it apart from the
-backplane and lends it the backplane as its bus on each `step`. `build()`
-returns an error if you plug in no CPU card or two.
+The CPU drives the bus instead of answering it, so it takes no slot: the
+`Altair` holds an `i8080::Cpu` and lends it the backplane as its bus on each
+`step`. `Altair::CLOCK_HZ` gives the 2 MHz of the 88-CPU card.
 
 A PROM can't change, so `Rom` ignores writes. The disk turns one sector
 each time a program reads port `09H`.

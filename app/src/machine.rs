@@ -24,7 +24,7 @@
 use std::error::Error;
 use std::ops::RangeInclusive;
 
-use altair::cards::{Cpu, Dcdd, EmptyRangeError, NoSuchDriveError, Ram, Rom, Sio2};
+use altair::cards::{Dcdd, EmptyRangeError, NoSuchDriveError, Ram, Rom, Sio2};
 use altair::{Altair, AltairBuilder};
 
 use crate::boot::{Boot, bootstrap_loader};
@@ -50,11 +50,11 @@ const BOOT_DRIVE: usize = 0;
 pub fn start(boot: Boot, console: Console, sense_switches: u8) -> Result<Altair, Box<dyn Error>> {
     let altair = match boot {
         Boot::Image(image) => {
-            let altair = cards(console, HIGH_RAM)?.build()?;
+            let altair = cards(console, HIGH_RAM)?.build();
             toggle_in_and_run(altair, &image, sense_switches)
         }
         Boot::Tape { basic, .. } => {
-            let altair = cards(console, HIGH_RAM)?.build()?;
+            let altair = cards(console, HIGH_RAM)?.build();
             toggle_in_and_run(altair, &bootstrap_loader(basic), sense_switches)
         }
         Boot::Disk { loader, disk } => {
@@ -62,21 +62,20 @@ pub fn start(boot: Boot, console: Console, sense_switches: u8) -> Result<Altair,
             let altair = cards(console, HIGH_RAM_BELOW_PROM)?
                 .plug(Rom::new(loader.start, loader.bytes)?) // The PROM card
                 .plug(disk_controller(disk)?) // The 88-DCDD at ports 08H to 0AH
-                .build()?;
+                .build();
             run_from(altair, start, sense_switches)
         }
     };
     Ok(altair)
 }
 
-/// Plugs in the cards every Altair here has: the CPU, a RAM card for
+/// Plugs in the cards every Altair here has next to its CPU: a RAM card for
 /// [`LOW_RAM`], a RAM card for `high_ram` and the serial card for `console`.
 fn cards(
     console: Console,
     high_ram: RangeInclusive<u16>,
 ) -> Result<AltairBuilder, EmptyRangeError> {
     Ok(Altair::builder()
-        .plug(Cpu::new()) // The 88-CPU card
         .plug(Ram::new(LOW_RAM)?)
         .plug(Ram::new(high_ram)?)
         .plug(Sio2::new(console))) // The 88-2SIO card at ports 10H and 11H
