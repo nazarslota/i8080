@@ -151,9 +151,9 @@ fn run_diagnostic(name: &str) -> String {
     // Write the program into memory, where CP/M would load it.
     memory[program_start..program_end].copy_from_slice(&program);
 
-    let [low, high] = BDOS_CODE_ADDRESS.to_le_bytes();
+    let [bdos_code_low, bdos_code_high] = BDOS_CODE_ADDRESS.to_le_bytes();
     let bdos_call = usize::from(BDOS_CALL_ADDRESS);
-    memory[bdos_call..bdos_call + 3].copy_from_slice(&[JMP_OPCODE, low, high]);
+    memory[bdos_call..bdos_call + 3].copy_from_slice(&[JMP_OPCODE, bdos_code_low, bdos_code_high]);
     // The BDOS returns at once: the loop below does its work in Rust.
     memory[usize::from(BDOS_CODE_ADDRESS)] = RET_OPCODE;
 
