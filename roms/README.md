@@ -10,7 +10,7 @@ ships no copyrighted software, so you supply these files yourself:
 | `4K BASIC Ver 4-0.tap`, `8K BASIC Ver 4-0.tap`             | Altair BASIC on paper tape: `altair tape 8k-4.0 …`                    |
 | `Extended BASIC Ver 4-0.tap`, `Extended BASIC Ver 4-1.tap` | Extended BASIC on paper tape: `altair tape extended-4.1 …`            |
 | `DBL.HEX`                                                  | The MITS disk boot loader for the PROM: `altair disk roms/DBL.HEX …`  |
-| `cpm22b23-56k.dsk`                                         | CP/M 2.2b on an 8-inch floppy: `altair disk … roms/cpm22b23-56k.dsk`  |
+| `cpm22b23-56k.dsk`                                         | CP/M 2.2b on an 8-inch floppy: copy it to `cpm.dsk` and boot that   |
 
 ## Where to get them
 
@@ -29,8 +29,13 @@ folder on deramp.com. `DBL.ASM` there holds its source.
 
 **CP/M.** Download `cpm22b23-56k.dsk` from the
 [CP/M 2.2B](https://deramp.com/downloads/altair/software/8_inch_floppy/CPM/CPM%202.2/CPM%202.2B/)
-folder on deramp.com: Mike Douglas's CP/M 2.2b for 56 KB of memory. Keep a
-copy: the emulator writes what CP/M saves into the image.
+folder on deramp.com: Mike Douglas's CP/M 2.2b for 56 KB of memory. The
+emulator writes what CP/M saves into the image, so boot a copy:
+
+```sh
+cp roms/cpm22b23-56k.dsk cpm.dsk
+cargo run --release -- disk roms/DBL.HEX cpm.dsk
+```
 
 **hello.bin.** Write the 32 bytes yourself:
 

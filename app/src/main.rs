@@ -3,7 +3,8 @@
 //! ```text
 //! cargo run --release -- image roms/hello.bin
 //! cargo run --release -- tape 8k-4.0 "roms/8K BASIC Ver 4-0.tap"
-//! cargo run --release -- disk roms/DBL.HEX roms/cpm22b23-56k.dsk
+//! cp roms/cpm22b23-56k.dsk cpm.dsk
+//! cargo run --release -- disk roms/DBL.HEX cpm.dsk
 //! ```
 //!
 //! The program reads the files, builds the Altair for them, starts it from

@@ -10,7 +10,8 @@ use crate::boot::Basic;
 const EXAMPLES: &str = "Examples:
   altair image roms/hello.bin
   altair tape 8k-4.0 \"roms/8K BASIC Ver 4-0.tap\"
-  altair disk roms/DBL.HEX roms/cpm22b23-56k.dsk";
+  cp roms/cpm22b23-56k.dsk cpm.dsk
+  altair disk roms/DBL.HEX cpm.dsk";
 
 /// Runs the emulated Altair 8800 in your terminal. Press Ctrl+] to quit.
 #[derive(Parser)]
@@ -64,9 +65,9 @@ pub enum Command {
         /// Example: roms/DBL.HEX
         loader: PathBuf,
 
-        /// The floppy disk image.
+        /// The floppy disk image. The emulator writes to it, so boot a copy.
         ///
-        /// Example: roms/cpm22b23-56k.dsk
+        /// Example: cpm.dsk
         disk: PathBuf,
     },
 }

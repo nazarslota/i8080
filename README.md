@@ -80,18 +80,20 @@ HELLO 3
 OK
 ```
 
-Boot CP/M 2.2 from a floppy image:
+Boot CP/M 2.2 from a floppy image. The emulator writes each change to the
+image file at once, so copy the image first and boot the copy:
 
 ```sh
-cargo run --release -- disk roms/DBL.HEX roms/cpm22b23-56k.dsk
+cp roms/cpm22b23-56k.dsk cpm.dsk
+cargo run --release -- disk roms/DBL.HEX cpm.dsk
 ```
 
 You name the boot loader first and the disk second. The emulator plugs a
 PROM card with the MITS disk boot loader at FF00H and an 88-DCDD controller
-with the disk in drive 0, then starts the CPU at FF00H. The loader reads CP/M from the disk, and CP/M greets you with `A>`.
-Type `DIR` to list the disk. The emulator writes each change to the image
-file at once, so the files you create in CP/M stay. Keep a copy of the
-original image.
+with the disk in drive 0, then starts the CPU at FF00H. The loader reads
+CP/M from the disk, and CP/M greets you with `A>`. Type `DIR` to list the
+disk. The files you create in CP/M stay in `cpm.dsk`. Git ignores it, and
+you start over with a fresh `cp`.
 
 You can also load a memory image at 0000H with
 `cargo run --release -- image roms/hello.bin`. Run `altair --help` for every
