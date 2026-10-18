@@ -54,7 +54,7 @@ pub struct Console {
 impl Console {
     /// Starts the keyboard thread with `tape` in the reader. Returns the
     /// console and a flag that turns `true` when you press [`QUIT_KEY`].
-    pub fn start(tape: Vec<u8>) -> (Self, Arc<AtomicBool>) {
+    pub fn start(tape: &[u8]) -> (Self, Arc<AtomicBool>) {
         let (sender, keys) = mpsc::channel();
         let quit = Arc::new(AtomicBool::new(false));
         let quit_pressed = Arc::clone(&quit);
@@ -76,7 +76,7 @@ impl Console {
         });
 
         let console = Self {
-            tape: tape.into(),
+            tape: tape.iter().copied().collect(),
             keys,
             stdout: io::stdout(),
         };

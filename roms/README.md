@@ -6,9 +6,11 @@ ships no copyrighted software, so you supply these files yourself:
 | File                                                       | Used for                                                       |
 |------------------------------------------------------------|----------------------------------------------------------------|
 | `TST8080.COM`, `8080PRE.COM`, `CPUTEST.COM`, `8080EXM.COM` | CPU diagnostics for `crates/i8080/tests/diagnostics.rs`        |
-| `hello.bin`                                                | A memory image that prints a greeting: `altair roms/hello.bin` |
-| `4K BASIC Ver 4-0.tap`, `8K BASIC Ver 4-0.tap`             | Altair BASIC on paper tape: `altair --tape … --basic 8k-4.0`   |
-| `Extended BASIC Ver 4-0.tap`, `Extended BASIC Ver 4-1.tap` | Extended BASIC on paper tape: `--basic extended-4.1`           |
+| `hello.bin`                                                | A memory image that prints a greeting: `altair image roms/hello.bin` |
+| `4K BASIC Ver 4-0.tap`, `8K BASIC Ver 4-0.tap`             | Altair BASIC on paper tape: `altair tape 8k-4.0 …`                    |
+| `Extended BASIC Ver 4-0.tap`, `Extended BASIC Ver 4-1.tap` | Extended BASIC on paper tape: `altair tape extended-4.1 …`            |
+| `DBL.HEX`                                                  | The MITS disk boot loader for the PROM: `altair disk roms/DBL.HEX …`  |
+| `cpm22b23-56k.dsk`                                         | CP/M 2.2b on an 8-inch floppy: `altair disk … roms/cpm22b23-56k.dsk`  |
 
 ## Where to get them
 
@@ -20,6 +22,14 @@ folder of the superzazu/8080 emulator.
 [`mits-tapes`](https://www.icl1900.co.uk/unix4fun/z80pack/ftp/altair/mits-tapes/)
 folder of the z80pack mirror. Keep the file names: the examples and the run
 configurations use them.
+
+**Disk boot loader.** Download `DBL.HEX` from the
+[`orginal_roms`](https://deramp.com/downloads/altair/software/roms/orginal_roms/)
+folder on deramp.com. `DBL.ASM` there holds its source.
+
+**CP/M.** Download `cpm22b23-56k.dsk` from the
+[CP/M 2.2B](https://deramp.com/downloads/altair/software/8_inch_floppy/CPM/CPM%202.2/CPM%202.2B/)
+folder on deramp.com: Mike Douglas's CP/M 2.2b for 56 KB of memory.
 
 **hello.bin.** Write the 32 bytes yourself:
 

@@ -1,46 +1,74 @@
-//! The command line.
+//! The command line: one subcommand for each way to boot the Altair.
 
 use std::path::PathBuf;
 
-use clap::{ArgGroup, Parser};
+use clap::{Parser, Subcommand};
 
-use crate::loader::Basic;
+use crate::boot::Basic;
 
 /// The examples at the end of `--help`.
 const EXAMPLES: &str = "Examples:
-  altair roms/hello.bin
-  altair --tape \"roms/8K BASIC Ver 4-0.tap\" --basic 8k-4.0";
+  altair image roms/hello.bin
+  altair tape 8k-4.0 \"roms/8K BASIC Ver 4-0.tap\"
+  altair disk roms/DBL.HEX roms/cpm22b23-56k.dsk";
 
 /// Runs the emulated Altair 8800 in your terminal. Press Ctrl+] to quit.
 #[derive(Parser)]
 #[command(name = "altair", version, after_help = EXAMPLES)]
-#[command(group(ArgGroup::new("program").required(true).args(["image", "tape"])))]
 pub struct Args {
-    /// A memory image to load at 0000H. The CPU starts there.
-    ///
-    /// Example: roms/hello.bin
-    pub image: Option<PathBuf>,
-
-    /// A paper tape with Altair BASIC for the reader. The emulator puts the
-    /// MITS bootstrap loader for that BASIC at 0000H, and the loader reads
-    /// the tape through the 88-2SIO.
-    ///
-    /// Example: --tape "roms/8K BASIC Ver 4-0.tap"
-    #[arg(long, requires = "basic")]
-    pub tape: Option<PathBuf>,
-
-    /// The BASIC on the tape.
-    ///
-    /// Example: --basic 8k-4.0
-    #[arg(long, value_enum, requires = "tape")]
-    pub basic: Option<Basic>,
+    /// How the Altair boots.
+    #[command(subcommand)]
+    pub command: Command,
 
     /// The sense switches A8 to A15 in hex. Without it, the emulator sets
     /// all of them down, as BASIC 4.X expects with the 88-2SIO.
     ///
     /// Example: --switches 0C
-    #[arg(long, value_parser = parse_switches)]
+    #[arg(long, global = true, value_parser = parse_switches)]
     pub switches: Option<u8>,
+}
+
+/// How the Altair boots.
+#[derive(Subcommand)]
+pub enum Command {
+    /// Loads a memory image at 0000H and starts the CPU there.
+    Image {
+        /// The memory image, up to 64 KB.
+        ///
+        /// Example: roms/hello.bin
+        image: PathBuf,
+    },
+
+    /// Loads Altair BASIC from a paper tape. The emulator puts the MITS
+    /// bootstrap loader for that BASIC at 0000H, and the loader reads the
+    /// tape through the 88-2SIO.
+    Tape {
+        /// The BASIC on the tape.
+        ///
+        /// Example: 8k-4.0
+        #[arg(value_enum)]
+        basic: Basic,
+
+        /// The paper tape.
+        ///
+        /// Example: "roms/8K BASIC Ver 4-0.tap"
+        tape: PathBuf,
+    },
+
+    /// Boots from a floppy disk. The emulator puts the disk boot loader
+    /// into a PROM at FF00H and the disk into drive 0 of the 88-DCDD, then
+    /// starts the CPU in the PROM.
+    Disk {
+        /// The disk boot loader in Intel HEX, for FF00H to FFFFH.
+        ///
+        /// Example: roms/DBL.HEX
+        loader: PathBuf,
+
+        /// The floppy disk image.
+        ///
+        /// Example: roms/cpm22b23-56k.dsk
+        disk: PathBuf,
+    },
 }
 
 /// Parses an 8-bit hex number, with or without the `H` suffix.

@@ -5,7 +5,8 @@ from Altair BASIC in your terminal to a real CP/M booted from a floppy image.
 
 > **Status:** work in progress. The CPU core passes all four diagnostic
 > programs, and the Altair runs Altair BASIC in your terminal, loaded from
-> its original paper tape. Floppy disks and CP/M come next.
+> its original paper tape. CP/M 2.2 boots from a floppy image; saving disk
+> writes comes next.
 
 ## Roadmap
 
@@ -29,7 +30,9 @@ from Altair BASIC in your terminal to a real CP/M booted from a floppy image.
 
 See [docs/architecture.md](docs/architecture.md) for how the pieces fit
 together, [docs/i8080/instructions.md](docs/i8080/instructions.md) for the
-instruction set of the 8080 and
+instruction set of the 8080,
+[docs/altair/memory-and-ports.md](docs/altair/memory-and-ports.md) for the
+memory map and the I/O ports, and
 [docs/altair/front-panel.md](docs/altair/front-panel.md) for the Altair's
 switches and lights.
 
@@ -47,12 +50,13 @@ cargo test
 Load Altair BASIC from its paper tape:
 
 ```sh
-cargo run --release -- --tape "roms/8K BASIC Ver 4-0.tap" --basic 8k-4.0
+cargo run --release -- tape 8k-4.0 "roms/8K BASIC Ver 4-0.tap"
 ```
 
 The emulator toggles in the MITS bootstrap loader for that BASIC, and the
-loader reads the tape through the 88-2SIO serial card. `--basic` takes
-`4k-4.0`, `8k-4.0`, `extended-4.0` or `extended-4.1`. Press Ctrl+] to quit.
+loader reads the tape through the 88-2SIO serial card. You name the BASIC
+first: `4k-4.0`, `8k-4.0`, `extended-4.0` or `extended-4.1`. Press Ctrl+]
+to quit.
 
 BASIC then asks a few questions. Keep Caps Lock on: BASIC wants capitals.
 
@@ -77,14 +81,27 @@ HELLO 3
 OK
 ```
 
+Boot CP/M 2.2 from a floppy image:
+
+```sh
+cargo run --release -- disk roms/DBL.HEX roms/cpm22b23-56k.dsk
+```
+
+You name the boot loader first and the disk second. The emulator plugs a
+PROM card with the MITS disk boot loader at FF00H and an 88-DCDD controller
+with the disk in drive 0, then starts the CPU at FF00H. The loader reads CP/M from the disk, and CP/M greets you with `A>`.
+Type `DIR` to list the disk. The emulator keeps the disk in memory: your
+writes vanish when you quit.
+
 You can also load a memory image at 0000H with
-`cargo run --release -- <image.bin>`. Run `altair --help` for every option.
+`cargo run --release -- image roms/hello.bin`. Run `altair --help` for every
+option.
 
 ## ROMs and disk images
 
 This repository contains no copyrighted software. You put the CPU
-diagnostic programs and the BASIC tapes into [`roms/`](roms), which git
-ignores.
+diagnostic programs, the BASIC tapes, the boot loader and the CP/M disk into
+[`roms/`](roms), which git ignores.
 See [roms/README.md](roms/README.md) for what goes there.
 
 `cargo test` runs TST8080, 8080PRE and CPUTEST. 8080EXM takes minutes in a
