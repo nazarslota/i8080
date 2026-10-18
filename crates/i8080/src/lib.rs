@@ -25,7 +25,7 @@
 //! describes each instruction. Interrupts are missing: `EI` and `DI` switch
 //! the interrupt enable, but nothing delivers an interrupt yet.
 //!
-//! [instruction catalog]: https://github.com/nazarslota/i8080/blob/main/docs/instructions.md
+//! [instruction catalog]: https://github.com/nazarslota/i8080/blob/main/docs/i8080/instructions.md
 
 #![no_std]
 

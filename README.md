@@ -26,8 +26,9 @@ from Altair BASIC in your terminal to a real CP/M booted from a floppy image.
 | [`app`](app)              | The `altair` command-line program.                                        |
 
 See [docs/architecture.md](docs/architecture.md) for how the pieces fit
-together and [docs/instructions.md](docs/instructions.md) for the 8080
-instruction set and what the emulator supports so far.
+together, [docs/i8080/instructions.md](docs/i8080/instructions.md) for the
+8080 instruction set and [docs/altair/front-panel.md](docs/altair/front-panel.md)
+for the Altair's switches and lights.
 
 ## Building
 

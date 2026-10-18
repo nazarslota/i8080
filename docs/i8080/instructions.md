@@ -15,17 +15,22 @@ section under [Details](#details) and its link in [Contents](#contents).
 
 - [Notation](#notation)
 - [Catalog](#catalog)
-  - [Data transfer](#data-transfer)
-  - [Arithmetic](#arithmetic)
-  - [Logical](#logical)
-  - [Branch](#branch)
-  - [Stack, I/O and machine control](#stack-io-and-machine-control)
+    - [Data transfer](#data-transfer)
+    - [Arithmetic](#arithmetic)
+    - [Logical](#logical)
+    - [Branch](#branch)
+    - [Stack, I/O and machine control](#stack-io-and-machine-control)
 - [Details](#details)
-  - Data transfer: [`MOV`](#mov-copy-a-byte) · [`MVI`](#mvi-load-a-constant-byte) · [`LXI`](#lxi-load-a-register-pair) · [`LDA`](#lda-load-a-from-an-address) · [`STA`](#sta-store-a-at-an-address) · [`LHLD`](#lhld-load-hl-from-an-address) · [`SHLD`](#shld-store-hl-at-an-address) · [`LDAX`](#ldax-load-a-through-bc-or-de) · [`STAX`](#stax-store-a-through-bc-or-de) · [`XCHG`](#xchg-swap-hl-and-de)
-  - Arithmetic: [`ADD`](#add-add-to-the-accumulator) · [`ADI…CPI`](#adi-aci-sui-sbi-ani-xri-ori-cpi-arithmetic-and-logic-with-a-constant) · [`ADC`](#adc-add-with-carry) · [`SUB`](#sub-subtract-from-the-accumulator) · [`SBB`](#sbb-subtract-with-borrow) · [`INR`](#inr-increment) · [`DCR`](#dcr-decrement) · [`INX`](#inx-increment-a-register-pair) · [`DCX`](#dcx-decrement-a-register-pair) · [`DAD`](#dad-add-a-register-pair-to-hl) · [`DAA`](#daa-decimal-adjust-a)
-  - Logical: [`ANA`](#ana-and-with-the-accumulator) · [`XRA`](#xra-exclusive-or-with-the-accumulator) · [`ORA`](#ora-or-with-the-accumulator) · [`CMP`](#cmp-compare-with-the-accumulator) · [`RLC…RAR`](#rlc-rrc-ral-rar-rotate-a) · [`CMA`](#cma-complement-a) · [`CMC`](#cmc-complement-carry) · [`STC`](#stc-set-carry)
-  - Branch: [`JMP`](#jmp-jump) · [`Jcc`](#jcc-jump-if-a-condition-holds) · [`CALL`](#call-call-a-subroutine) · [`Ccc`](#ccc-call-if-a-condition-holds) · [`RET`](#ret-return-from-a-subroutine) · [`Rcc`](#rcc-return-if-a-condition-holds) · [`RST`](#rst-restart) · [`PCHL`](#pchl-jump-to-the-address-in-hl)
-  - Stack, I/O and machine control: [`PUSH`](#push-push-onto-the-stack) · [`POP`](#pop-pop-from-the-stack) · [`XTHL`](#xthl-swap-hl-with-the-top-of-the-stack) · [`SPHL`](#sphl-copy-hl-into-sp) · [`IN`](#in-read-an-io-port) · [`OUT`](#out-write-an-io-port) · [`EI`](#ei-enable-interrupts) · [`DI`](#di-disable-interrupts) · [`HLT`](#hlt-stop-the-cpu) · [`NOP`](#nop-do-nothing)
+    - Data transfer: [`MOV`](#mov-copy-a-byte) · [`MVI`](#mvi-load-a-constant-byte) · [`LXI`](#lxi-load-a-register-pair) · [`LDA`](#lda-load-a-from-an-address) · [`STA`](#sta-store-a-at-an-address) · [`LHLD`](#lhld-load-hl-from-an-address) · [
+      `SHLD`](#shld-store-hl-at-an-address) · [`LDAX`](#ldax-load-a-through-bc-or-de) · [`STAX`](#stax-store-a-through-bc-or-de) · [`XCHG`](#xchg-swap-hl-and-de)
+    - Arithmetic: [`ADD`](#add-add-to-the-accumulator) · [`ADI…CPI`](#adi-aci-sui-sbi-ani-xri-ori-cpi-arithmetic-and-logic-with-a-constant) · [`ADC`](#adc-add-with-carry) · [`SUB`](#sub-subtract-from-the-accumulator) · [
+      `SBB`](#sbb-subtract-with-borrow) · [`INR`](#inr-increment) · [`DCR`](#dcr-decrement) · [`INX`](#inx-increment-a-register-pair) · [`DCX`](#dcx-decrement-a-register-pair) · [`DAD`](#dad-add-a-register-pair-to-hl) · [`DAA`](#daa-decimal-adjust-a)
+    - Logical: [`ANA`](#ana-and-with-the-accumulator) · [`XRA`](#xra-exclusive-or-with-the-accumulator) · [`ORA`](#ora-or-with-the-accumulator) · [`CMP`](#cmp-compare-with-the-accumulator) · [`RLC…RAR`](#rlc-rrc-ral-rar-rotate-a) · [
+      `CMA`](#cma-complement-a) · [`CMC`](#cmc-complement-carry) · [`STC`](#stc-set-carry)
+    - Branch: [`JMP`](#jmp-jump) · [`Jcc`](#jcc-jump-if-a-condition-holds) · [`CALL`](#call-call-a-subroutine) · [`Ccc`](#ccc-call-if-a-condition-holds) · [`RET`](#ret-return-from-a-subroutine) · [`Rcc`](#rcc-return-if-a-condition-holds) · [
+      `RST`](#rst-restart) · [`PCHL`](#pchl-jump-to-the-address-in-hl)
+    - Stack, I/O and machine control: [`PUSH`](#push-push-onto-the-stack) · [`POP`](#pop-pop-from-the-stack) · [`XTHL`](#xthl-swap-hl-with-the-top-of-the-stack) · [`SPHL`](#sphl-copy-hl-into-sp) · [`IN`](#in-read-an-io-port) · [
+      `OUT`](#out-write-an-io-port) · [`EI`](#ei-enable-interrupts) · [`DI`](#di-disable-interrupts) · [`HLT`](#hlt-stop-the-cpu) · [`NOP`](#nop-do-nothing)
 
 ## Notation
 
@@ -801,8 +806,7 @@ takes the 17th bit.
 
 `DAA` · opcode `27H` · 1 byte · 4 cycles · flags: S Z AC P CY
 
-`DAA` turns the binary sum of two BCD bytes into a BCD byte. In BCD
-(binary-coded decimal) each 4-bit half of a byte holds one decimal digit
+`DAA` turns the binary sum of two BCD bytes into a BCD byte. In BCD (binary-coded decimal) each 4-bit half of a byte holds one decimal digit
 from 0 to 9: `42H` means 42. Programs that show numbers on 7-segment
 displays, such as calculators and clocks, kept them in BCD.
 
@@ -1476,15 +1480,15 @@ and second status read.
 0107H   IN   11H     ; A = the key                    bytes: DB 11
 ```
 
-| After       | `PC`    | `A`   | `Z` |
-|-------------|---------|-------|-----|
-| `IN 10H`    | `0102H` | `00H` | 0   |
-| `ANI 01H`   | `0104H` | `00H` | 1   |
-| `JZ 0100H`  | `0100H` | `00H` | 1   |
-| `IN 10H`    | `0102H` | `01H` | 1   |
-| `ANI 01H`   | `0104H` | `01H` | 0   |
-| `JZ 0100H`  | `0107H` | `01H` | 0   |
-| `IN 11H`    | `0109H` | `41H` | 0   |
+| After      | `PC`    | `A`   | `Z` |
+|------------|---------|-------|-----|
+| `IN 10H`   | `0102H` | `00H` | 0   |
+| `ANI 01H`  | `0104H` | `00H` | 1   |
+| `JZ 0100H` | `0100H` | `00H` | 1   |
+| `IN 10H`   | `0102H` | `01H` | 1   |
+| `ANI 01H`  | `0104H` | `01H` | 0   |
+| `JZ 0100H` | `0107H` | `01H` | 0   |
+| `IN 11H`   | `0109H` | `41H` | 0   |
 
 ### OUT: write an I/O port
 

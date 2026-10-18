@@ -120,7 +120,7 @@ A keystroke travels the other way:
 What works and what's left:
 
 - [x] All 256 opcodes decode and execute, with cycle counts from the Intel
-  manual. [instructions.md](instructions.md) describes each instruction.
+  manual. [instructions.md](i8080/instructions.md) describes each instruction.
 - [ ] **Interrupts.** `EI` and `DI` switch the interrupt enable, but the CPU
   can't accept an interrupt yet: a device can't make it run an `RST`, and
   `EI` doesn't wait one instruction before interrupts take effect. The
@@ -182,7 +182,8 @@ The code follows the box:
 
 The front panel can't set `PC` itself, on the real Altair and here. EXAMINE
 feeds the CPU a `JMP` through the data bus and EXAMINE NEXT a `NOP`, and
-the CPU executes them.
+the CPU executes them. [front-panel.md](altair/front-panel.md) explains the
+switches.
 
 What works and what's left:
 
