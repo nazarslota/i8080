@@ -3,8 +3,8 @@
 
 int main()
 {
-    int res = pow(2, 64);
-    printf("2^64 = %d", res);
+    double res = pow(2, 64);
+    printf("2^64 = %f\n", res);
 
     return 0;
 }
