@@ -12,6 +12,7 @@ pub use hex::Program;
 pub use tape::{Basic, bootstrap_loader};
 
 use crate::args::Command;
+use crate::console::{BACKSPACE_KEY, RUBOUT_KEY};
 use crate::disk_file::DiskFile;
 use crate::machine::PROM_ADDRESS;
 
@@ -56,6 +57,16 @@ impl Boot {
         match self {
             Self::Tape { .. } => Basic::SENSE_SWITCHES,
             Self::Image(_) | Self::Disk { .. } => SWITCHES_DOWN,
+        }
+    }
+
+    /// Returns the byte that the program erases a character on, for your
+    /// Backspace key. Altair BASIC ignores [`BACKSPACE_KEY`], so a tape and
+    /// an image get [`RUBOUT_KEY`] as the key sends it.
+    pub const fn erase_key(&self) -> u8 {
+        match self {
+            Self::Disk { .. } => BACKSPACE_KEY,
+            Self::Image(_) | Self::Tape { .. } => RUBOUT_KEY,
         }
     }
 }

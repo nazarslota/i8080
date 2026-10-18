@@ -49,7 +49,7 @@ fn run(args: &Args) -> Result<Exit, Box<dyn Error>> {
 
     let _raw_mode = RawMode::enable()
         .map_err(|error| format!("can't switch the terminal to raw mode: {error}"))?;
-    let (console, quit) = Console::start(boot.tape());
+    let (console, quit) = Console::start(boot.tape(), boot.erase_key());
     let mut altair = machine::start(boot, console, sense_switches)?;
     Ok(clock::run(&mut altair, &quit))
 }

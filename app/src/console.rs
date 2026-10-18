@@ -12,6 +12,13 @@ use altair::cards::Terminal;
 /// The key that quits the emulator: Ctrl+], as in telnet. The Altair
 /// programs don't use it, so every other key reaches the machine.
 const QUIT_KEY: u8 = 0x1D;
+/// The byte that your Backspace key sends: DEL, which the Teletype called
+/// RUBOUT. Altair BASIC erases a character on it.
+pub const RUBOUT_KEY: u8 = 0x7F;
+/// Ctrl+H, the byte that CP/M and MBASIC erase a character on. They take
+/// [`RUBOUT_KEY`] as an erase too, but echo the erased character instead
+/// of moving the cursor back.
+pub const BACKSPACE_KEY: u8 = 0x08;
 
 /// Puts your terminal in raw mode and restores it when you drop the value.
 ///
@@ -42,9 +49,11 @@ impl Drop for RawMode {
 /// so [`receive`](Terminal::receive) never waits. The thread drops bytes
 /// above 7FH: a Teletype sends 7-bit ASCII, and a letter from another
 /// keyboard layout arrives as such bytes, which BASIC would read as junk.
-/// The tape reader sits on
-/// the same serial line, as on the Teletype that Altair owners used: the
-/// console sends the whole tape first and your keys after it.
+/// It also turns your Backspace key into the erase key the program expects.
+///
+/// The tape reader sits on the same serial line, as on the Teletype that
+/// Altair owners used: the console sends the whole tape first and your keys
+/// after it.
 pub struct Console {
     tape: VecDeque<u8>,
     keys: Receiver<u8>,
@@ -52,9 +61,10 @@ pub struct Console {
 }
 
 impl Console {
-    /// Starts the keyboard thread with `tape` in the reader. Returns the
-    /// console and a flag that turns `true` when you press [`QUIT_KEY`].
-    pub fn start(tape: &[u8]) -> (Self, Arc<AtomicBool>) {
+    /// Starts the keyboard thread with `tape` in the reader. The thread
+    /// sends `erase_key` for each [`RUBOUT_KEY`]. Returns the console and a
+    /// flag that turns `true` when you press [`QUIT_KEY`].
+    pub fn start(tape: &[u8], erase_key: u8) -> (Self, Arc<AtomicBool>) {
         let (sender, keys) = mpsc::channel();
         let quit = Arc::new(AtomicBool::new(false));
         let quit_pressed = Arc::clone(&quit);
@@ -69,6 +79,7 @@ impl Console {
                 if !key.is_ascii() {
                     continue;
                 }
+                let key = if key == RUBOUT_KEY { erase_key } else { key };
                 if sender.send(key).is_err() {
                     break;
                 }

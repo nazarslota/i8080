@@ -210,9 +210,11 @@ starts if a tape holds another BASIC or the loader sits below FF00H.
 - **`Console`** implements `Terminal`. A thread reads the keyboard and sends
   each key over a channel, so `receive` never waits. The thread drops bytes
   above 7FH: a Teletype sends 7-bit ASCII, and a Cyrillic letter would reach
-  BASIC as junk. With a tape the console sends the tape first and your keys
-  after it, like the tape reader on a Teletype, which shared the line with
-  the keyboard.
+  BASIC as junk. It sends Ctrl+H for your Backspace key when you boot from
+  a disk, because CP/M and MBASIC erase on it, and leaves the key as RUBOUT
+  (7FH) for Altair BASIC. With a tape the console sends the tape first and
+  your keys after it, like the tape reader on a Teletype, which shared the
+  line with the keyboard.
 - **The clock.** Your computer runs the 8080 faster than 2 MHz. So `app`
   runs the CPU for 20,000 cycles, the work of 10 ms on the real Altair, and
   sleeps until those 10 ms are up. Programs keep their original speed, and
