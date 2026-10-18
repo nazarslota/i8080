@@ -1,5 +1,6 @@
 //! Your terminal window as the [`Terminal`] at the end of the serial cable.
 
+use std::collections::VecDeque;
 use std::io::{self, Read, Stdout, Write};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -12,7 +13,7 @@ use altair::cards::Terminal;
 /// programs don't use it, so every other key reaches the machine.
 const QUIT_KEY: u8 = 0x1D;
 
-/// Puts your terminal in raw mode and restores it when dropped.
+/// Puts your terminal in raw mode and restores it when you drop the value.
 ///
 /// In raw mode the terminal passes each key to the emulator at once, without
 /// waiting for Enter, and doesn't echo it. Altair BASIC echoes what you type
@@ -34,19 +35,23 @@ impl Drop for RawMode {
     }
 }
 
-/// Keys from your keyboard and bytes to your screen.
+/// Keys from your keyboard and bytes to your screen, plus a paper tape
+/// reader.
 ///
 /// A background thread reads the keyboard and sends each key over a channel,
-/// so [`receive`](Terminal::receive) never waits.
+/// so [`receive`](Terminal::receive) never waits. The tape reader sits on
+/// the same serial line, as on the Teletype that Altair owners used: the
+/// console sends the whole tape first and your keys after it.
 pub struct Console {
+    tape: VecDeque<u8>,
     keys: Receiver<u8>,
     stdout: Stdout,
 }
 
 impl Console {
-    /// Starts the keyboard thread. Returns the console and a flag that turns
-    /// `true` when you press [`QUIT_KEY`].
-    pub fn start() -> (Self, Arc<AtomicBool>) {
+    /// Starts the keyboard thread with `tape` in the reader. Returns the
+    /// console and a flag that turns `true` when you press [`QUIT_KEY`].
+    pub fn start(tape: Vec<u8>) -> (Self, Arc<AtomicBool>) {
         let (sender, keys) = mpsc::channel();
         let quit = Arc::new(AtomicBool::new(false));
         let quit_pressed = Arc::clone(&quit);
@@ -65,6 +70,7 @@ impl Console {
         });
 
         let console = Self {
+            tape: tape.into(),
             keys,
             stdout: io::stdout(),
         };
@@ -74,7 +80,7 @@ impl Console {
 
 impl Terminal for Console {
     fn receive(&mut self) -> Option<u8> {
-        self.keys.try_recv().ok()
+        self.tape.pop_front().or_else(|| self.keys.try_recv().ok())
     }
 
     fn send(&mut self, byte: u8) {
