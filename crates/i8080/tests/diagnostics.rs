@@ -52,7 +52,7 @@
 
 use std::path::Path;
 
-use i8080::{Cpu, Registers, Unconnected};
+use i8080::{Bus, Cpu, Registers, Unconnected};
 
 /// CP/M loads a program at this address and starts it there.
 ///
@@ -167,7 +167,10 @@ fn run_diagnostic(name: &str) -> String {
             BDOS_CODE_ADDRESS => call_bdos(&cpu.registers, &memory, &mut output),
             _ => {}
         }
-        cpu.step(&mut *memory, &mut Unconnected);
+        cpu.step(&mut Bus {
+            memory: &mut *memory,
+            io: Unconnected,
+        });
         assert!(!cpu.is_halted(), "{name} halted");
     }
 

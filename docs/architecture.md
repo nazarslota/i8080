@@ -89,11 +89,12 @@ port in a loop, sees the bit and reads the key with `IN 0x11`.
   covers ports, so code that needs only memory never sees ports. Machines and
   tests without devices pass `Unconnected`, whose ports read `0xFF` like
   unconnected ports on real hardware.
-- **The machine lends the buses to the CPU.** `step` borrows the memory bus
-  and the I/O bus for one instruction and keeps neither. We need no shared
-  ownership (`Rc<RefCell<…>>`), and Rust resolves every bus call at compile
-  time. A machine that keeps memory and devices in separate fields can lend
-  both at once.
+- **The machine lends the bus to the CPU.** `step` borrows one bus that
+  implements both traits, for one instruction, and keeps nothing. The real
+  chip works the same way: memory and ports share its pins. We need no
+  shared ownership (`Rc<RefCell<…>>`), and Rust resolves every bus call at
+  compile time. The Altair `Backplane` implements both traits. Tests that
+  keep memory and ports apart join them with `Bus { memory, io }`.
 - **Decode first, then execute.** `step` turns the bytes at `PC` into an
   `Instruction` value and then executes that value. Decoding depends on the
   bytes alone, so the same code will drive the disassembler (`impl Display

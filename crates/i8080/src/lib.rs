@@ -38,7 +38,7 @@ mod flags;
 mod instruction;
 mod registers;
 
-pub use bus::{IoBus, MemoryBus, Unconnected};
+pub use bus::{Bus, IoBus, MemoryBus, Unconnected};
 pub use cpu::Cpu;
 pub use cycles::HALTED_STEP_CYCLES;
 pub use flags::Flags;

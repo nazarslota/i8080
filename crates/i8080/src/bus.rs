@@ -8,7 +8,10 @@
 //!
 //! On the real chip both spaces share the same address and data pins. At the
 //! start of each access the CPU puts a status byte on the bus, and memory and
-//! devices read it to learn which space the access targets.
+//! devices read it to learn which space the access targets. The emulator
+//! follows the chip: [`Cpu::step`](crate::Cpu::step) takes one bus that
+//! implements both traits. When your memory and your devices live apart,
+//! [`Bus`] joins them into one.
 
 /// The memory address space: 64 KB, one byte per `u16` address.
 ///
@@ -34,6 +37,77 @@ pub trait IoBus {
 
     /// Writes `value` to `port` (the `OUT` instruction).
     fn output(&mut self, port: u8, value: u8);
+}
+
+/// A memory bus and an I/O bus joined into one bus for
+/// [`Cpu::step`](crate::Cpu::step).
+///
+/// Memory accesses go to `memory` and port accesses to `io`. Tests and
+/// simple machines use it to pair a plain array with [`Unconnected`]:
+///
+/// ```
+/// use i8080::{Bus, Cpu, Unconnected};
+///
+/// let mut bus = Bus {
+///     memory: [0u8; 0x10000],
+///     io: Unconnected,
+/// };
+/// let mut cpu = Cpu::new();
+///
+/// cpu.step(&mut bus);
+///
+/// assert_eq!(cpu.registers.pc, 1); // the NOP at 0000H
+/// ```
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Bus<M, I> {
+    /// The memory address space.
+    pub memory: M,
+    /// The I/O address space.
+    pub io: I,
+}
+
+impl<M: MemoryBus, I> MemoryBus for Bus<M, I> {
+    fn read(&mut self, addr: u16) -> u8 {
+        self.memory.read(addr)
+    }
+
+    fn write(&mut self, addr: u16, value: u8) {
+        self.memory.write(addr, value);
+    }
+}
+
+impl<M, I: IoBus> IoBus for Bus<M, I> {
+    fn input(&mut self, port: u8) -> u8 {
+        self.io.input(port)
+    }
+
+    fn output(&mut self, port: u8, value: u8) {
+        self.io.output(port, value);
+    }
+}
+
+/// A borrowed memory bus works as a memory bus, so a [`Bus`] can borrow its
+/// memory and leave it with you.
+impl<T: MemoryBus + ?Sized> MemoryBus for &mut T {
+    fn read(&mut self, addr: u16) -> u8 {
+        (**self).read(addr)
+    }
+
+    fn write(&mut self, addr: u16, value: u8) {
+        (**self).write(addr, value);
+    }
+}
+
+/// A borrowed I/O bus works as an I/O bus, so a [`Bus`] can borrow its
+/// devices and leave them with you.
+impl<T: IoBus + ?Sized> IoBus for &mut T {
+    fn input(&mut self, port: u8) -> u8 {
+        (**self).input(port)
+    }
+
+    fn output(&mut self, port: u8, value: u8) {
+        (**self).output(port, value);
+    }
 }
 
 /// 64 KB of RAM covering the whole address space. Tests and simple machines
@@ -85,6 +159,32 @@ mod tests {
 
         assert_eq!(memory.read(0x0000), 0x11);
         assert_eq!(memory.read(0xFFFF), 0x22);
+    }
+
+    #[test]
+    fn bus_sends_memory_access_to_memory() {
+        let mut memory = [0u8; 0x10000];
+        let mut bus = Bus {
+            memory: &mut memory,
+            io: Unconnected,
+        };
+
+        bus.write(0x2000, 0x99);
+
+        assert_eq!(bus.read(0x2000), 0x99);
+        assert_eq!(memory[0x2000], 0x99);
+    }
+
+    #[test]
+    fn bus_sends_port_access_to_io() {
+        let mut bus = Bus {
+            memory: [0u8; 0x10000],
+            io: Unconnected,
+        };
+
+        bus.output(0x10, 0x00);
+
+        assert_eq!(bus.input(0x10), 0xFF);
     }
 
     #[test]

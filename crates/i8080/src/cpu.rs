@@ -7,16 +7,19 @@ use crate::{Flags, IoBus, MemoryBus, Registers};
 /// The Intel 8080 processor.
 ///
 /// `Cpu` holds the processor's state. The machine owns the memory and the
-/// I/O devices and lends them to the CPU on each call to
+/// I/O devices and lends them to the CPU as one bus on each call to
 /// [`step`](Cpu::step).
 ///
 /// ```
-/// use i8080::{Cpu, Unconnected};
+/// use i8080::{Bus, Cpu, Unconnected};
 ///
-/// let mut memory = [0u8; 0x10000]; // all zeros: NOP everywhere
+/// let mut bus = Bus {
+///     memory: [0u8; 0x10000], // all zeros: NOP everywhere
+///     io: Unconnected,
+/// };
 /// let mut cpu = Cpu::new();
 ///
-/// let cycles = cpu.step(&mut memory, &mut Unconnected);
+/// let cycles = cpu.step(&mut bus);
 ///
 /// assert_eq!(cpu.registers.pc, 1);
 /// assert_eq!(cycles, 4); // NOP takes 4 cycles
@@ -52,67 +55,71 @@ impl Cpu {
 
     /// Executes one instruction and returns how many clock cycles it took.
     ///
+    /// `bus` carries both address spaces, like the shared pins of the real
+    /// chip. To pass memory and devices that live apart, join them with
+    /// [`Bus`](crate::Bus).
+    ///
     /// A halted CPU executes nothing and returns [`HALTED_STEP_CYCLES`], so
     /// the machine's clock keeps running while the CPU waits.
-    pub fn step(&mut self, memory: &mut impl MemoryBus, io: &mut impl IoBus) -> u32 {
+    pub fn step(&mut self, bus: &mut (impl MemoryBus + IoBus)) -> u32 {
         if self.halted {
             return HALTED_STEP_CYCLES;
         }
 
         // Fetch and decode: read the instruction's bytes starting at PC.
-        let instruction = Instruction::decode(|| self.fetch_byte(memory));
+        let instruction = Instruction::decode(|| self.fetch_byte(bus));
 
         // Execute: one line per instruction. Instructions with logic get their
         // own method, which returns the cycle count from the `cycles` module.
         match instruction {
             Instruction::Nop => cycles::NOP,
             Instruction::Lxi { dst, value } => self.lxi(dst, value),
-            Instruction::Stax { dst } => self.stax(memory, dst),
+            Instruction::Stax { dst } => self.stax(bus, dst),
             Instruction::Inx { pair } => self.inx(pair),
-            Instruction::Inr { dst } => self.inr(memory, dst),
-            Instruction::Dcr { dst } => self.dcr(memory, dst),
-            Instruction::Mvi { dst, value } => self.mvi(memory, dst, value),
+            Instruction::Inr { dst } => self.inr(bus, dst),
+            Instruction::Dcr { dst } => self.dcr(bus, dst),
+            Instruction::Mvi { dst, value } => self.mvi(bus, dst, value),
             Instruction::Rlc => self.rlc(),
             Instruction::Dad { src } => self.dad(src),
-            Instruction::Ldax { src } => self.ldax(memory, src),
+            Instruction::Ldax { src } => self.ldax(bus, src),
             Instruction::Dcx { pair } => self.dcx(pair),
             Instruction::Rrc => self.rrc(),
             Instruction::Ral => self.ral(),
             Instruction::Rar => self.rar(),
-            Instruction::Shld { address } => self.shld(memory, address),
+            Instruction::Shld { address } => self.shld(bus, address),
             Instruction::Daa => self.daa(),
-            Instruction::Lhld { address } => self.lhld(memory, address),
+            Instruction::Lhld { address } => self.lhld(bus, address),
             Instruction::Cma => self.cma(),
-            Instruction::Sta { address } => self.sta(memory, address),
+            Instruction::Sta { address } => self.sta(bus, address),
             Instruction::Stc => self.stc(),
-            Instruction::Lda { address } => self.lda(memory, address),
+            Instruction::Lda { address } => self.lda(bus, address),
             Instruction::Cmc => self.cmc(),
             Instruction::Hlt => self.hlt(),
-            Instruction::Mov { dst, src } => self.mov(memory, dst, src),
-            Instruction::Add { src } => self.add(memory, src),
-            Instruction::Adc { src } => self.adc(memory, src),
-            Instruction::Sub { src } => self.sub(memory, src),
-            Instruction::Sbb { src } => self.sbb(memory, src),
-            Instruction::Ana { src } => self.ana(memory, src),
-            Instruction::Xra { src } => self.xra(memory, src),
-            Instruction::Ora { src } => self.ora(memory, src),
-            Instruction::Cmp { src } => self.cmp(memory, src),
-            Instruction::Rcc { condition } => self.rcc(memory, condition),
-            Instruction::Pop { dst } => self.pop(memory, dst),
+            Instruction::Mov { dst, src } => self.mov(bus, dst, src),
+            Instruction::Add { src } => self.add(bus, src),
+            Instruction::Adc { src } => self.adc(bus, src),
+            Instruction::Sub { src } => self.sub(bus, src),
+            Instruction::Sbb { src } => self.sbb(bus, src),
+            Instruction::Ana { src } => self.ana(bus, src),
+            Instruction::Xra { src } => self.xra(bus, src),
+            Instruction::Ora { src } => self.ora(bus, src),
+            Instruction::Cmp { src } => self.cmp(bus, src),
+            Instruction::Rcc { condition } => self.rcc(bus, condition),
+            Instruction::Pop { dst } => self.pop(bus, dst),
             Instruction::Jcc { condition, address } => self.jcc(condition, address),
             Instruction::Jmp { address } => self.jmp(address),
-            Instruction::Ccc { condition, address } => self.ccc(memory, condition, address),
-            Instruction::Push { src } => self.push(memory, src),
+            Instruction::Ccc { condition, address } => self.ccc(bus, condition, address),
+            Instruction::Push { src } => self.push(bus, src),
             Instruction::Adi { value } => self.adi(value),
-            Instruction::Rst { address } => self.rst(memory, address),
-            Instruction::Ret => self.ret(memory),
-            Instruction::Call { address } => self.call(memory, address),
+            Instruction::Rst { address } => self.rst(bus, address),
+            Instruction::Ret => self.ret(bus),
+            Instruction::Call { address } => self.call(bus, address),
             Instruction::Aci { value } => self.aci(value),
-            Instruction::Out { port } => self.out(io, port),
+            Instruction::Out { port } => self.out(bus, port),
             Instruction::Sui { value } => self.sui(value),
-            Instruction::In { port } => self.r#in(io, port),
+            Instruction::In { port } => self.r#in(bus, port),
             Instruction::Sbi { value } => self.sbi(value),
-            Instruction::Xthl => self.xthl(memory),
+            Instruction::Xthl => self.xthl(bus),
             Instruction::Ani { value } => self.ani(value),
             Instruction::Pchl => self.pchl(),
             Instruction::Xchg => self.xchg(),
@@ -707,7 +714,7 @@ impl Cpu {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Unconnected;
+    use crate::{Bus, Unconnected};
 
     /// Registers holding distinct values, so a test notices when an
     /// instruction writes to the wrong register. PC starts at 0100H.
@@ -766,7 +773,7 @@ mod tests {
         let mut cpu = Cpu::new();
         cpu.registers = registers;
 
-        let cycles = cpu.step(memory, io);
+        let cycles = cpu.step(&mut Bus { memory, io });
 
         (cpu, cycles)
     }
@@ -1633,7 +1640,10 @@ mod tests {
         cpu.halted = true;
         let before = cpu.registers;
 
-        let cycles = cpu.step(&mut memory, &mut Unconnected);
+        let cycles = cpu.step(&mut Bus {
+            memory: &mut memory,
+            io: Unconnected,
+        });
 
         assert!(cpu.is_halted());
         assert_eq!(cpu.registers, before);
@@ -2782,7 +2792,10 @@ mod tests {
             cpu.registers = distinct_registers();
             cpu.interrupts_enabled = enabled;
 
-            let cycles = cpu.step(&mut memory, &mut Unconnected);
+            let cycles = cpu.step(&mut Bus {
+                memory: &mut memory,
+                io: Unconnected,
+            });
 
             assert_eq!(cpu.interrupts_enabled(), expected, "opcode {opcode:#04X}");
             assert_eq!(cpu.registers.pc, 0x0101, "opcode {opcode:#04X}");

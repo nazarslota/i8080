@@ -9,7 +9,7 @@ const OPEN_BUS: u8 = 0xFF;
 /// The S-100 backplane: a row of slots that connects the CPU to the cards.
 ///
 /// `Backplane` implements [`MemoryBus`] and [`IoBus`], so you lend it to
-/// [`Cpu::step`](i8080::Cpu::step) as both buses. It passes each access to
+/// [`Cpu::step`](i8080::Cpu::step) as the CPU's bus. It passes each access to
 /// the cards in the order you plugged them in. On a read, the first card that
 /// claims the address answers. On a write, every card that claims the address
 /// receives the byte.
