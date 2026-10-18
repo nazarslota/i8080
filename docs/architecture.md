@@ -29,11 +29,11 @@ plays everything around it. `app` connects the machine to your real computer.
 
 ## Crates
 
-| Crate    | Plays the role of                    | Depends on | Touches the host                            |
-|----------|--------------------------------------|------------|---------------------------------------------|
-| `i8080`  | the Intel 8080 processor             | nothing    | no                                          |
-| `altair` | the MITS Altair 8800 computer        | `i8080`    | no                                          |
-| `app`    | you, sitting at the terminal         | `altair`   | yes                                         |
+| Crate    | Plays the role of             | Depends on | Touches the host |
+|----------|-------------------------------|------------|------------------|
+| `i8080`  | the Intel 8080 processor      | nothing    | no               |
+| `altair` | the MITS Altair 8800 computer | `i8080`    | no               |
+| `app`    | you, sitting at the terminal  | `altair`   | yes              |
 
 Arrows in the diagram point down. A crate never depends on a crate above it,
 and the compiler enforces this: `i8080/Cargo.toml` lists no dependencies, so

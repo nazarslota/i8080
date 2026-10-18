@@ -20,9 +20,10 @@
 //!
 //! # Status
 //!
-//! Work in progress: the CPU runs all 256 opcodes, and the [instruction
-//! catalog] describes each instruction. Interrupts come next: `EI` and `DI`
-//! switch the interrupt enable, but nothing delivers an interrupt yet.
+//! The CPU runs all 256 opcodes and passes the classic diagnostic programs
+//! (TST8080, 8080PRE, CPUTEST, 8080EXM). The [instruction catalog]
+//! describes each instruction. Interrupts are missing: `EI` and `DI` switch
+//! the interrupt enable, but nothing delivers an interrupt yet.
 //!
 //! [instruction catalog]: https://github.com/nazarslota/i8080/blob/main/docs/instructions.md
 
