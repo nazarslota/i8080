@@ -1,15 +1,17 @@
 //! The cards you plug into the Altair's backplane.
 //!
 //! The Altair needs the CPU card ([`Cpu`]), a memory card ([`Ram`]) and a
-//! serial card for the terminal ([`Sio2`]). Each card except the CPU
-//! implements [`Card`]. The 88-DCDD floppy
-//! controller comes next.
+//! serial card for the terminal ([`Sio2`]). The floppy disk controller
+//! ([`Dcdd`]) reads and writes disks. Each card except the CPU implements
+//! [`Card`].
 
 mod cpu;
+mod dcdd;
 mod ram;
 mod sio2;
 
 pub use cpu::Cpu;
+pub use dcdd::{DISK_BYTES, Dcdd};
 pub use ram::Ram;
 pub use sio2::{Sio2, Terminal};
 
