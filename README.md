@@ -4,7 +4,8 @@ An Intel 8080 emulator written in Rust, built to run the MITS Altair 8800:
 from Altair BASIC in your terminal to a real CP/M booted from a floppy image.
 
 > **Status:** early work in progress. The CPU core runs every instruction
-> and passes all four diagnostic programs. No machine runs yet.
+> and passes all four diagnostic programs. The Altair runs a memory image in
+> your terminal; Altair BASIC comes next.
 
 ## Roadmap
 
@@ -36,6 +37,15 @@ Requires Rust 1.99 or newer.
 cargo build
 cargo test
 ```
+
+## Running
+
+```sh
+cargo run --release -p app -- <image.bin>
+```
+
+The emulator loads the memory image at 0000H, starts the CPU there and
+connects the 88-2SIO serial card to your terminal. Press Ctrl+] to quit.
 
 ## ROMs and disk images
 

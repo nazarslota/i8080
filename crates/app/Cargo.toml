@@ -13,6 +13,8 @@ path = "src/main.rs"
 
 [dependencies]
 altair.workspace = true
+clap.workspace = true
+crossterm.workspace = true
 
 [lints]
 workspace = true

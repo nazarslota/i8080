@@ -29,11 +29,11 @@ plays everything around it. `app` connects the machine to your real computer.
 
 ## Crates
 
-| Crate    | Plays the role of             | Depends on | Touches the host |
-|----------|-------------------------------|------------|------------------|
-| `i8080`  | the Intel 8080 processor      | nothing    | no               |
-| `altair` | the MITS Altair 8800 computer | `i8080`    | no               |
-| `app`    | you, sitting at the terminal  | `altair`   | yes              |
+| Crate    | Plays the role of             | Depends on                    | Touches the host |
+|----------|-------------------------------|-------------------------------|------------------|
+| `i8080`  | the Intel 8080 processor      | nothing                       | no               |
+| `altair` | the MITS Altair 8800 computer | `i8080`                       | no               |
+| `app`    | you, sitting at the terminal  | `altair`, `clap`, `crossterm` | yes              |
 
 Arrows in the diagram point down. A crate never depends on a crate above it,
 and the compiler enforces this: `i8080/Cargo.toml` lists no dependencies, so
@@ -66,22 +66,29 @@ run them without emulated hardware. No library crate contains this code.
 hand them bytes and read bytes back, so tests can run them without a terminal
 or a disk. All contact with your real computer lives in `app`.
 
-## Walkthrough: BASIC prints a letter (planned)
+## Walkthrough: a program prints a letter
 
-Follow one character through the layers. Altair BASIC wants to print `A` on
-the terminal:
+Follow one character through the layers. A program on the Altair wants to
+print `A` on your terminal:
 
-1. BASIC loads `0x41` (the ASCII code for `A`) into register A and executes
-   `OUT 0x11`.
-2. `i8080` decodes the instruction and calls `io.output(0x11, 0x41)`.
-3. The `altair` backplane passes the access to every card. The 88-2SIO
-   serial card claims port `0x11` and calls `send(0x41)` on its `Terminal`.
-4. `app` implements `Terminal` and writes the byte to your terminal window.
+1. The program loads `41H` (the ASCII code for `A`) into register A and
+   executes `OUT 11H`.
+2. `i8080` decodes the instruction and calls `bus.output(0x11, 0x41)`. The
+   bus is the `Backplane`.
+3. The backplane passes the access to every card. The 88-2SIO serial card
+   claims port `11H` and calls `send(0x41)` on its `Terminal`.
+4. In `app`, the `Console` implements `Terminal` and writes the byte to your
+   terminal window.
 
-A keystroke travels the other way. BASIC reads the status port `0x10` in a
-loop. On each read the card asks its `Terminal` for a key with `receive()`.
-When you have typed one, the card sets bit 0 of the status byte, and BASIC
-reads the key with `IN 0x11`.
+A keystroke travels the other way:
+
+1. A thread in `app` waits on your keyboard. You press a key, and the thread
+   sends its byte over a channel to the `Console`.
+2. The program reads the status port `10H` in a loop. On each read the
+   88-2SIO asks its `Terminal` for a key, and the `Console` takes the byte
+   from the channel without waiting.
+3. The card keeps the byte and sets bit 0 of the status byte. The program
+   sees the bit and reads the key with `IN 11H`.
 
 ## CPU core (in progress)
 
@@ -143,16 +150,45 @@ controller. The code follows the same shape:
 To add hardware, you write a new card and plug it into the backplane. The CPU
 and the other cards stay as they are.
 
+`Altair` assembles one machine from these parts: the CPU, two 32 KB memory
+cards and the 88-2SIO. The serial card talks to a `Terminal`, a trait with
+two methods: `receive` returns the next key or `None`, `send` shows a byte.
+`altair` only declares the trait. `app` implements it for your real
+keyboard and screen, and tests implement it with a list of keys and a
+`Vec` for the screen.
+
 What works and what's left:
 
 - [x] The `Backplane` and the `Ram` card.
 - [x] The 88-2SIO serial card (`Sio2`), port A at `10H` and `11H`. It talks
   to a `Terminal`, a trait that `app` implements for your real keyboard and
   screen.
-- [ ] **`app`:** a `Terminal` for your terminal window.
+- [x] `Altair`: the machine with two 32 KB memory cards and the 88-2SIO.
+- [x] `app` runs a memory image at the Altair's 2 MHz. Its `Console` puts
+  your terminal in raw mode and implements `Terminal`; Ctrl+] quits.
 - [ ] **Altair BASIC.** Load it into RAM and run it on the serial card.
 - [ ] **88-DCDD floppy controller** and a boot ROM, to boot CP/M from a disk
   image.
+
+## App
+
+`app` is the `altair` command. It parses the command line with `clap`, loads
+the memory image at 0000H and runs the machine until you press Ctrl+] or the
+CPU halts.
+
+- **Raw mode.** `RawMode` switches your terminal to raw mode with
+  `crossterm` and switches it back when dropped, after a panic too. In raw
+  mode each key reaches the emulator at once, and the terminal doesn't echo
+  it: Altair BASIC echoes what you type itself.
+- **The keyboard thread.** Reading the keyboard blocks, and the 88-2SIO must
+  answer a status read at once. A thread reads the keys and sends them over
+  a channel; `Console::receive` takes a key from the channel or returns
+  `None`.
+- **The clock.** Your computer can run the emulated 8080 faster than 2 MHz.
+  `app` runs the CPU for 20,000 cycles, the work of 10 ms on the real
+  Altair, and then sleeps until those 10 ms have passed. Programs run at
+  their original speed, and a program that waits for a key doesn't keep a
+  host core busy.
 
 ## Glossary
 
@@ -173,6 +209,10 @@ the hardware.
 **TPA (Transient Program Area).** The memory where CP/M loads and runs a
 program, from `0100H` up to CP/M itself. A program stays there only while it
 runs; the next one replaces it.
+
+**Raw mode.** A terminal mode that passes each key to the program at once.
+In the normal mode the terminal collects a whole line, shows what you type
+and handles keys such as Ctrl+C itself.
 
 **HLE (high-level emulation).** Emulating what an operating system does
 instead of the hardware it runs on. The diagnostics test uses it for two
