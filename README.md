@@ -30,7 +30,7 @@ instruction set and what the emulator supports so far.
 
 ## Building
 
-Requires Rust 1.85 or newer.
+Requires Rust 1.99 or newer.
 
 ```sh
 cargo build

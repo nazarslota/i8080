@@ -26,7 +26,7 @@ impl Flags {
             sign: result & 0x80 != 0,
             zero: result == 0,
             aux_carry: false,
-            parity: result.count_ones() % 2 == 0,
+            parity: result.count_ones().is_multiple_of(2),
             carry: false,
         }
     }
