@@ -11,7 +11,7 @@ use std::{fmt, fs};
 pub use hex::Program;
 pub use tape::{Basic, bootstrap_loader};
 
-use crate::args::Command;
+use crate::args::BootCommand;
 use crate::console::{BACKSPACE_KEY, RUBOUT_KEY};
 use crate::disk_file::DiskFile;
 use crate::machine::PROM_ADDRESS;
@@ -35,11 +35,11 @@ pub enum Boot {
 
 impl Boot {
     /// Reads the files that `command` names and checks that they fit.
-    pub fn load(command: &Command) -> Result<Self, Box<dyn Error>> {
+    pub fn load(command: &BootCommand) -> Result<Self, Box<dyn Error>> {
         match command {
-            Command::Image { image } => load_image(image),
-            Command::Tape { basic, tape } => load_tape(*basic, tape),
-            Command::Disk { loader, disk } => load_disk(loader, disk),
+            BootCommand::Image { image } => load_image(image),
+            BootCommand::Tape { basic, tape } => load_tape(*basic, tape),
+            BootCommand::Disk { loader, disk } => load_disk(loader, disk),
         }
     }
 
@@ -116,11 +116,11 @@ fn load_disk(loader: &Path, disk: &Path) -> Result<Boot, Box<dyn Error>> {
 }
 
 /// Reads a file and puts its path into the error message.
-fn read(path: &Path) -> Result<Vec<u8>, String> {
+pub fn read(path: &Path) -> Result<Vec<u8>, String> {
     fs::read(path).map_err(|error| in_file(path, error))
 }
 
 /// Puts `path` in front of `error`.
-fn in_file(path: &Path, error: impl fmt::Display) -> String {
+pub fn in_file(path: &Path, error: impl fmt::Display) -> String {
     format!("{}: {error}", path.display())
 }

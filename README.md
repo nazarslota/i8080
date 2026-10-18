@@ -108,6 +108,33 @@ you start over with a fresh `cp`.
 Ctrl+C at `A>` reloads CP/M from the disk. Backspace erases a character:
 the emulator sends Ctrl+H for it, as CP/M and MBASIC expect.
 
+To run your own program, put it on the disk before you boot, then type its
+name at `A>`:
+
+```sh
+cargo run --release -- put cpm.dsk roms/TST8080.COM
+cargo run --release -- disk roms/DBL.HEX cpm.dsk
+```
+
+```text
+A>TST8080
+MICROCOSM ASSOCIATES 8080/8085 CPU DIAGNOSTIC
+ VERSION 1.0  (C) 1980
+
+ CPU IS OPERATIONAL
+```
+
+`put` keeps the file name in capitals and replaces a file with the same
+name. The CP/M disk has about 26 KB free, enough for TST8080, 8080PRE and
+CPUTEST together.
+
+CPUTEST computes for minutes at the 2 MHz of the real Altair. Add `--fast`
+to run the CPU as fast as your computer can:
+
+```sh
+cargo run --release -- --fast disk roms/DBL.HEX cpm.dsk
+```
+
 You can also load a memory image at 0000H with
 `cargo run --release -- image roms/hello.bin`. Run `altair --help` for every
 option.

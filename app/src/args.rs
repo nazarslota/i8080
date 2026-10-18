@@ -1,4 +1,5 @@
-//! The command line: one subcommand for each way to boot the Altair.
+//! The command line: one subcommand for each way to boot the Altair, and
+//! `put` to copy files onto a CP/M disk.
 
 use std::path::PathBuf;
 
@@ -11,13 +12,14 @@ const EXAMPLES: &str = "Examples:
   altair image roms/hello.bin
   altair tape 8k-4.0 \"roms/8K BASIC Ver 4-0.tap\"
   cp roms/cpm22b23-56k.dsk cpm.dsk
-  altair disk roms/DBL.HEX cpm.dsk";
+  altair disk roms/DBL.HEX cpm.dsk
+  altair put cpm.dsk roms/CPUTEST.COM";
 
 /// Runs the emulated Altair 8800 in your terminal. Press Ctrl+] to quit.
 #[derive(Parser)]
 #[command(name = "altair", version, after_help = EXAMPLES)]
 pub struct Args {
-    /// How the Altair boots.
+    /// What to do.
     #[command(subcommand)]
     pub command: Command,
 
@@ -27,11 +29,39 @@ pub struct Args {
     /// Example: --switches 0C
     #[arg(long, global = true, value_parser = parse_switches)]
     pub switches: Option<u8>,
+
+    /// Runs the CPU as fast as your computer can instead of at 2 MHz, for
+    /// programs that compute for hours on the real Altair.
+    #[arg(long, global = true)]
+    pub fast: bool,
+}
+
+/// What to do: boot the Altair or put files on a disk.
+#[derive(Subcommand)]
+pub enum Command {
+    /// Boots the Altair.
+    #[command(flatten)]
+    Boot(BootCommand),
+
+    /// Copies files onto a CP/M disk image, in place of files with the same
+    /// names. CP/M then runs a .COM file by its name.
+    Put {
+        /// The disk image with CP/M 2.2 on it.
+        ///
+        /// Example: cpm.dsk
+        disk: PathBuf,
+
+        /// The files to copy. Each keeps its name, in capitals.
+        ///
+        /// Example: roms/CPUTEST.COM
+        #[arg(required = true)]
+        files: Vec<PathBuf>,
+    },
 }
 
 /// How the Altair boots.
 #[derive(Subcommand)]
-pub enum Command {
+pub enum BootCommand {
     /// Loads a memory image at 0000H and starts the CPU there.
     Image {
         /// The memory image, up to 64 KB.

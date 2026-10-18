@@ -166,8 +166,14 @@ the way you boot:
 | `altair tape 8k-4.0 FILE`       | none                                     | toggles in the bootstrap loader at 0000H and puts the tape in the reader |
 | `altair disk LOADER.HEX FILE`   | the PROM at FF00H and the 88-DCDD        | puts the loader into the PROM and the disk into drive 0, starts at FF00H |
 
-`--switches` sets the sense switches with any subcommand. The machine runs
-until you press Ctrl+] or the CPU halts.
+`--switches` sets the sense switches with any of them, and `--fast` runs
+the CPU as fast as your computer can. The machine runs until you press
+Ctrl+] or the CPU halts.
+
+`altair put DISK FILE...` starts no machine. It copies files onto a CP/M
+disk image, and CP/M then runs a `.COM` file by its name. `cpm_disk` writes
+the sectors and the directory entries the way the CP/M BIOS does, and its
+module documentation draws the layout of the disk.
 
 `main.rs` reads top to bottom in four steps:
 
@@ -184,7 +190,7 @@ flowchart LR
 pub enum Boot {
     Image(Vec<u8>),
     Tape { basic: Basic, tape: Vec<u8> },
-    Disk { loader: Program, disk: Vec<u8> },
+    Disk { loader: Program, disk: DiskFile },
 }
 ```
 
@@ -194,8 +200,8 @@ starts if a tape holds another BASIC or the loader sits below FF00H.
 
 | Module         | What it holds                                                  |
 |----------------|----------------------------------------------------------------|
-| `main`         | `main` and `run`, the four steps above                         |
-| `args`         | the command line: `Args` and its `Command`                     |
+| `main`         | `run` with the four steps above, and `put`                     |
+| `args`         | the command line: `Args`, `Command` and `BootCommand`          |
 | `boot`         | `Boot` and `Boot::load`                                        |
 | `boot::tape`   | `Basic` and the MITS bootstrap loaders for the BASIC tapes     |
 | `boot::hex`    | the Intel HEX reader for the disk boot loader                  |
@@ -203,6 +209,7 @@ starts if a tape holds another BASIC or the loader sits below FF00H.
 | `clock`        | the 2 MHz clock and `Exit`                                     |
 | `console`      | `RawMode` and `Console`, your side of the serial line          |
 | `disk_file`    | `DiskFile`, the disk image file in the boot drive              |
+| `cpm_disk`     | `CpmDisk`, the CP/M file system on a disk image, for `put`     |
 
 - **`RawMode`** switches your terminal to raw mode with `crossterm` and back
   when dropped. Each key then reaches the emulator at once, without an echo:
@@ -218,7 +225,8 @@ starts if a tape holds another BASIC or the loader sits below FF00H.
 - **The clock.** Your computer runs the 8080 faster than 2 MHz. So `app`
   runs the CPU for 20,000 cycles, the work of 10 ms on the real Altair, and
   sleeps until those 10 ms are up. Programs keep their original speed, and
-  BASIC waiting for a key leaves your CPU idle.
+  BASIC waiting for a key leaves your CPU idle. `--fast` skips the sleep
+  for programs that compute for hours, such as the CPU diagnostics.
 
 ## You press a key, BASIC prints it
 

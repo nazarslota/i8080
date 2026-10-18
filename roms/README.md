@@ -5,7 +5,7 @@ ships no copyrighted software, so you supply these files yourself:
 
 | File                                                       | Used for                                                       |
 |------------------------------------------------------------|----------------------------------------------------------------|
-| `TST8080.COM`, `8080PRE.COM`, `CPUTEST.COM`, `8080EXM.COM` | CPU diagnostics for `crates/i8080/tests/diagnostics.rs`        |
+| `TST8080.COM`, `8080PRE.COM`, `CPUTEST.COM`, `8080EXM.COM` | CPU diagnostics for `crates/i8080/tests/diagnostics.rs` and for CP/M: `altair put cpm.dsk …` |
 | `hello.bin`                                                | A memory image that prints a greeting: `altair image roms/hello.bin` |
 | `4K BASIC Ver 4-0.tap`, `8K BASIC Ver 4-0.tap`             | Altair BASIC on paper tape: `altair tape 8k-4.0 …`                    |
 | `Extended BASIC Ver 4-0.tap`, `Extended BASIC Ver 4-1.tap` | Extended BASIC on paper tape: `altair tape extended-4.1 …`            |

@@ -2,7 +2,8 @@
 //!
 //! Your computer runs the 8080 faster than 2 MHz. So the clock runs the CPU
 //! for the cycles of one slice, 10 ms on the real Altair, and sleeps until
-//! those 10 ms are up.
+//! those 10 ms are up. With [`Speed::Unlimited`] it skips the sleep, and a
+//! diagnostic that takes hours on the real Altair ends in seconds.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -19,6 +20,15 @@ const SLICE: Duration = Duration::from_nanos(1_000_000_000 / SLICES_PER_SECOND);
 /// The cycles the real Altair executes in one [`SLICE`].
 const SLICE_CYCLES: u64 = Cpu::CLOCK_HZ / SLICES_PER_SECOND;
 
+/// How fast the clock runs the CPU.
+#[derive(Clone, Copy)]
+pub enum Speed {
+    /// 2 MHz, as on the real Altair.
+    Altair,
+    /// As fast as your computer can.
+    Unlimited,
+}
+
 /// How a run of the emulator ended.
 pub enum Exit {
     /// You pressed Ctrl+].
@@ -27,9 +37,8 @@ pub enum Exit {
     Halted,
 }
 
-/// Runs `altair` at the Altair's speed until `quit` turns `true` or the CPU
-/// halts.
-pub fn run(altair: &mut Altair, quit: &AtomicBool) -> Exit {
+/// Runs `altair` at `speed` until `quit` turns `true` or the CPU halts.
+pub fn run(altair: &mut Altair, quit: &AtomicBool, speed: Speed) -> Exit {
     let mut next_slice = Instant::now();
     loop {
         if quit.load(Ordering::Relaxed) {
@@ -44,6 +53,9 @@ pub fn run(altair: &mut Altair, quit: &AtomicBool) -> Exit {
             cycles += u64::from(altair.step());
         }
 
+        if let Speed::Unlimited = speed {
+            continue;
+        }
         // Sleep off the time the real Altair would still need for the slice.
         next_slice += SLICE;
         match next_slice.checked_duration_since(Instant::now()) {
