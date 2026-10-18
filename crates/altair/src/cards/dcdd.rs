@@ -94,7 +94,7 @@ const SECTOR_BYTES: usize = 137;
 /// The bytes on a disk: 77 tracks of 32 sectors of 137 bytes.
 pub const DISK_BYTES: usize = TRACKS * SECTORS as usize * SECTOR_BYTES;
 
-/// What a read returns past the end of a short disk image.
+/// What a read returns past the end of a sector or of a short disk image.
 const BLANK_BYTE: u8 = 0x00;
 
 /// The MITS 88-DCDD floppy disk controller with its drives.
@@ -120,13 +120,14 @@ const BLANK_BYTE: u8 = 0x00;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub struct Dcdd {
-    drives: Vec<Drive>,
+    /// The drives, `None` for a drive without a disk.
+    drives: [Option<Drive>; DRIVES],
     selected: Option<usize>,
 }
 
-/// One drive: the disk in it and where its head is.
+/// A drive with a disk in it, and where its head is.
 struct Drive {
-    disk: Option<Box<dyn Disk>>,
+    disk: Box<dyn Disk>,
     track: usize,
     head_loaded: bool,
     /// The sector under the head. A new drive starts at the last sector, so
@@ -141,7 +142,7 @@ impl Dcdd {
     /// Creates a controller with 16 empty drives.
     pub fn new() -> Self {
         Self {
-            drives: (0..DRIVES).map(|_| Drive::new()).collect(),
+            drives: core::array::from_fn(|_| None),
             selected: None,
         }
     }
@@ -160,15 +161,13 @@ impl Dcdd {
             .drives
             .get_mut(drive)
             .ok_or(NoSuchDriveError { drive })?;
-        slot.disk = Some(Box::new(disk));
+        *slot = Some(Drive::new(Box::new(disk)));
         Ok(())
     }
 
     /// Returns the selected drive if it holds a disk.
     fn drive(&mut self) -> Option<&mut Drive> {
-        let drive = &mut self.drives[self.selected?];
-        drive.disk.as_ref()?;
-        Some(drive)
+        self.drives.get_mut(self.selected?)?.as_mut()
     }
 
     /// Selects a drive, or deselects them all for 80H.
@@ -247,11 +246,7 @@ impl Dcdd {
         };
 
         drive.byte += 1;
-        drive
-            .disk
-            .as_mut()
-            .and_then(|disk| disk.read(offset))
-            .unwrap_or(BLANK_BYTE)
+        drive.disk.read(offset)
     }
 
     /// Writes `value` as the next byte of the sector under the head.
@@ -266,9 +261,7 @@ impl Dcdd {
         };
 
         drive.byte += 1;
-        if let Some(disk) = drive.disk.as_mut() {
-            disk.write(offset, value);
-        }
+        drive.disk.write(offset, value);
     }
 }
 
@@ -276,27 +269,29 @@ impl Dcdd {
 ///
 /// The [`Dcdd`] reads and writes the disk byte by byte, at an offset from
 /// the start of the image: track by track, sector by sector, 137 bytes to a
-/// sector. The `altair` crate does no host I/O, so the application
-/// implements this trait to keep the disk in a file. `Vec<u8>` implements
-/// it for a disk in memory.
+/// sector. The controller asks only for offsets below [`DISK_BYTES`]. The
+/// `altair` crate does no host I/O, so the application implements this
+/// trait to keep the disk in a file.
+///
+/// `Vec<u8>` implements it for a disk in memory. A `Vec` shorter than
+/// [`DISK_BYTES`] reads 00H past its end and drops writes there.
 pub trait Disk {
-    /// Returns the byte at `offset`, or `None` past the end of the image.
-    fn read(&mut self, offset: usize) -> Option<u8>;
+    /// Returns the byte at `offset`.
+    fn read(&mut self, offset: usize) -> u8;
 
-    /// Writes `byte` at `offset`. A write past the end grows the image.
+    /// Writes `byte` at `offset`.
     fn write(&mut self, offset: usize, byte: u8);
 }
 
 impl Disk for Vec<u8> {
-    fn read(&mut self, offset: usize) -> Option<u8> {
-        self.get(offset).copied()
+    fn read(&mut self, offset: usize) -> u8 {
+        self.get(offset).copied().unwrap_or(BLANK_BYTE)
     }
 
     fn write(&mut self, offset: usize, byte: u8) {
-        if offset >= self.len() {
-            self.resize(offset + 1, BLANK_BYTE);
+        if let Some(slot) = self.get_mut(offset) {
+            *slot = byte;
         }
-        self[offset] = byte;
     }
 }
 
@@ -323,10 +318,10 @@ impl Default for Dcdd {
 }
 
 impl Drive {
-    /// Creates an empty drive with its head on track 0.
-    fn new() -> Self {
+    /// Creates a drive with `disk` in it and its head on track 0.
+    fn new(disk: Box<dyn Disk>) -> Self {
         Self {
-            disk: None,
+            disk,
             track: 0,
             head_loaded: false,
             sector: SECTORS - 1,
@@ -377,7 +372,7 @@ mod tests {
     struct SharedDisk(Rc<RefCell<Vec<u8>>>);
 
     impl Disk for SharedDisk {
-        fn read(&mut self, offset: usize) -> Option<u8> {
+        fn read(&mut self, offset: usize) -> u8 {
             self.0.borrow_mut().read(offset)
         }
 
@@ -555,20 +550,20 @@ mod tests {
     }
 
     #[test]
-    fn vec_disk_grows_on_write_past_end() {
+    fn vec_disk_drops_write_past_end() {
         let mut disk = vec![0x11];
 
         disk.write(2, 0x33);
 
-        assert_eq!(disk, [0x11, 0x00, 0x33]);
+        assert_eq!(disk, [0x11]);
     }
 
     #[test]
-    fn vec_disk_reads_none_past_end() {
+    fn vec_disk_reads_blank_byte_past_end() {
         let mut disk = vec![0x11];
 
         let byte = disk.read(1);
 
-        assert_eq!(byte, None);
+        assert_eq!(byte, 0x00);
     }
 }
