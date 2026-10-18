@@ -66,11 +66,12 @@ impl<'a> FrontPanel<'a> {
     ///
     /// ```
     /// # use altair::{Altair, cards::{Cpu, Ram}};
-    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build();
+    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build()?;
     /// let mut panel = altair.front_panel();
     /// panel.set_switches(0x2000); // A13 up, the rest down
     /// panel.set_switches(0o076); // A7 to A0 in octal groups: 000 111 110
     /// panel.set_switches(0b1010_1010_1010_1010); // A15 down, A14 up, A13 down, ...
+    /// # Ok::<(), altair::BuildError>(())
     /// ```
     pub fn set_switches(&mut self, switches: u16) {
         self.altair.switches = switches;
@@ -80,12 +81,13 @@ impl<'a> FrontPanel<'a> {
     ///
     /// ```
     /// # use altair::{Altair, cards::{Cpu, Ram}};
-    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build();
+    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build()?;
     /// let mut panel = altair.front_panel();
     /// panel.toggle_in(0x2000, &[0x3E]);
     ///
     /// panel.set_switches(0x2000);
     /// assert_eq!(panel.examine(), 0x3E); // the byte at 2000H
+    /// # Ok::<(), altair::BuildError>(())
     /// ```
     pub fn examine(&mut self) -> u8 {
         let [low, high] = self.altair.switches.to_le_bytes();
@@ -97,13 +99,14 @@ impl<'a> FrontPanel<'a> {
     ///
     /// ```
     /// # use altair::{Altair, cards::{Cpu, Ram}};
-    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build();
+    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build()?;
     /// let mut panel = altair.front_panel();
     /// panel.toggle_in(0x2000, &[0x3E, 0x41]);
     /// panel.set_switches(0x2000);
     /// panel.examine();
     ///
     /// assert_eq!(panel.examine_next(), 0x41); // the byte at 2001H
+    /// # Ok::<(), altair::BuildError>(())
     /// ```
     pub fn examine_next(&mut self) -> u8 {
         self.feed(&[NOP_OPCODE]);
@@ -114,13 +117,14 @@ impl<'a> FrontPanel<'a> {
     ///
     /// ```
     /// # use altair::{Altair, cards::{Cpu, Ram}};
-    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build();
+    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build()?;
     /// let mut panel = altair.front_panel();
     /// panel.set_switches(0x2000);
     /// panel.examine();
     /// panel.set_switches(0x003E); // A8 to A15 don't matter here
     ///
     /// assert_eq!(panel.deposit(), 0x3E); // 2000H now holds 3EH
+    /// # Ok::<(), altair::BuildError>(())
     /// ```
     pub fn deposit(&mut self) -> u8 {
         let [_, byte] = self.altair.switches.to_be_bytes();
@@ -134,7 +138,7 @@ impl<'a> FrontPanel<'a> {
     ///
     /// ```
     /// # use altair::{Altair, cards::{Cpu, Ram}};
-    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build();
+    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build()?;
     /// let mut panel = altair.front_panel();
     /// panel.set_switches(0x2000);
     /// panel.examine();
@@ -143,6 +147,7 @@ impl<'a> FrontPanel<'a> {
     /// panel.set_switches(0x0041);
     ///
     /// assert_eq!(panel.deposit_next(), 0x41); // 2001H: 41H
+    /// # Ok::<(), altair::BuildError>(())
     /// ```
     pub fn deposit_next(&mut self) -> u8 {
         self.examine_next();
@@ -155,7 +160,7 @@ impl<'a> FrontPanel<'a> {
     ///
     /// ```
     /// # use altair::{Altair, cards::{Cpu, Ram}};
-    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build();
+    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build()?;
     /// let mut panel = altair.front_panel();
     /// panel.toggle_in(0x2000, &[0x3E, 0x41, 0x76]); // MVI A,41H; HLT
     ///
@@ -163,6 +168,7 @@ impl<'a> FrontPanel<'a> {
     /// assert_eq!(panel.examine(), 0x3E);
     /// assert_eq!(panel.examine_next(), 0x41);
     /// assert_eq!(panel.examine_next(), 0x76);
+    /// # Ok::<(), altair::BuildError>(())
     /// ```
     pub fn toggle_in(&mut self, address: u16, bytes: &[u8]) {
         self.set_switches(address);
@@ -181,11 +187,12 @@ impl<'a> FrontPanel<'a> {
     ///
     /// ```
     /// # use altair::{Altair, cards::{Cpu, Ram}};
-    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build();
+    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build()?;
     /// let mut panel = altair.front_panel();
     /// panel.run();
     ///
     /// assert!(altair.is_running());
+    /// # Ok::<(), altair::BuildError>(())
     /// ```
     pub fn run(&mut self) {
         self.altair.running = true;
@@ -195,12 +202,13 @@ impl<'a> FrontPanel<'a> {
     ///
     /// ```
     /// # use altair::{Altair, cards::{Cpu, Ram}};
-    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build();
+    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build()?;
     /// let mut panel = altair.front_panel();
     /// panel.run();
     /// panel.stop();
     ///
     /// assert!(!altair.is_running());
+    /// # Ok::<(), altair::BuildError>(())
     /// ```
     pub fn stop(&mut self) {
         self.altair.running = false;
@@ -210,7 +218,7 @@ impl<'a> FrontPanel<'a> {
     ///
     /// ```
     /// # use altair::{Altair, cards::{Cpu, Ram}};
-    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build();
+    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build()?;
     /// let mut panel = altair.front_panel();
     /// panel.toggle_in(0x0000, &[0x3E, 0x41, 0x76]); // MVI A,41H; HLT
     /// panel.set_switches(0x0000);
@@ -219,6 +227,7 @@ impl<'a> FrontPanel<'a> {
     /// assert_eq!(panel.single_step(), 7); // MVI A,41H
     /// assert_eq!(panel.single_step(), 7); // HLT
     /// assert!(altair.is_halted());
+    /// # Ok::<(), altair::BuildError>(())
     /// ```
     pub fn single_step(&mut self) -> u32 {
         self.altair.step()
@@ -229,7 +238,7 @@ impl<'a> FrontPanel<'a> {
     ///
     /// ```
     /// # use altair::{Altair, cards::{Cpu, Ram}};
-    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build();
+    /// # let mut altair = Altair::builder().plug(Cpu::new()).plug(Ram::new(0x0000..=0xFFFF)).build()?;
     /// let mut panel = altair.front_panel();
     /// panel.toggle_in(0x0000, &[0x76]); // HLT
     /// panel.set_switches(0x2000);
@@ -239,6 +248,7 @@ impl<'a> FrontPanel<'a> {
     ///
     /// panel.single_step();
     /// assert!(altair.is_halted());
+    /// # Ok::<(), altair::BuildError>(())
     /// ```
     pub fn reset(&mut self) {
         self.altair.cpu.reset();
@@ -301,6 +311,7 @@ mod tests {
             .plug(Cpu::new())
             .plug(Ram::new(0x0000..=0xFFFF))
             .build()
+            .unwrap()
     }
 
     #[test]

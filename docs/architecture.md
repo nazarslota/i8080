@@ -84,7 +84,7 @@ let mut altair = Altair::builder()
     .plug(cards::Ram::new(0x0000..=0x7FFF))
     .plug(cards::Ram::new(0x8000..=0xFFFF))
     .plug(cards::Sio2::new(console))
-    .build();
+    .build()?;
 ```
 
 The backplane passes each memory access, `IN` and `OUT` to every card, and
@@ -101,7 +101,7 @@ CPU implements the `Card` trait:
 The CPU card wraps an `i8080::Cpu`, gives you all of its fields and methods
 and adds the clock, `Cpu::CLOCK_HZ`. The machine keeps it apart from the
 backplane and lends it the backplane as its bus on each `step`. `build()`
-panics if you plug in no CPU card, and `plug` panics on a second one.
+returns an error if you plug in no CPU card or two.
 
 `Sio2` is the one card that reaches outside the Altair. It calls the
 `Terminal` trait: `receive` returns the next key or `None`, `send` shows a

@@ -1,3 +1,6 @@
+use core::error::Error;
+use core::fmt;
+
 use i8080::{IoBus, MemoryBus};
 
 mod backplane;
@@ -38,7 +41,7 @@ const SENSE_SWITCHES_PORT: u8 = 0xFF;
 ///     .plug(Cpu::new())
 ///     .plug(Ram::new(0x0000..=0xFFFF))
 ///     .plug(Sio2::new(Screen))
-///     .build();
+///     .build()?;
 ///
 /// // 0000H  3EH 41H  MVI A,41H
 /// // 0002H  D3H 11H  OUT 11H    prints A
@@ -52,6 +55,7 @@ const SENSE_SWITCHES_PORT: u8 = 0xFF;
 /// while !altair.is_halted() {
 ///     altair.step();
 /// }
+/// # Ok::<(), altair::BuildError>(())
 /// ```
 pub struct Altair {
     cpu: Cpu,
@@ -67,6 +71,7 @@ impl Altair {
     pub fn builder() -> AltairBuilder {
         AltairBuilder {
             cpu: None,
+            second_cpu: false,
             backplane: Backplane::new(),
         }
     }
@@ -104,15 +109,13 @@ impl Altair {
 /// Collects the cards for an [`Altair`], slot by slot.
 pub struct AltairBuilder {
     cpu: Option<Cpu>,
+    /// `true` after you plug in a second CPU card.
+    second_cpu: bool,
     backplane: Backplane,
 }
 
 impl AltairBuilder {
     /// Plugs `card` into the next free slot.
-    ///
-    /// # Panics
-    ///
-    /// Panics if you plug in a second CPU card.
     pub fn plug(mut self, card: impl Plug) -> Self {
         card.plug_into(&mut self);
         self
@@ -120,20 +123,45 @@ impl AltairBuilder {
 
     /// Builds the machine: every switch down, the CPU stopped, `PC` at 0000H.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if you plugged in no CPU card.
-    pub fn build(self) -> Altair {
-        Altair {
-            cpu: self
-                .cpu
-                .expect("plug in a CPU card: .plug(cards::Cpu::new())"),
+    /// Returns [`BuildError::NoCpu`] if you plugged in no CPU card, and
+    /// [`BuildError::SecondCpu`] if you plugged in two.
+    pub fn build(self) -> Result<Altair, BuildError> {
+        if self.second_cpu {
+            return Err(BuildError::SecondCpu);
+        }
+        let cpu = self.cpu.ok_or(BuildError::NoCpu)?;
+        Ok(Altair {
+            cpu,
             backplane: self.backplane,
             switches: 0x0000,
             running: false,
-        }
+        })
     }
 }
+
+/// Why [`AltairBuilder::build`] can't assemble the machine.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BuildError {
+    /// You plugged in no CPU card. Plug one in with
+    /// `.plug(cards::Cpu::new())`.
+    NoCpu,
+    /// You plugged in a second CPU card. The Altair takes one.
+    SecondCpu,
+}
+
+impl fmt::Display for BuildError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = match self {
+            Self::NoCpu => "the Altair needs a CPU card",
+            Self::SecondCpu => "the Altair takes one CPU card",
+        };
+        f.write_str(message)
+    }
+}
+
+impl Error for BuildError {}
 
 /// A card that [`AltairBuilder::plug`] takes: the CPU card or any [`Card`].
 ///
@@ -146,8 +174,11 @@ pub trait Plug {
 
 impl Plug for Cpu {
     fn plug_into(self, builder: &mut AltairBuilder) {
-        assert!(builder.cpu.is_none(), "the Altair takes one CPU card");
-        builder.cpu = Some(self);
+        if builder.cpu.is_some() {
+            builder.second_cpu = true;
+        } else {
+            builder.cpu = Some(self);
+        }
     }
 }
 
@@ -220,7 +251,8 @@ mod tests {
             .plug(Ram::new(0x0000..=0x7FFF))
             .plug(Ram::new(0x8000..=0xFFFF))
             .plug(Sio2::new(SharedScreen(Rc::clone(&screen))))
-            .build();
+            .build()
+            .unwrap();
         (altair, screen)
     }
 
@@ -297,7 +329,8 @@ mod tests {
         let mut altair = Altair::builder()
             .plug(Cpu::new())
             .plug(Ram::new(0x0000..=0x00FF))
-            .build();
+            .build()
+            .unwrap();
         // 0000H: LDA 8000H; HLT
         toggle_in(&mut altair, 0x0000, &[0x3A, 0x00, 0x80, 0x76]);
 
@@ -307,14 +340,20 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "plug in a CPU card")]
-    fn build_without_cpu_card_panics() {
-        Altair::builder().plug(Ram::new(0x0000..=0xFFFF)).build();
+    fn build_without_cpu_card_fails() {
+        let builder = Altair::builder().plug(Ram::new(0x0000..=0xFFFF));
+
+        let altair = builder.build();
+
+        assert_eq!(altair.err(), Some(BuildError::NoCpu));
     }
 
     #[test]
-    #[should_panic(expected = "one CPU card")]
-    fn second_cpu_card_panics() {
-        Altair::builder().plug(Cpu::new()).plug(Cpu::new());
+    fn build_with_second_cpu_card_fails() {
+        let builder = Altair::builder().plug(Cpu::new()).plug(Cpu::new());
+
+        let altair = builder.build();
+
+        assert_eq!(altair.err(), Some(BuildError::SecondCpu));
     }
 }

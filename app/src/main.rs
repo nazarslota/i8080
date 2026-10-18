@@ -125,7 +125,8 @@ fn run(setup: Setup) -> Result<Exit, String> {
         .plug(Ram::new(0x0000..=0x7FFF)) // First 32 KB card
         .plug(Ram::new(0x8000..=0xFFFF)) // Second 32 KB card
         .plug(Sio2::new(console)) // The 88-2SIO card at ports 10H and 11H
-        .build();
+        .build()
+        .map_err(|error| error.to_string())?;
 
     // What an Altair owner did by hand: toggle the program in at 0000H,
     // examine 0000H again, set the sense switches and press RUN.
