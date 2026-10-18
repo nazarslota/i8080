@@ -84,12 +84,12 @@ cd examples/c
 make run
 ```
 
-| Command                 | What it does                                   |
-|-------------------------|------------------------------------------------|
-| `make`                  | builds every program that changed              |
-| `make run`              | builds `main.c`, puts it on `b.dsk`, boots     |
-| `make run PROGRAM=name` | the same for `name/name.c`                     |
-| `make clean`            | removes the built `.COM` files                 |
+| Command                 | What it does                               |
+|-------------------------|--------------------------------------------|
+| `make`                  | builds every program that changed          |
+| `make run`              | builds `main.c`, puts it on `b.dsk`, boots |
+| `make run PROGRAM=name` | the same for `name/name.c`                 |
+| `make clean`            | removes the built `.COM` files             |
 
 The [Makefile](../../examples/c/Makefile) calls z88dk as
 `zcc +cpm -clib=8080 -lm main.c -o main.COM`. `+cpm` builds a `.COM` file
@@ -102,11 +102,11 @@ always boots the latest build.
 
 ## Assembly programs
 
-CP/M brings its own 8080 assembler, `ASM.COM`, and the loader `LOAD.COM`
-on drive A:. Assembly programs live in [`examples/asm`](../../examples/asm),
-each in a folder of its own: `examples/asm/main/main.asm`. In
-`examples/asm`, `make run` puts `main.asm` on drive B: and boots CP/M.
-Then assemble, load and run it at `A>`:
+The z88dk image also holds an assembler, z80asm, which builds 8080 code
+with `-m8080`. Assembly programs live in
+[`examples/asm`](../../examples/asm), each in a folder of its own:
+`examples/asm/main/main.asm`. In `examples/asm`, `make run` assembles
+`main.asm` into `main.COM`, copies it to drive B: and boots CP/M:
 
 ```sh
 cd examples/asm
@@ -114,32 +114,21 @@ make run
 ```
 
 ```text
-A>B:
-B>A:ASM MAIN
-CP/M ASSEMBLER - VER 2.0
-011A
-000H USE FACTOR
-END OF ASSEMBLY
-
-B>A:LOAD MAIN
-
-FIRST ADDRESS 0100
-LAST  ADDRESS 0119
-BYTES READ    001A
-RECORDS WRITTEN 01
-
-B>MAIN
+A>B:MAIN
 HELLO FROM ASM
 ```
 
-`ASM` writes `MAIN.HEX`, the program in Intel HEX, and `MAIN.PRN`, a
-listing with the address and the bytes of each line: `TYPE MAIN.PRN`
-shows it. `LOAD` turns the HEX file into `MAIN.COM`, 26 bytes here.
-`make run PROGRAM=name` does the same for `name/name.asm`.
+| Command                 | What it does                                    |
+|-------------------------|-------------------------------------------------|
+| `make`                  | assembles every program that changed            |
+| `make run`              | assembles `main.asm`, puts it on `b.dsk`, boots |
+| `make run PROGRAM=name` | the same for `name/name.asm`                    |
+| `make clean`            | removes the built `.COM` files                  |
 
-CP/M ends each line of text with CR LF, and `ASM` reads a file with bare
-LF as empty. So the Makefile copies the source to `build/` with CR LF
-before it puts it on the disk, and you edit it as any text file.
+z80asm takes the Intel mnemonics, such as `MVI` and `LXI`, but writes
+strings in double quotes and needs no `END`. CP/M's own assembler,
+`ASM.COM` on drive A:, wants single quotes and `END`, so a program for one
+needs those two changes for the other.
 
 ## Speed
 

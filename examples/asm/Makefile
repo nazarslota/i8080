@@ -1,33 +1,31 @@
-# Puts the 8080 assembly programs in this folder on a CP/M disk, where the
-# CP/M assembler builds them. Each program lives in a folder of its own,
+# Builds the 8080 assembly programs in this folder into CP/M .COM files and
+# runs them in the emulator. Each program lives in a folder of its own,
 # such as main/main.asm. docs/guide/cpm.md explains the steps.
 #
-#   make run                   put main.asm on b.dsk, boot CP/M
+#   make                       build every program into a .COM file
+#   make run                   build main, copy it to b.dsk, boot CP/M
 #   make run PROGRAM=name      the same for name/name.asm
-#   make clean                 remove the build folder
-#
-# At A>, assemble and run the program with the tools of CP/M:
-#
-#   B:
-#   A:ASM MAIN
-#   A:LOAD MAIN
-#   MAIN
+#   make clean                 remove the .COM files
 
 ROOT     := ../..
 ALTAIR   := cargo run --release --
+Z80ASM   := docker run --rm -v "$(CURDIR)":/src -w /src z88dk/z88dk z88dk-z80asm -m8080 -b
 PROGRAM  := main
+PROGRAMS := $(patsubst %.asm,%.COM,$(wildcard */*.asm))
 
-.PHONY: run clean
+.PHONY: asm run clean
 
-run: build/$(PROGRAM).asm $(ROOT)/a.dsk $(ROOT)/b.dsk
+asm: $(PROGRAMS)
+
+# z80asm leaves an object file next to the binary; the binary is all CP/M
+# needs.
+%.COM: %.asm
+	$(Z80ASM) -o$@ $<
+	rm -f $*.o
+
+run: $(PROGRAM)/$(PROGRAM).COM $(ROOT)/a.dsk $(ROOT)/b.dsk
 	$(ALTAIR) disk put $(ROOT)/b.dsk $<
 	$(ALTAIR) cpm --prom $(ROOT)/roms/DBL.HEX $(ROOT)/a.dsk $(ROOT)/b.dsk
-
-# CP/M ends each line of text with CR LF, and ASM reads a file with bare LF
-# as empty. The copy in build/ gets the CR LF.
-build/$(PROGRAM).asm: $(PROGRAM)/$(PROGRAM).asm
-	mkdir -p build
-	awk '{ sub(/\r$$/, ""); printf "%s\r\n", $$0 }' $< > $@
 
 $(ROOT)/a.dsk:
 	cp $(ROOT)/roms/cpm22b23-56k.dsk $@
@@ -36,4 +34,4 @@ $(ROOT)/b.dsk:
 	$(ALTAIR) disk format $@
 
 clean:
-	rm -rf build
+	rm -f */*.COM

@@ -9,7 +9,7 @@
 
 # Programs compiled in examples/c (see docs/guide/cpm.md)
 /examples/c/*/*.COM
-/examples/asm/build/
+/examples/asm/*/*.COM
 
 # Editor and OS files
 /.idea/

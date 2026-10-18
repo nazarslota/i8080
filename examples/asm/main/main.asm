@@ -10,6 +10,4 @@ PRINT   EQU     9               ; BDOS function: print a string up to $
         CALL    BDOS
         RET                     ; back to the CCP
 
-MSG:    DB      'HELLO FROM ASM',13,10,'$'
-
-        END
+MSG:    DB      "HELLO FROM ASM",13,10,"$"
