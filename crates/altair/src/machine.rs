@@ -1,12 +1,18 @@
-use i8080::{Cpu, MemoryBus};
+use i8080::{Cpu, IoBus, MemoryBus};
 
-use crate::{Backplane, Ram, Sio2, Terminal};
+use crate::{Backplane, Device, FrontPanel};
 
-/// An Altair 8800 with two 32 KB memory cards and an 88-2SIO serial card
-/// wired to your terminal: the machine that runs Altair BASIC.
+/// The port where a program reads the sense switches, the upper eight front
+/// panel switches.
+const SENSE_SWITCHES_PORT: u8 = 0xFF;
+
+/// An Altair 8800: the CPU, the front panel and the cards you plug in.
+///
+/// You assemble the machine with [`Altair::builder`] and operate it through
+/// its [`FrontPanel`], as an Altair owner did:
 ///
 /// ```
-/// use altair::{Altair, Terminal};
+/// use altair::{Altair, Ram, Sio2, Terminal};
 ///
 /// /// A terminal that prints to the standard output and has no keyboard.
 /// struct Screen;
@@ -21,19 +27,31 @@ use crate::{Backplane, Ram, Sio2, Terminal};
 ///     }
 /// }
 ///
-/// let mut altair = Altair::new(Screen);
+/// let mut altair = Altair::builder()
+///     .plug(Ram::new(0x0000..=0xFFFF))
+///     .plug(Sio2::new(Screen))
+///     .build();
+///
 /// // 0000H  3EH 41H  MVI A,41H
 /// // 0002H  D3H 11H  OUT 11H    prints A
 /// // 0004H  76H      HLT
-/// altair.load(0x0000, &[0x3E, 0x41, 0xD3, 0x11, 0x76]);
+/// let mut panel = altair.front_panel();
+/// panel.toggle_in(0x0000, &[0x3E, 0x41, 0xD3, 0x11, 0x76]);
+/// panel.set_switches(0x0000);
+/// panel.examine();
+/// panel.run();
 ///
 /// while !altair.is_halted() {
 ///     altair.step();
 /// }
 /// ```
 pub struct Altair {
-    cpu: Cpu,
-    backplane: Backplane,
+    pub(crate) cpu: Cpu,
+    pub(crate) backplane: Backplane,
+    /// The 16 front panel switches A0 to A15, a 1 bit for a switch up.
+    pub(crate) switches: u16,
+    /// `true` after RUN, `false` after STOP.
+    pub(crate) running: bool,
 }
 
 impl Altair {
@@ -41,46 +59,95 @@ impl Altair {
     /// 2 million cycles per second.
     pub const CLOCK_HZ: u64 = 2_000_000;
 
-    /// Creates the machine with every byte of RAM at 0 and `PC` at 0000H.
-    pub fn new(terminal: impl Terminal + 'static) -> Self {
-        let mut backplane = Backplane::new();
-        backplane.plug(Ram::new(0x0000..=0x7FFF)); // First 32 KB card
-        backplane.plug(Ram::new(0x8000..=0xFFFF)); // Second 32 KB card
-        backplane.plug(Sio2::new(terminal)); // The 88-2SIO card at port 11H
-
-        Self {
-            cpu: Cpu::new(),
-            backplane,
+    /// Starts an Altair with empty slots.
+    pub fn builder() -> AltairBuilder {
+        AltairBuilder {
+            backplane: Backplane::new(),
         }
     }
 
-    /// Writes `bytes` to memory from `address` up, through the backplane.
-    ///
-    /// The real Altair had no such shortcut. You set each byte on the front
-    /// panel switches and pressed DEPOSIT, or the loader read the program
-    /// from a paper tape. The emulator doesn't model the front panel yet, so
-    /// it writes the bytes into the memory cards directly.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `bytes` run past the end of memory at FFFFH.
-    pub fn load(&mut self, address: u16, bytes: &[u8]) {
-        let end = usize::from(address) + bytes.len();
-        assert!(end <= 0x10000, "the bytes run past the end of memory");
-
-        for (addr, &byte) in (address..=u16::MAX).zip(bytes) {
-            self.backplane.write(addr, byte);
-        }
+    /// Returns the front panel, the switches you operate the machine with.
+    pub fn front_panel(&mut self) -> FrontPanel<'_> {
+        FrontPanel::new(self)
     }
 
     /// Executes one instruction and returns how many clock cycles it took.
+    ///
+    /// `step` executes whether the front panel says RUN or STOP: you decide
+    /// when to call it. Check [`is_running`](Altair::is_running) first to
+    /// follow the panel.
     pub fn step(&mut self) -> u32 {
-        self.cpu.step(&mut self.backplane)
+        let [sense_switches, _] = self.switches.to_be_bytes();
+        let mut bus = MachineBus {
+            backplane: &mut self.backplane,
+            sense_switches,
+        };
+        self.cpu.step(&mut bus)
+    }
+
+    /// Returns `true` after RUN on the front panel, `false` after STOP.
+    pub const fn is_running(&self) -> bool {
+        self.running
     }
 
     /// Returns `true` after a `HLT` instruction stopped the CPU.
     pub const fn is_halted(&self) -> bool {
         self.cpu.is_halted()
+    }
+}
+
+/// Collects the cards for an [`Altair`], slot by slot.
+pub struct AltairBuilder {
+    backplane: Backplane,
+}
+
+impl AltairBuilder {
+    /// Plugs `card` into the next free slot.
+    pub fn plug(mut self, card: impl Device + 'static) -> Self {
+        self.backplane.plug(card);
+        self
+    }
+
+    /// Builds the machine: every switch down, the CPU stopped, `PC` at 0000H.
+    pub fn build(self) -> Altair {
+        Altair {
+            cpu: Cpu::new(),
+            backplane: self.backplane,
+            switches: 0x0000,
+            running: false,
+        }
+    }
+}
+
+/// The bus the CPU sees: the backplane, plus the front panel, which answers
+/// `IN 0FFH` with the sense switches. The panel sits outside the slots, so
+/// the machine wires it in here.
+struct MachineBus<'a> {
+    backplane: &'a mut Backplane,
+    sense_switches: u8,
+}
+
+impl MemoryBus for MachineBus<'_> {
+    fn read(&mut self, addr: u16) -> u8 {
+        self.backplane.read(addr)
+    }
+
+    fn write(&mut self, addr: u16, value: u8) {
+        self.backplane.write(addr, value);
+    }
+}
+
+impl IoBus for MachineBus<'_> {
+    fn input(&mut self, port: u8) -> u8 {
+        if port == SENSE_SWITCHES_PORT {
+            self.sense_switches
+        } else {
+            self.backplane.input(port)
+        }
+    }
+
+    fn output(&mut self, port: u8, value: u8) {
+        self.backplane.output(port, value);
     }
 }
 
@@ -90,6 +157,7 @@ mod tests {
     use std::rc::Rc;
 
     use super::*;
+    use crate::{Ram, Sio2, Terminal};
 
     /// A terminal that records what the machine sends. The test keeps a
     /// second handle to the screen, because the machine owns the terminal.
@@ -105,10 +173,25 @@ mod tests {
         }
     }
 
+    /// Builds an Altair with two 32 KB memory cards and an 88-2SIO wired to
+    /// a screen the test can read.
     fn altair_with_screen() -> (Altair, Rc<RefCell<Vec<u8>>>) {
         let screen = Rc::new(RefCell::new(Vec::new()));
-        let altair = Altair::new(SharedScreen(Rc::clone(&screen)));
+        let altair = Altair::builder()
+            .plug(Ram::new(0x0000..=0x7FFF))
+            .plug(Ram::new(0x8000..=0xFFFF))
+            .plug(Sio2::new(SharedScreen(Rc::clone(&screen))))
+            .build();
         (altair, screen)
+    }
+
+    /// Toggles `bytes` in from `address` up, then examines 0000H, so the CPU
+    /// starts there.
+    fn toggle_in(altair: &mut Altair, address: u16, bytes: &[u8]) {
+        let mut panel = altair.front_panel();
+        panel.toggle_in(address, bytes);
+        panel.set_switches(0x0000);
+        panel.examine();
     }
 
     fn run_until_halted(altair: &mut Altair) {
@@ -118,10 +201,19 @@ mod tests {
     }
 
     #[test]
+    fn build_stops_cpu_at_0000h() {
+        let (altair, _) = altair_with_screen();
+
+        assert!(!altair.is_running());
+        assert_eq!(altair.cpu.registers.pc, 0x0000);
+    }
+
+    #[test]
     fn runs_program_that_prints_to_terminal() {
         let (mut altair, screen) = altair_with_screen();
         // MVI A,41H; OUT 11H; MVI A,42H; OUT 11H; HLT
-        altair.load(
+        toggle_in(
+            &mut altair,
             0x0000,
             &[0x3E, 0x41, 0xD3, 0x11, 0x3E, 0x42, 0xD3, 0x11, 0x76],
         );
@@ -132,40 +224,17 @@ mod tests {
     }
 
     #[test]
-    fn load_places_bytes_at_address() {
+    fn memory_crosses_from_first_card_to_second() {
         let (mut altair, screen) = altair_with_screen();
-        // 0000H: LDA 2000H; OUT 11H; HLT
-        altair.load(0x0000, &[0x3A, 0x00, 0x20, 0xD3, 0x11, 0x76]);
-        altair.load(0x2000, b"Z");
-
-        run_until_halted(&mut altair);
-
-        assert_eq!(*screen.borrow(), b"Z");
-    }
-
-    #[test]
-    fn load_reaches_last_address() {
-        let (mut altair, screen) = altair_with_screen();
-        // 0000H: LDA FFFFH; OUT 11H; HLT
-        altair.load(0x0000, &[0x3A, 0xFF, 0xFF, 0xD3, 0x11, 0x76]);
-        altair.load(0xFFFF, b"Z");
-
-        run_until_halted(&mut altair);
-
-        assert_eq!(*screen.borrow(), b"Z");
-    }
-
-    #[test]
-    fn load_crosses_from_first_card_to_second() {
-        let (mut altair, screen) = altair_with_screen();
+        toggle_in(&mut altair, 0x7FFF, b"YZ");
         // 0000H: LDA 7FFFH; OUT 11H; LDA 8000H; OUT 11H; HLT
-        altair.load(
+        toggle_in(
+            &mut altair,
             0x0000,
             &[
                 0x3A, 0xFF, 0x7F, 0xD3, 0x11, 0x3A, 0x00, 0x80, 0xD3, 0x11, 0x76,
             ],
         );
-        altair.load(0x7FFF, b"YZ");
 
         run_until_halted(&mut altair);
 
@@ -173,10 +242,25 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "past the end of memory")]
-    fn load_rejects_bytes_past_end_of_memory() {
-        let (mut altair, _) = altair_with_screen();
+    fn in_ffh_reads_upper_eight_switches() {
+        let (mut altair, screen) = altair_with_screen();
+        // 0000H: IN 0FFH; OUT 11H; HLT
+        toggle_in(&mut altair, 0x0000, &[0xDB, 0xFF, 0xD3, 0x11, 0x76]);
+        altair.front_panel().set_switches(0x4200);
 
-        altair.load(0xFFFF, &[0x11, 0x22]);
+        run_until_halted(&mut altair);
+
+        assert_eq!(*screen.borrow(), b"B"); // 42H
+    }
+
+    #[test]
+    fn empty_slot_reads_ffh() {
+        let mut altair = Altair::builder().plug(Ram::new(0x0000..=0x00FF)).build();
+        // 0000H: LDA 8000H; HLT
+        toggle_in(&mut altair, 0x0000, &[0x3A, 0x00, 0x80, 0x76]);
+
+        run_until_halted(&mut altair);
+
+        assert_eq!(altair.cpu.registers.a, 0xFF);
     }
 }

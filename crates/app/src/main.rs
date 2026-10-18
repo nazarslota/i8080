@@ -4,7 +4,8 @@
 //! cargo run --release -p app -- <image.bin>
 //! ```
 //!
-//! The program loads the memory image at 0000H and starts the CPU there.
+//! The program toggles the memory image in at 0000H with the front panel
+//! and starts the CPU there.
 //! Press Ctrl+] to quit.
 
 mod console;
@@ -15,7 +16,7 @@ use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 use std::{fs, thread};
 
-use altair::Altair;
+use altair::{Altair, Ram, Sio2};
 use clap::Parser;
 
 use crate::console::{Console, RawMode};
@@ -74,8 +75,19 @@ fn run(path: &Path) -> Result<Exit, String> {
     let _raw_mode = RawMode::enable()
         .map_err(|error| format!("can't switch the terminal to raw mode: {error}"))?;
     let (console, quit) = Console::start();
-    let mut altair = Altair::new(console);
-    altair.load(0x0000, &image);
+    let mut altair = Altair::builder()
+        .plug(Ram::new(0x0000..=0x7FFF)) // First 32 KB card
+        .plug(Ram::new(0x8000..=0xFFFF)) // Second 32 KB card
+        .plug(Sio2::new(console)) // The 88-2SIO card at ports 10H and 11H
+        .build();
+
+    // What an Altair owner did by hand: toggle the program in at 0000H,
+    // examine 0000H again and press RUN.
+    let mut panel = altair.front_panel();
+    panel.toggle_in(0x0000, &image);
+    panel.set_switches(0x0000);
+    panel.examine();
+    panel.run();
 
     let mut next_slice = Instant::now();
     loop {
