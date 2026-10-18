@@ -14,7 +14,8 @@
 //! # Status
 //!
 //! Work in progress: the [`Altair`] runs programs that you toggle in with its
-//! [`FrontPanel`]. Altair BASIC comes next.
+//! [`FrontPanel`], and Altair BASIC from its paper tape. The 88-DCDD floppy
+//! controller comes next.
 
 mod backplane;
 mod device;
