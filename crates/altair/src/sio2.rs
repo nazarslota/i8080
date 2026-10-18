@@ -44,6 +44,13 @@
 //! On the real card the first loop waits while the card shifts the previous
 //! character out, one bit at a time. The emulated card sends at once, so
 //! the loop never waits.
+//!
+//! The ports and the status bits come from the [Altair 8800 Monitor] source,
+//! which defines them for the 88-2SIO, and from the bootstrap loader in
+//! [Loading Basic with the 88-2SIO Board].
+//!
+//! [Altair 8800 Monitor]: https://k1.spdns.de/Develop/Projects/zxsp/zxsp.alt10/zasm/Test/8080/original/Altair8800_Monitor.z80
+//! [Loading Basic with the 88-2SIO Board]: https://deramp.com/downloads/mfe_archive/010-S100%20Computers%20and%20Boards/00-MITS/10-MITS%20S100%20Boards/88-2SIO%20Dual%20Serial%20Board/Loading%20Basic%20with%20the%2088-2SIO%20Board.pdf
 
 use crate::{Device, Terminal};
 
@@ -69,8 +76,8 @@ const EMPTY_DATA: u8 = 0x00;
 /// The MITS 88-2SIO serial card, port A at `10H` and `11H`.
 ///
 /// The card has two serial ports, each built on a Motorola 6850 ACIA chip.
-/// Altair BASIC talks to the first one, and this emulation covers only that
-/// one.
+/// Altair BASIC talks to the first one, port A, and this emulation covers
+/// port A alone.
 ///
 /// A program polls the status port and checks two bits:
 ///
