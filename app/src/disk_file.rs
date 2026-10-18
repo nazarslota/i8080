@@ -1,4 +1,33 @@
 //! A disk image file as the [`Disk`] in the boot drive.
+//!
+//! An image holds the bytes of an 8-inch floppy in order: track 0 sector 0
+//! first, then sector 1, up to sector 31 of track 76. Each sector takes 137
+//! bytes, so a full image takes 337,664 bytes. The 88-DCDD finds a byte by
+//! its track, its sector and its place in the sector:
+//!
+//! ```text
+//! offset = (track * 32 + sector) * 137 + byte
+//! ```
+//!
+//! The card asks [`DiskFile`] for that offset, and the file answers from a
+//! copy in memory:
+//!
+//! ```text
+//!         IN 0AH                   OUT 0AH
+//!           │                        │
+//!   Dcdd: read(offset)     Dcdd: write(offset, byte)
+//!           │                        │
+//!           ▼                        ▼
+//!      ┌──────────────── DiskFile ────────────────┐
+//!      │  bytes: Vec<u8>  ◄── reads and writes    │
+//!      │  the image file  ◄── writes, at once     │
+//!      └──────────────────────────────────────────┘
+//! ```
+//!
+//! The emulator changes the image you pass to `altair disk`: when CP/M
+//! saves a file, the bytes land in the image before the next instruction.
+//! Keep a copy of the original. [`DiskFile::open`] fails on a read-only
+//! image, so you learn about it at start, before CP/M tries to write.
 
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
