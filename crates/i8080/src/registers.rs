@@ -1,6 +1,17 @@
+//! The registers. [`Registers`] documents them.
+
 use crate::Flags;
 
 /// The 8080 registers that programs can see, flags included.
+///
+/// ```text
+///   A   flags     the accumulator, and PSW for PUSH and POP
+///   B   C         the BC pair
+///   D   E         the DE pair
+///   H   L         the HL pair, the address of M
+///   SP            the stack pointer
+///   PC            the program counter
+/// ```
 ///
 /// The fields are public: any value is valid in any register, so code that
 /// drives the CPU (tests, a debugger, the Altair front panel) can read and set
@@ -35,31 +46,49 @@ pub struct Registers {
 /// low.
 impl Registers {
     /// The `BC` pair.
+    ///
+    /// ```
+    /// let mut registers = i8080::Registers::default();
+    /// registers.b = 0x12;
+    /// registers.c = 0x34;
+    ///
+    /// assert_eq!(registers.bc(), 0x1234);
+    /// ```
     pub const fn bc(&self) -> u16 {
         u16::from_be_bytes([self.b, self.c])
     }
 
     /// Sets the `BC` pair: the high byte goes to `B`, the low byte to `C`.
+    ///
+    /// ```
+    /// let mut registers = i8080::Registers::default();
+    ///
+    /// registers.set_bc(0x1234);
+    ///
+    /// assert_eq!((registers.b, registers.c), (0x12, 0x34));
+    /// ```
     pub const fn set_bc(&mut self, value: u16) {
         [self.b, self.c] = value.to_be_bytes();
     }
 
-    /// The `DE` pair.
+    /// The `DE` pair. Works as [`bc`](Self::bc).
     pub const fn de(&self) -> u16 {
         u16::from_be_bytes([self.d, self.e])
     }
 
     /// Sets the `DE` pair: the high byte goes to `D`, the low byte to `E`.
+    /// Works as [`set_bc`](Self::set_bc).
     pub const fn set_de(&mut self, value: u16) {
         [self.d, self.e] = value.to_be_bytes();
     }
 
-    /// The `HL` pair.
+    /// The `HL` pair. Works as [`bc`](Self::bc).
     pub const fn hl(&self) -> u16 {
         u16::from_be_bytes([self.h, self.l])
     }
 
     /// Sets the `HL` pair: the high byte goes to `H`, the low byte to `L`.
+    /// Works as [`set_bc`](Self::set_bc).
     pub const fn set_hl(&mut self, value: u16) {
         [self.h, self.l] = value.to_be_bytes();
     }

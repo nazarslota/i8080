@@ -1,3 +1,5 @@
+//! A PROM card. [`Rom`] documents it.
+
 use core::error::Error;
 use core::fmt;
 
@@ -10,20 +12,6 @@ use super::Card;
 /// at FF00H, so the machine could start from a disk without toggling a
 /// program in. A program can read the card but not write it: the card
 /// ignores writes, as a PROM does.
-///
-/// ```
-/// use altair::Backplane;
-/// use altair::cards::Rom;
-/// use i8080::MemoryBus;
-///
-/// let mut backplane = Backplane::new();
-/// backplane.plug(Rom::new(0xFF00, vec![0xC3, 0x00, 0x00])?); // JMP 0000H
-///
-/// backplane.write(0xFF00, 0x99);
-///
-/// assert_eq!(backplane.read(0xFF00), 0xC3); // the write changed nothing
-/// # Ok::<(), Box<dyn std::error::Error>>(())
-/// ```
 pub struct Rom {
     start: u16,
     bytes: Vec<u8>,
@@ -36,6 +24,16 @@ impl Rom {
     ///
     /// Returns [`RomError::Empty`] if `bytes` is empty and
     /// [`RomError::PastEndOfMemory`] if the bytes run past FFFFH.
+    ///
+    /// ```
+    /// use altair::cards::{Card, Rom};
+    ///
+    /// let mut rom = Rom::new(0xFF00, vec![0xC3, 0x00, 0x00])?; // JMP 0000H
+    /// rom.write(0xFF00, 0x99);
+    ///
+    /// assert_eq!(rom.read(0xFF00), Some(0xC3)); // the write changed nothing
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn new(start: u16, bytes: Vec<u8>) -> Result<Self, RomError> {
         if bytes.is_empty() {
             return Err(RomError::Empty);

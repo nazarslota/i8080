@@ -1,3 +1,5 @@
+//! A memory card. [`Ram`] documents it.
+
 use core::error::Error;
 use core::fmt;
 use core::ops::RangeInclusive;
@@ -8,20 +10,6 @@ use super::Card;
 ///
 /// The Altair shipped with 256 bytes of RAM, and owners added memory cards.
 /// You pick the range of addresses when you create the card.
-///
-/// ```
-/// use altair::Backplane;
-/// use altair::cards::Ram;
-/// use i8080::MemoryBus;
-///
-/// let mut backplane = Backplane::new();
-/// backplane.plug(Ram::new(0x0000..=0xFFFF)?); // the full 64 KB
-///
-/// backplane.write(0x2000, 0x99);
-///
-/// assert_eq!(backplane.read(0x2000), 0x99);
-/// # Ok::<(), Box<dyn std::error::Error>>(())
-/// ```
 pub struct Ram {
     start: u16,
     bytes: Vec<u8>,
@@ -37,6 +25,17 @@ impl Ram {
     ///
     /// Returns [`EmptyRangeError`] if `addresses` is empty, such as
     /// `0x2000..=0x1000`.
+    ///
+    /// ```
+    /// use altair::cards::{Card, Ram};
+    ///
+    /// let mut ram = Ram::new(0x2000..=0x2FFF)?; // 4 KB at 2000H
+    /// ram.write(0x2000, 0x99);
+    ///
+    /// assert_eq!(ram.read(0x2000), Some(0x99));
+    /// assert_eq!(ram.read(0x1FFF), None); // below the card
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn new(addresses: RangeInclusive<u16>) -> Result<Self, EmptyRangeError> {
         let (start, end) = addresses.into_inner();
         if start > end {

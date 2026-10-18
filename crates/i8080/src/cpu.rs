@@ -1,3 +1,5 @@
+//! The processor. [`Cpu`] documents it.
+
 use crate::alu;
 use crate::condition::Condition;
 use crate::cycles::{self, HALTED_STEP_CYCLES};
@@ -38,6 +40,13 @@ impl Cpu {
     /// The real 8080 starts with `PC` at 0 and random values in the other
     /// registers. This emulator sets them all to 0, so two runs of the same
     /// program give the same result.
+    ///
+    /// ```
+    /// let cpu = i8080::Cpu::new();
+    ///
+    /// assert_eq!(cpu.registers.pc, 0x0000);
+    /// assert!(!cpu.is_halted());
+    /// ```
     pub fn new() -> Self {
         Self::default()
     }
@@ -45,6 +54,17 @@ impl Cpu {
     /// Resets the CPU, like a pulse on the 8080's RESET pin: `PC` goes to 0,
     /// interrupts go off and a halted CPU runs again. The other registers
     /// keep their values.
+    ///
+    /// ```
+    /// let mut cpu = i8080::Cpu::new();
+    /// cpu.registers.pc = 0x1234;
+    /// cpu.registers.a = 0x42;
+    ///
+    /// cpu.reset();
+    ///
+    /// assert_eq!(cpu.registers.pc, 0x0000);
+    /// assert_eq!(cpu.registers.a, 0x42); // the other registers keep their values
+    /// ```
     pub fn reset(&mut self) {
         self.registers.pc = 0x0000;
         self.interrupts_enabled = false;
@@ -52,12 +72,34 @@ impl Cpu {
     }
 
     /// Returns `true` after a `HLT` instruction stopped the CPU.
+    ///
+    /// ```
+    /// use i8080::{Bus, Cpu, Unconnected};
+    ///
+    /// let mut bus = Bus { memory: [0x76u8; 0x10000], io: Unconnected }; // HLT everywhere
+    /// let mut cpu = Cpu::new();
+    ///
+    /// cpu.step(&mut bus);
+    ///
+    /// assert!(cpu.is_halted());
+    /// ```
     pub const fn is_halted(&self) -> bool {
         self.halted
     }
 
     /// Returns `true` after `EI` and `false` after `DI`. The 8080 starts
     /// with interrupts disabled.
+    ///
+    /// ```
+    /// use i8080::{Bus, Cpu, Unconnected};
+    ///
+    /// let mut bus = Bus { memory: [0xFBu8; 0x10000], io: Unconnected }; // EI everywhere
+    /// let mut cpu = Cpu::new();
+    ///
+    /// cpu.step(&mut bus);
+    ///
+    /// assert!(cpu.interrupts_enabled());
+    /// ```
     pub const fn interrupts_enabled(&self) -> bool {
         self.interrupts_enabled
     }
@@ -70,6 +112,16 @@ impl Cpu {
     ///
     /// A halted CPU executes nothing and returns [`HALTED_STEP_CYCLES`], so
     /// the machine's clock keeps running while the CPU waits.
+    ///
+    /// ```
+    /// use i8080::{Bus, Cpu, HALTED_STEP_CYCLES, Unconnected};
+    ///
+    /// let mut bus = Bus { memory: [0x76u8; 0x10000], io: Unconnected }; // HLT everywhere
+    /// let mut cpu = Cpu::new();
+    ///
+    /// assert_eq!(cpu.step(&mut bus), 7); // HLT
+    /// assert_eq!(cpu.step(&mut bus), HALTED_STEP_CYCLES); // the CPU waits
+    /// ```
     pub fn step(&mut self, bus: &mut (impl MemoryBus + IoBus)) -> u32 {
         if self.halted {
             return HALTED_STEP_CYCLES;

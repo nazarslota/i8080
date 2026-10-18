@@ -1,5 +1,9 @@
 //! The arithmetic and logic unit: pure functions that take `A` and an
 //! operand and return the result with the flags it sets.
+//!
+//! ```text
+//!   add(0xFF, 0x01, false) == (0x00, Z P AC CY set, S clear)
+//! ```
 
 use crate::Flags;
 

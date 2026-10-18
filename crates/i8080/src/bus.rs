@@ -1,17 +1,4 @@
-//! The buses that connect the CPU to the rest of the machine.
-//!
-//! The 8080 has two separate address spaces, and each one gets its own trait:
-//!
-//! - [`MemoryBus`]: 64 KB of memory, reached with 16-bit addresses.
-//! - [`IoBus`]: 256 I/O ports, reached only with the `IN` and `OUT`
-//!   instructions.
-//!
-//! On the real chip both spaces share the same address and data pins. At the
-//! start of each access the CPU puts a status byte on the bus, and memory and
-//! devices read it to learn which space the access targets. The emulator
-//! follows the chip: [`Cpu::step`](crate::Cpu::step) takes one bus that
-//! implements both traits. When your memory and your devices live apart,
-//! [`Bus`] joins them into one.
+//! The buses. [`MemoryBus`], [`IoBus`] and [`Bus`] document them.
 
 /// The memory address space: 64 KB, one byte per `u16` address.
 ///

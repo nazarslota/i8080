@@ -1,3 +1,5 @@
+//! The S-100 backplane. [`Backplane`] documents it.
+
 use i8080::{IoBus, MemoryBus};
 
 use crate::cards::Card;
@@ -20,11 +22,35 @@ pub struct Backplane {
 
 impl Backplane {
     /// Creates a backplane with empty slots.
+    ///
+    /// ```
+    /// use altair::Backplane;
+    /// use i8080::MemoryBus;
+    ///
+    /// let mut backplane = Backplane::new();
+    ///
+    /// assert_eq!(backplane.read(0x1234), 0xFF); // an empty slot
+    /// ```
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Plugs `card` into the next free slot.
+    ///
+    /// ```
+    /// use altair::Backplane;
+    /// use altair::cards::Ram;
+    /// use i8080::MemoryBus;
+    ///
+    /// let mut backplane = Backplane::new();
+    /// backplane.plug(Ram::new(0x0000..=0x00FF)?);
+    ///
+    /// backplane.write(0x0010, 0x99);
+    ///
+    /// assert_eq!(backplane.read(0x0010), 0x99);
+    /// assert_eq!(backplane.read(0x0100), 0xFF); // past the card
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn plug(&mut self, card: impl Card + 'static) {
         self.cards.push(Box::new(card));
     }

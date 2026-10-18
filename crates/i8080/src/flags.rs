@@ -1,8 +1,15 @@
+//! The condition flags. [`Flags`] documents them.
+
 /// The five condition flags.
 ///
 /// Arithmetic and logic instructions set the flags from their result, and
 /// conditional jumps, calls and returns read them. Each flag is one bit in
-/// the real 8080, and a `bool` here.
+/// the real 8080, and a `bool` here. `PUSH PSW` packs them into a byte:
+///
+/// ```text
+///   bit  7  6  5  4   3  2  1  0
+///        S  Z  0  AC  0  P  1  CY
+/// ```
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Flags {
     /// `S`: bit 7 of the result, which marks a negative number in two's

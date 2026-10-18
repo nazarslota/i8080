@@ -7,6 +7,11 @@
 //! An instruction that touches memory through `M` takes longer, because each
 //! memory access costs 3 cycles on the bus. Those variants get their own
 //! constant with an `_M` suffix.
+//!
+//! ```text
+//!   MOV A,B   5 cycles   MOV
+//!   MOV A,M   7 cycles   MOV_M: the opcode fetch of 4, a memory read of 3
+//! ```
 
 /// `NOP`.
 pub(crate) const NOP: u32 = 4;

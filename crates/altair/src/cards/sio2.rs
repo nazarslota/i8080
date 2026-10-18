@@ -1,56 +1,4 @@
-//! The MITS 88-2SIO serial card: the link between the Altair and your
-//! terminal.
-//!
-//! The Altair has no keyboard and no screen. You plug a terminal into a
-//! serial card, and programs talk to the card through two I/O ports:
-//!
-//! | Port  | `IN`                       | `OUT`                         |
-//! |-------|----------------------------|-------------------------------|
-//! | `10H` | the status byte            | a control byte (ignored here) |
-//! | `11H` | the character you typed    | a character for the screen    |
-//!
-//! Two bits of the status byte matter:
-//!
-//! | Bit | Mask  | Set when                          |
-//! |-----|-------|-----------------------------------|
-//! | 0   | `01H` | a character waits in port `11H`   |
-//! | 1   | `02H` | the card can take a new character |
-//!
-//! # Printing a character
-//!
-//! A program waits for bit 1 and then writes the character. This
-//! loop prints the character in register `B`:
-//!
-//! ```text
-//! 0200H  DBH 10H      WAIT: IN 10H    read the status
-//! 0202H  E6H 02H            ANI 02H   keep bit 1
-//! 0204H  CAH 00H 02H        JZ WAIT   bit 1 is 0: the card is busy
-//! 0207H  78H                MOV A,B
-//! 0208H  D3H 11H            OUT 11H   send the character
-//! ```
-//!
-//! # Reading a key
-//!
-//! A program waits for bit 0 and then reads the character. This
-//! loop leaves the key in register `A`:
-//!
-//! ```text
-//! 0300H  DBH 10H      WAIT: IN 10H    read the status
-//! 0302H  E6H 01H            ANI 01H   keep bit 0
-//! 0304H  CAH 00H 03H        JZ WAIT   bit 0 is 0: you typed nothing
-//! 0307H  DBH 11H            IN 11H    A = the key
-//! ```
-//!
-//! On the real card the first loop waits while the card shifts the previous
-//! character out, one bit at a time. The emulated card sends at once, so
-//! the loop never waits.
-//!
-//! The ports and the status bits come from the [Altair 8800 Monitor] source,
-//! which defines them for the 88-2SIO, and from the bootstrap loader in
-//! [Loading Basic with the 88-2SIO Board].
-//!
-//! [Altair 8800 Monitor]: https://k1.spdns.de/Develop/Projects/zxsp/zxsp.alt10/zasm/Test/8080/original/Altair8800_Monitor.z80
-//! [Loading Basic with the 88-2SIO Board]: https://deramp.com/downloads/mfe_archive/010-S100%20Computers%20and%20Boards/00-MITS/10-MITS%20S100%20Boards/88-2SIO%20Dual%20Serial%20Board/Loading%20Basic%20with%20the%2088-2SIO%20Board.pdf
+//! The MITS 88-2SIO serial card. [`Sio2`] documents it.
 
 use super::Card;
 
@@ -73,21 +21,55 @@ const NO_BITS: u8 = 0b0000_0000;
 /// What the data port returns when no character waits.
 const EMPTY_DATA: u8 = 0x00;
 
-/// The MITS 88-2SIO serial card, port A at `10H` and `11H`.
+/// The MITS 88-2SIO serial card: the link between the Altair and your
+/// terminal.
 ///
 /// The card has two serial ports, each built on a Motorola 6850 ACIA chip.
-/// Altair BASIC talks to the first one, port A, and this emulation covers
-/// port A alone.
+/// Altair BASIC talks to port A, and the emulation covers port A alone:
 ///
-/// A program polls the status port and checks two bits:
+/// | Port  | `IN`                       | `OUT`                         |
+/// |-------|----------------------------|-------------------------------|
+/// | `10H` | the status byte            | a control byte (ignored here) |
+/// | `11H` | the character you typed    | a character for the screen    |
 ///
-/// - bit 0: a character waits, so `IN 11H` returns it;
-/// - bit 1: the card can send, so `OUT 11H` sends a character.
+/// | Bit | Mask  | Set when                          |
+/// |-----|-------|-----------------------------------|
+/// | 0   | `01H` | a character waits in port `11H`   |
+/// | 1   | `02H` | the card can take a new character |
 ///
-/// The emulated card sends a character at once, so bit 1 stays set. The card
-/// ignores the control bytes that programs write to the status port: they
-/// set the speed and the character format, and a cable to your terminal
-/// needs neither.
+/// # Printing a character
+///
+/// A program waits for bit 1 and then writes the character. This
+/// loop prints the character in register `B`:
+///
+/// ```text
+/// 0200H  DBH 10H      WAIT: IN 10H    read the status
+/// 0202H  E6H 02H            ANI 02H   keep bit 1
+/// 0204H  CAH 00H 02H        JZ WAIT   bit 1 is 0: the card is busy
+/// 0207H  78H                MOV A,B
+/// 0208H  D3H 11H            OUT 11H   send the character
+/// ```
+///
+/// # Reading a key
+///
+/// A program waits for bit 0 and then reads the character. This
+/// loop leaves the key in register `A`:
+///
+/// ```text
+/// 0300H  DBH 10H      WAIT: IN 10H    read the status
+/// 0302H  E6H 01H            ANI 01H   keep bit 0
+/// 0304H  CAH 00H 03H        JZ WAIT   bit 0 is 0: you typed nothing
+/// 0307H  DBH 11H            IN 11H    A = the key
+/// ```
+///
+/// The emulated card sends a character at once, so bit 1 stays set and the
+/// first loop never waits. It ignores the control bytes that programs write to
+/// `10H`: they set the speed and the character format, and a cable to your
+/// terminal needs neither.
+///
+/// The ports and the status bits come from the [Altair 8800 Monitor] source,
+/// which defines them for the 88-2SIO, and from the bootstrap loader in
+/// [Loading Basic with the 88-2SIO Board].
 ///
 /// ```
 /// use altair::Backplane;
@@ -124,6 +106,9 @@ const EMPTY_DATA: u8 = 0x00;
 /// }
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
+///
+/// [Altair 8800 Monitor]: https://k1.spdns.de/Develop/Projects/zxsp/zxsp.alt10/zasm/Test/8080/original/Altair8800_Monitor.z80
+/// [Loading Basic with the 88-2SIO Board]: https://deramp.com/downloads/mfe_archive/010-S100%20Computers%20and%20Boards/00-MITS/10-MITS%20S100%20Boards/88-2SIO%20Dual%20Serial%20Board/Loading%20Basic%20with%20the%2088-2SIO%20Board.pdf
 pub struct Sio2<T> {
     terminal: T,
     received: Option<u8>,
@@ -131,6 +116,26 @@ pub struct Sio2<T> {
 
 impl<T: Terminal> Sio2<T> {
     /// Creates a card wired to `terminal`.
+    ///
+    /// ```
+    /// use altair::cards::{Card, Sio2, Terminal};
+    ///
+    /// /// A keyboard with one key pressed and no screen.
+    /// struct Key(Option<u8>);
+    ///
+    /// impl Terminal for Key {
+    ///     fn receive(&mut self) -> Option<u8> {
+    ///         self.0.take()
+    ///     }
+    ///
+    ///     fn send(&mut self, _byte: u8) {}
+    /// }
+    ///
+    /// let mut sio = Sio2::new(Key(Some(b'A')));
+    ///
+    /// assert_eq!(sio.input(0x10), Some(0b0000_0011)); // a key waits, ready to send
+    /// assert_eq!(sio.input(0x11), Some(b'A'));
+    /// ```
     pub fn new(terminal: T) -> Self {
         Self {
             terminal,

@@ -1,10 +1,25 @@
 //! The cards you plug into the Altair's backplane.
 //!
-//! The CPU card comes with every [`Altair`](crate::Altair). Next to it the
-//! Altair needs a memory card ([`Ram`]) and a serial card for the terminal
-//! ([`Sio2`]). The floppy disk controller ([`Dcdd`]) reads and writes a
-//! [`Disk`] in each drive, and a PROM card ([`Rom`]) holds the loader that
-//! boots from it. Each card implements [`Card`].
+//! The CPU card comes with every [`Altair`](crate::Altair). Each other card
+//! implements [`Card`] and answers the addresses or ports it claims:
+//!
+//! | Card     | Claims                               | Plays the role of                         |
+//! |----------|--------------------------------------|-------------------------------------------|
+//! | [`Ram`]  | the addresses you give it            | a memory card                             |
+//! | [`Rom`]  | its bytes, from the address you give | a PROM card, such as the disk boot loader |
+//! | [`Sio2`] | ports `10H` and `11H`                | the 88-2SIO serial card, port A           |
+//! | [`Dcdd`] | ports `08H` to `0AH`                 | the 88-DCDD floppy disk controller        |
+//!
+//! ```
+//! use altair::cards::{Card, Ram};
+//!
+//! let mut ram = Ram::new(0x0000..=0x00FF)?;
+//!
+//! assert_eq!(ram.read(0x0010), Some(0x00)); // the card claims 0010H
+//! assert_eq!(ram.read(0x0100), None); // and stays silent at 0100H
+//! assert_eq!(ram.input(0x10), None); // a memory card claims no port
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
 
 mod dcdd;
 mod ram;

@@ -1,3 +1,12 @@
+//! The conditions of the conditional jumps, calls and returns: the `CCC`
+//! field of their opcodes.
+//!
+//! ```text
+//!   JNZ addr   11 000 010   CCC = 000: NZ, jumps when Z = 0
+//!   JZ addr    11 001 010   CCC = 001: Z,  jumps when Z = 1
+//!   JM addr    11 111 010   CCC = 111: M,  jumps when S = 1
+//! ```
+
 use crate::Flags;
 
 /// A condition for a conditional jump, call or return, as opcodes encode

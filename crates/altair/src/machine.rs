@@ -1,3 +1,5 @@
+//! The machine: [`Altair`] and the builder that assembles it.
+
 use i8080::{Cpu, IoBus, MemoryBus};
 
 mod backplane;
@@ -69,6 +71,12 @@ impl Altair {
 
     /// Starts an Altair with the CPU card in place and the other slots
     /// empty.
+    ///
+    /// ```
+    /// let altair = altair::Altair::builder().build(); // the CPU card alone
+    ///
+    /// assert!(!altair.is_running());
+    /// ```
     pub fn builder() -> AltairBuilder {
         AltairBuilder {
             backplane: Backplane::new(),
@@ -76,6 +84,15 @@ impl Altair {
     }
 
     /// Returns the front panel, the switches you operate the machine with.
+    ///
+    /// ```
+    /// # let mut altair = altair::Altair::builder().plug(altair::cards::Ram::new(0x0000..=0xFFFF)?).build();
+    /// let mut panel = altair.front_panel();
+    /// panel.set_switches(0x2000);
+    ///
+    /// assert_eq!(panel.examine(), 0x00); // the byte at 2000H
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn front_panel(&mut self) -> FrontPanel<'_> {
         FrontPanel::new(self)
     }
@@ -85,6 +102,15 @@ impl Altair {
     /// `step` executes whether the front panel says RUN or STOP: you decide
     /// when to call it. Check [`is_running`](Altair::is_running) first to
     /// follow the panel.
+    ///
+    /// ```
+    /// # let mut altair = altair::Altair::builder().plug(altair::cards::Ram::new(0x0000..=0xFFFF)?).build();
+    /// altair.front_panel().toggle_in(0x0000, &[0x3E, 0x41]); // MVI A,41H
+    /// altair.front_panel().reset();
+    ///
+    /// assert_eq!(altair.step(), 7); // MVI takes 7 cycles
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn step(&mut self) -> u32 {
         let [sense_switches, _] = self.switches.to_be_bytes();
         let mut bus = MachineBus {
@@ -95,11 +121,23 @@ impl Altair {
     }
 
     /// Returns `true` after RUN on the front panel, `false` after STOP.
+    /// [`FrontPanel::run`] shows an example.
     pub const fn is_running(&self) -> bool {
         self.running
     }
 
     /// Returns `true` after a `HLT` instruction stopped the CPU.
+    ///
+    /// ```
+    /// # let mut altair = altair::Altair::builder().plug(altair::cards::Ram::new(0x0000..=0xFFFF)?).build();
+    /// altair.front_panel().toggle_in(0x0000, &[0x76]); // HLT
+    /// altair.front_panel().reset();
+    ///
+    /// altair.step();
+    ///
+    /// assert!(altair.is_halted());
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn is_halted(&self) -> bool {
         self.cpu.is_halted()
     }
@@ -112,12 +150,25 @@ pub struct AltairBuilder {
 
 impl AltairBuilder {
     /// Plugs `card` into the next free slot.
+    ///
+    /// ```
+    /// use altair::Altair;
+    /// use altair::cards::Ram;
+    ///
+    /// let mut altair = Altair::builder().plug(Ram::new(0x0000..=0x0FFF)?).build(); // 4 KB
+    /// let mut panel = altair.front_panel();
+    /// panel.set_switches(0x2000);
+    ///
+    /// assert_eq!(panel.examine(), 0xFF); // no card answers at 2000H
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn plug(mut self, card: impl Card + 'static) -> Self {
         self.backplane.plug(card);
         self
     }
 
     /// Builds the machine: every switch down, the CPU stopped, `PC` at 0000H.
+    /// [`AltairBuilder::plug`] shows an example.
     pub fn build(self) -> Altair {
         Altair {
             cpu: Cpu::new(),

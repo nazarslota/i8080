@@ -1,45 +1,4 @@
-//! The front panel: the switches you operate the Altair with.
-//!
-//! The Altair has no keyboard and no ROM. You enter a program byte by byte
-//! with 16 switches, A0 to A15, and a row of command switches:
-//!
-//! | Command      | What it does                                           |
-//! |--------------|--------------------------------------------------------|
-//! | EXAMINE      | sets `PC` to the address on A0 to A15                  |
-//! | EXAMINE NEXT | adds 1 to `PC`                                         |
-//! | DEPOSIT      | writes the byte on A0 to A7 at `PC`                    |
-//! | DEPOSIT NEXT | adds 1 to `PC`, then writes the byte on A0 to A7 there |
-//! | RUN          | starts the CPU at `PC`                                 |
-//! | STOP         | stops the CPU                                          |
-//! | SINGLE STEP  | executes one instruction                               |
-//! | RESET        | sets `PC` to 0000H                                     |
-//!
-//! The panel can't set `PC` itself. For EXAMINE it feeds the CPU a `JMP`
-//! through the data bus, followed by the address on the switches, and the
-//! CPU executes the jump. For EXAMINE NEXT it feeds a `NOP`, and the CPU
-//! moves `PC` past it. DEPOSIT writes to memory without the CPU: the panel
-//! puts the switches on the data bus at the address the CPU waits on. RESET
-//! pulses the 8080's RESET pin. [Altair 8800 Theory of Operation] describes
-//! the circuits.
-//!
-//! The upper eight switches, A8 to A15, double as the sense switches: a
-//! running program reads them with `IN 0FFH`, A15 as bit 7. Altair BASIC and
-//! its loaders read them to learn which card carries the tape and the
-//! terminal:
-//!
-//! | Program   | Switches A8 to A15 for the 88-2SIO port A |
-//! |-----------|-------------------------------------------|
-//! | BASIC 4.x | all down: `00H`                           |
-//! | BASIC 3.x | A11 and A10 up: `0CH`                     |
-//!
-//! The settings come from [Loading Basic with the 88-2SIO Board] by Martin
-//! Eberhard (2013), which lists the switches for every card.
-//!
-//! Each command returns the byte that the data lights now show: the byte at
-//! `PC`.
-//!
-//! [Altair 8800 Theory of Operation]: https://altairclone.com/downloads/manuals/Altair%208800%20Theory%20of%20Operation.pdf
-//! [Loading Basic with the 88-2SIO Board]: https://deramp.com/downloads/mfe_archive/010-S100%20Computers%20and%20Boards/00-MITS/10-MITS%20S100%20Boards/88-2SIO%20Dual%20Serial%20Board/Loading%20Basic%20with%20the%2088-2SIO%20Board.pdf
+//! The front panel. [`FrontPanel`] documents it.
 
 use i8080::{IoBus, MemoryBus};
 
@@ -50,8 +9,49 @@ const JMP_OPCODE: u8 = 0xC3;
 /// The `NOP` opcode, which EXAMINE NEXT feeds the CPU.
 const NOP_OPCODE: u8 = 0x00;
 
-/// The front panel of an [`Altair`]. Get it with
-/// [`Altair::front_panel`].
+/// The front panel of an [`Altair`]: the switches you operate it with. Get
+/// it with [`Altair::front_panel`].
+///
+/// The Altair has no keyboard and no ROM. You enter a program byte by byte
+/// with 16 switches, A0 to A15, and a row of command switches:
+///
+/// | Command      | What it does                                           |
+/// |--------------|--------------------------------------------------------|
+/// | EXAMINE      | sets `PC` to the address on A0 to A15                  |
+/// | EXAMINE NEXT | adds 1 to `PC`                                         |
+/// | DEPOSIT      | writes the byte on A0 to A7 at `PC`                    |
+/// | DEPOSIT NEXT | adds 1 to `PC`, then writes the byte on A0 to A7 there |
+/// | RUN          | starts the CPU at `PC`                                 |
+/// | STOP         | stops the CPU                                          |
+/// | SINGLE STEP  | executes one instruction                               |
+/// | RESET        | sets `PC` to 0000H                                     |
+///
+/// The panel can't set `PC` itself. For EXAMINE it feeds the CPU a `JMP`
+/// through the data bus, followed by the address on the switches, and the
+/// CPU executes the jump. For EXAMINE NEXT it feeds a `NOP`, and the CPU
+/// moves `PC` past it. DEPOSIT writes to memory without the CPU: the panel
+/// puts the switches on the data bus at the address the CPU waits on. RESET
+/// pulses the 8080's RESET pin. [Altair 8800 Theory of Operation] describes
+/// the circuits.
+///
+/// The upper eight switches, A8 to A15, double as the sense switches: a
+/// running program reads them with `IN 0FFH`, A15 as bit 7. Altair BASIC and
+/// its loaders read them to learn which card carries the tape and the
+/// terminal:
+///
+/// | Program   | Switches A8 to A15 for the 88-2SIO port A |
+/// |-----------|-------------------------------------------|
+/// | BASIC 4.x | all down: `00H`                           |
+/// | BASIC 3.x | A11 and A10 up: `0CH`                     |
+///
+/// The settings come from [Loading Basic with the 88-2SIO Board] by Martin
+/// Eberhard (2013), which lists the switches for every card.
+///
+/// Each command returns the byte that the data lights now show: the byte at
+/// `PC`.
+///
+/// [Altair 8800 Theory of Operation]: https://altairclone.com/downloads/manuals/Altair%208800%20Theory%20of%20Operation.pdf
+/// [Loading Basic with the 88-2SIO Board]: https://deramp.com/downloads/mfe_archive/010-S100%20Computers%20and%20Boards/00-MITS/10-MITS%20S100%20Boards/88-2SIO%20Dual%20Serial%20Board/Loading%20Basic%20with%20the%2088-2SIO%20Board.pdf
 pub struct FrontPanel<'a> {
     altair: &'a mut Altair,
 }

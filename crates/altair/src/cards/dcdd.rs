@@ -1,39 +1,4 @@
-//! The MITS 88-DCDD floppy disk controller: up to 16 eight-inch drives.
-//!
-//! A program talks to the controller through three I/O ports:
-//!
-//! | Port  | `IN`                    | `OUT`                           |
-//! |-------|-------------------------|---------------------------------|
-//! | `08H` | the drive status        | selects a drive, or 80H for none |
-//! | `09H` | the sector under the head | a command: step, load the head, write |
-//! | `0AH` | the next byte read      | the next byte to write          |
-//!
-//! The status bits are active low: a 0 bit means yes.
-//!
-//! | Bit | Mask  | 0 when                                  |
-//! |-----|-------|-----------------------------------------|
-//! | 0   | `01H` | the controller takes the next write byte |
-//! | 1   | `02H` | the head may move                       |
-//! | 2   | `04H` | the head is loaded                      |
-//! | 3   | `08H` | a drive is selected and holds a disk    |
-//! | 6   | `40H` | the head sits on track 0                |
-//! | 7   | `80H` | a byte waits in port `0AH`              |
-//!
-//! A disk has 77 tracks of 32 sectors, and each sector holds 137 bytes: a
-//! 128-byte CP/M record plus the track and sector numbers, a checksum and a
-//! stop byte. A program finds a sector by reading port `09H` until the sector
-//! it wants passes under the head, then reads or writes its 137 bytes.
-//!
-//! The real disk spins on its own, and a program has 32 microseconds per
-//! byte. The emulated disk moves on each read of port `09H` instead, so the
-//! next sector comes up every time a program asks, and a byte always waits.
-//!
-//! The ports and bits come from the BIOS of [Altair CP/M 2.2b] by Mike
-//! Douglas, and from the [Altair Disk Boot Loader] that Martin Eberhard
-//! disassembled.
-//!
-//! [Altair CP/M 2.2b]: https://deramp.com/downloads/altair/software/8_inch_floppy/CPM/CPM%202.2/CPM%202.2B/BIOS.ASM
-//! [Altair Disk Boot Loader]: https://deramp.com/downloads/altair/software/roms/orginal_roms/DBL.ASM
+//! The MITS 88-DCDD floppy disk controller. [`Dcdd`] documents it.
 
 use core::error::Error;
 use core::fmt;
@@ -97,7 +62,39 @@ pub const DISK_BYTES: usize = TRACKS * SECTORS as usize * SECTOR_BYTES;
 /// What a read returns past the end of a sector or of a short disk image.
 const BLANK_BYTE: u8 = 0x00;
 
-/// The MITS 88-DCDD floppy disk controller with its drives.
+/// The MITS 88-DCDD floppy disk controller: up to 16 eight-inch drives.
+///
+/// A program talks to the controller through three I/O ports:
+///
+/// | Port  | `IN`                    | `OUT`                           |
+/// |-------|-------------------------|---------------------------------|
+/// | `08H` | the drive status        | selects a drive, or 80H for none |
+/// | `09H` | the sector under the head | a command: step, load the head, write |
+/// | `0AH` | the next byte read      | the next byte to write          |
+///
+/// The status bits are active low: a 0 bit means yes.
+///
+/// | Bit | Mask  | 0 when                                  |
+/// |-----|-------|-----------------------------------------|
+/// | 0   | `01H` | the controller takes the next write byte |
+/// | 1   | `02H` | the head may move                       |
+/// | 2   | `04H` | the head is loaded                      |
+/// | 3   | `08H` | a drive is selected and holds a disk    |
+/// | 6   | `40H` | the head sits on track 0                |
+/// | 7   | `80H` | a byte waits in port `0AH`              |
+///
+/// A disk has 77 tracks of 32 sectors, and each sector holds 137 bytes: a
+/// 128-byte CP/M record plus the track and sector numbers, a checksum and a
+/// stop byte. A program finds a sector by reading port `09H` until the sector
+/// it wants passes under the head, then reads or writes its 137 bytes.
+///
+/// The real disk spins on its own, and a program has 32 microseconds per
+/// byte. The emulated disk moves on each read of port `09H` instead, so the
+/// next sector comes up every time a program asks, and a byte always waits.
+///
+/// The ports and bits come from the BIOS of [Altair CP/M 2.2b] by Mike
+/// Douglas, and from the [Altair Disk Boot Loader] that Martin Eberhard
+/// disassembled.
 ///
 /// You insert a [`Disk`] into a drive, and a program reads and writes it
 /// through ports `08H` to `0AH`. A `Vec<u8>` serves as a disk that lives in
@@ -119,6 +116,9 @@ const BLANK_BYTE: u8 = 0x00;
 /// assert_eq!(dcdd.input(0x0A), Some(0x42));
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
+///
+/// [Altair CP/M 2.2b]: https://deramp.com/downloads/altair/software/8_inch_floppy/CPM/CPM%202.2/CPM%202.2B/BIOS.ASM
+/// [Altair Disk Boot Loader]: https://deramp.com/downloads/altair/software/roms/orginal_roms/DBL.ASM
 pub struct Dcdd {
     /// The drives, `None` for a drive without a disk.
     drives: [Option<Drive>; DRIVES],
@@ -140,6 +140,14 @@ struct Drive {
 
 impl Dcdd {
     /// Creates a controller with 16 empty drives.
+    ///
+    /// ```
+    /// use altair::cards::{Card, Dcdd};
+    ///
+    /// let mut dcdd = Dcdd::new();
+    ///
+    /// assert_eq!(dcdd.input(0x08), Some(0xFF)); // no drive selected: every bit high
+    /// ```
     pub fn new() -> Self {
         Self {
             drives: core::array::from_fn(|_| None),
@@ -152,6 +160,15 @@ impl Dcdd {
     /// # Errors
     ///
     /// Returns [`NoSuchDriveError`] if `drive` is 16 or more.
+    ///
+    /// ```
+    /// use altair::cards::Dcdd;
+    ///
+    /// let mut dcdd = Dcdd::new();
+    ///
+    /// assert!(dcdd.insert(15, Vec::new()).is_ok());
+    /// assert!(dcdd.insert(16, Vec::new()).is_err());
+    /// ```
     pub fn insert(
         &mut self,
         drive: usize,

@@ -1,12 +1,40 @@
-//! Intel 8080 CPU core.
+//! Intel 8080 CPU core, independent of any machine.
 //!
-//! This crate emulates the processor and nothing else. The CPU reaches memory
-//! through a [`MemoryBus`] and I/O ports through an [`IoBus`], and the machine
-//! around it implements both. You can run the same core in an Altair 8800, a
-//! CP/M test harness or an arcade board without changing it.
+//! The CPU reaches memory through a [`MemoryBus`] and the I/O ports through
+//! an [`IoBus`]. The machine around it implements both and lends them to
+//! [`Cpu::step`] as one bus:
 //!
-//! The crate is `no_std` and has no dependencies, so you can build it for
-//! embedded targets and WebAssembly.
+//! ```text
+//!   Cpu::step(&mut bus)
+//!        │  fetch, read, write: 64 KB at 16-bit addresses     MemoryBus
+//!        │  IN, OUT: 256 ports at 8-bit numbers               IoBus
+//!        ▼
+//!   your machine: RAM, ROM, devices
+//! ```
+//!
+//! On the real chip both spaces share the same pins, and a status byte at
+//! the start of each access tells memory and devices which space the CPU
+//! means. When your memory and your devices live apart, [`Bus`] joins them.
+//! So the same core runs in an Altair 8800, a CP/M test harness or an
+//! arcade board.
+//!
+//! ```
+//! use i8080::{Bus, Cpu, Unconnected};
+//!
+//! let mut memory = [0u8; 0x10000];
+//! memory[..3].copy_from_slice(&[0x3E, 0x41, 0x76]); // MVI A,41H; HLT
+//! let mut bus = Bus { memory, io: Unconnected };
+//! let mut cpu = Cpu::new();
+//!
+//! while !cpu.is_halted() {
+//!     cpu.step(&mut bus);
+//! }
+//!
+//! assert_eq!(cpu.registers.a, 0x41);
+//! ```
+//!
+//! The crate is `no_std` and has no dependencies, so it builds for embedded
+//! targets and WebAssembly.
 //!
 //! # References
 //!

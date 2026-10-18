@@ -1,3 +1,15 @@
+//! The decoder: turns opcode bytes into an [`Instruction`]. Most opcodes
+//! carry their operands in bit fields:
+//!
+//! ```text
+//!   MOV A,B   78H = 01 111 000
+//!                   │  │   └ SSS, the source: 000 = B
+//!                   │  └ DDD, the destination: 111 = A
+//!                   └ 01: MOV
+//!
+//!   B 000, C 001, D 010, E 011, H 100, L 101, M 110, A 111
+//! ```
+
 use crate::condition::Condition;
 
 /// One decoded 8080 instruction.
