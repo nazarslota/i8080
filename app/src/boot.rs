@@ -12,6 +12,7 @@ pub use hex::Program;
 pub use tape::{Basic, bootstrap_loader};
 
 use crate::args::Command;
+use crate::disk_file::DiskFile;
 use crate::machine::PROM_ADDRESS;
 
 /// The sense switches for an image or a disk when you don't set them: all
@@ -28,7 +29,7 @@ pub enum Boot {
     /// `basic`.
     Tape { basic: Basic, tape: Vec<u8> },
     /// A floppy disk for drive 0, read by the boot loader in the PROM.
-    Disk { loader: Program, disk: Vec<u8> },
+    Disk { loader: Program, disk: DiskFile },
 }
 
 impl Boot {
@@ -83,7 +84,7 @@ fn load_tape(basic: Basic, path: &Path) -> Result<Boot, Box<dyn Error>> {
 }
 
 /// Reads the boot loader at `loader`, checks that it fits the PROM, and
-/// reads the disk at `disk`.
+/// opens the disk at `disk` for reading and writing.
 fn load_disk(loader: &Path, disk: &Path) -> Result<Boot, Box<dyn Error>> {
     let text = fs::read_to_string(loader).map_err(|error| in_file(loader, error))?;
     let program = hex::parse(&text).map_err(|error| in_file(loader, error))?;
@@ -99,7 +100,7 @@ fn load_disk(loader: &Path, disk: &Path) -> Result<Boot, Box<dyn Error>> {
     }
     Ok(Boot::Disk {
         loader: program,
-        disk: read(disk)?,
+        disk: DiskFile::open(disk).map_err(|error| in_file(disk, error))?,
     })
 }
 

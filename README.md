@@ -5,8 +5,7 @@ from Altair BASIC in your terminal to a real CP/M booted from a floppy image.
 
 > **Status:** work in progress. The CPU core passes all four diagnostic
 > programs, and the Altair runs Altair BASIC in your terminal, loaded from
-> its original paper tape. CP/M 2.2 boots from a floppy image; saving disk
-> writes comes next.
+> its original paper tape, and CP/M 2.2 boots from a floppy image.
 
 ## Roadmap
 
@@ -90,8 +89,9 @@ cargo run --release -- disk roms/DBL.HEX roms/cpm22b23-56k.dsk
 You name the boot loader first and the disk second. The emulator plugs a
 PROM card with the MITS disk boot loader at FF00H and an 88-DCDD controller
 with the disk in drive 0, then starts the CPU at FF00H. The loader reads CP/M from the disk, and CP/M greets you with `A>`.
-Type `DIR` to list the disk. The emulator keeps the disk in memory: your
-writes vanish when you quit.
+Type `DIR` to list the disk. The emulator writes each change to the image
+file at once, so the files you create in CP/M stay. Keep a copy of the
+original image.
 
 You can also load a memory image at 0000H with
 `cargo run --release -- image roms/hello.bin`. Run `altair --help` for every

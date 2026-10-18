@@ -29,6 +29,7 @@ use altair::{Altair, AltairBuilder};
 
 use crate::boot::{Boot, bootstrap_loader};
 use crate::console::Console;
+use crate::disk_file::DiskFile;
 
 /// Where you toggle in an image or the bootstrap loader, and where the CPU
 /// starts it: the first address of memory.
@@ -82,7 +83,7 @@ fn cards(
 }
 
 /// Returns an 88-DCDD with `disk` in the boot drive.
-fn disk_controller(disk: Vec<u8>) -> Result<Dcdd, NoSuchDriveError> {
+fn disk_controller(disk: DiskFile) -> Result<Dcdd, NoSuchDriveError> {
     let mut dcdd = Dcdd::new();
     dcdd.insert(BOOT_DRIVE, disk)?;
     Ok(dcdd)

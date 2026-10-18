@@ -8,9 +8,8 @@ a different card.
 ```mermaid
 flowchart LR
     cpu["8080"]
-
-    cpu -- "MOV, LDA, STA, PUSH, CALL...<br/>a 16-bit address" --> memory
-    cpu -- "IN, OUT<br/>an 8-bit port" --> ports
+    cpu -- " MOV, LDA, STA, PUSH, CALL...<br/>a 16-bit address " --> memory
+    cpu -- " IN, OUT<br/>an 8-bit port " --> ports
 
     subgraph memory["memory: 64 KB, 0000H-FFFFH"]
         ram1["0000H-7FFFH<br/>Ram, 32 KB"]
@@ -60,6 +59,20 @@ names each range: `LOW_RAM`, `HIGH_RAM`, `HIGH_RAM_BELOW_PROM` and
 `PROM_ADDRESS`. `PROGRAM_ADDRESS`, 0000H, is where `app` toggles in an image
 or a bootstrap loader and starts the CPU.
 
+### Why the PROM sits at the top
+
+The bottom of memory has to be RAM, because programs write there:
+
+- DBL loads the cold boot loader from the disk at 0000H.
+- CP/M keeps page zero, 0000H to 00FFH, for itself: a jump to the BIOS
+  at 0000H, the IOBYTE at 0003H and the BDOS entry at 0005H. It runs your
+  programs from 0100H.
+- The BASIC bootstrap loader and `hello.bin` start at 0000H too.
+
+A PROM there would ignore those writes. At the top it stays out of the
+way, and you pay with one step on the front panel: after RESET the CPU
+sits at 0000H, so you examine FF00H before you press RUN.
+
 The CPU reaches memory on every instruction: it fetches the opcode from
 `PC`. Some instructions also read or write data there: `MOV` with `M`,
 `LDA` and `STA`, `PUSH` and `POP`, `CALL` and `RET`. A read from an
@@ -71,14 +84,14 @@ address that no card claims returns `FFH`.
 a port for each value of a byte, 00H to FFH. A card claims the ports it
 answers:
 
-| Port  | Card           | `IN`                      | `OUT`                     |
-|-------|----------------|---------------------------|---------------------------|
-| `08H` | Dcdd           | the drive status          | selects a drive           |
-| `09H` | Dcdd           | the sector under the head | a command: step, load the head, write |
-| `0AH` | Dcdd           | the next byte from the disk | the next byte to the disk |
-| `10H` | Sio2           | the status: a key waits, ready to send | a control byte |
-| `11H` | Sio2           | the key you typed         | a character for the screen |
-| `FFH` | the front panel | the sense switches A8-A15 | ignored                  |
+| Port  | Card            | `IN`                                   | `OUT`                                 |
+|-------|-----------------|----------------------------------------|---------------------------------------|
+| `08H` | Dcdd            | the drive status                       | selects a drive                       |
+| `09H` | Dcdd            | the sector under the head              | a command: step, load the head, write |
+| `0AH` | Dcdd            | the next byte from the disk            | the next byte to the disk             |
+| `10H` | Sio2            | the status: a key waits, ready to send | a control byte                        |
+| `11H` | Sio2            | the key you typed                      | a character for the screen            |
+| `FFH` | the front panel | the sense switches A8-A15              | ignored                               |
 
 `IN` from a port that no card claims returns `FFH`, and an `OUT` to it goes
 nowhere. The sense switches sit on the front panel, outside the slots, so
@@ -99,12 +112,12 @@ cycle with `sINP` or `sOUT`, so `IN 08H` never reaches the byte at 0008H.
 In the code, the two spaces are two traits, and `Card` has a method for
 each access:
 
-| The CPU executes      | The bus calls          | Trait       |
-|-----------------------|------------------------|-------------|
-| a fetch, `LDA`, `MOV` | `read(addr)`           | `MemoryBus` |
-| `STA`, `MOV M,r`      | `write(addr, value)`   | `MemoryBus` |
-| `IN port`             | `input(port)`          | `IoBus`     |
-| `OUT port`            | `output(port, value)`  | `IoBus`     |
+| The CPU executes      | The bus calls         | Trait       |
+|-----------------------|-----------------------|-------------|
+| a fetch, `LDA`, `MOV` | `read(addr)`          | `MemoryBus` |
+| `STA`, `MOV M,r`      | `write(addr, value)`  | `MemoryBus` |
+| `IN port`             | `input(port)`         | `IoBus`     |
+| `OUT port`            | `output(port, value)` | `IoBus`     |
 
 A `Ram` implements `read` and `write`, a `Sio2` implements `input` and
 `output`, and the `Backplane` passes each call to every card. The card that

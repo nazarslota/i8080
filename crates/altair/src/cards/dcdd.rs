@@ -99,9 +99,9 @@ const BLANK_BYTE: u8 = 0x00;
 
 /// The MITS 88-DCDD floppy disk controller with its drives.
 ///
-/// You insert a disk image into a drive, and a program reads and writes it
-/// through ports `08H` to `0AH`. The controller keeps the disk in memory:
-/// [`disk`](Dcdd::disk) returns it with every write the program made.
+/// You insert a [`Disk`] into a drive, and a program reads and writes it
+/// through ports `08H` to `0AH`. A `Vec<u8>` serves as a disk that lives in
+/// memory.
 ///
 /// ```
 /// use altair::cards::{Card, Dcdd};
@@ -126,7 +126,7 @@ pub struct Dcdd {
 
 /// One drive: the disk in it and where its head is.
 struct Drive {
-    disk: Option<Vec<u8>>,
+    disk: Option<Box<dyn Disk>>,
     track: usize,
     head_loaded: bool,
     /// The sector under the head. A new drive starts at the last sector, so
@@ -151,19 +151,17 @@ impl Dcdd {
     /// # Errors
     ///
     /// Returns [`NoSuchDriveError`] if `drive` is 16 or more.
-    pub fn insert(&mut self, drive: usize, disk: Vec<u8>) -> Result<(), NoSuchDriveError> {
+    pub fn insert(
+        &mut self,
+        drive: usize,
+        disk: impl Disk + 'static,
+    ) -> Result<(), NoSuchDriveError> {
         let slot = self
             .drives
             .get_mut(drive)
             .ok_or(NoSuchDriveError { drive })?;
-        slot.disk = Some(disk);
+        slot.disk = Some(Box::new(disk));
         Ok(())
-    }
-
-    /// Returns the disk in drive `drive`, with every write the program made,
-    /// or `None` for an empty drive.
-    pub fn disk(&self, drive: usize) -> Option<&[u8]> {
-        self.drives.get(drive)?.disk.as_deref()
     }
 
     /// Returns the selected drive if it holds a disk.
@@ -251,9 +249,8 @@ impl Dcdd {
         drive.byte += 1;
         drive
             .disk
-            .as_ref()
-            .and_then(|disk| disk.get(offset))
-            .copied()
+            .as_mut()
+            .and_then(|disk| disk.read(offset))
             .unwrap_or(BLANK_BYTE)
     }
 
@@ -269,13 +266,37 @@ impl Dcdd {
         };
 
         drive.byte += 1;
-        let Some(disk) = drive.disk.as_mut() else {
-            return;
-        };
-        if offset >= disk.len() {
-            disk.resize(offset + 1, BLANK_BYTE);
+        if let Some(disk) = drive.disk.as_mut() {
+            disk.write(offset, value);
         }
-        disk[offset] = value;
+    }
+}
+
+/// The floppy disk in a drive: the bytes under the head.
+///
+/// The [`Dcdd`] reads and writes the disk byte by byte, at an offset from
+/// the start of the image: track by track, sector by sector, 137 bytes to a
+/// sector. The `altair` crate does no host I/O, so the application
+/// implements this trait to keep the disk in a file. `Vec<u8>` implements
+/// it for a disk in memory.
+pub trait Disk {
+    /// Returns the byte at `offset`, or `None` past the end of the image.
+    fn read(&mut self, offset: usize) -> Option<u8>;
+
+    /// Writes `byte` at `offset`. A write past the end grows the image.
+    fn write(&mut self, offset: usize, byte: u8);
+}
+
+impl Disk for Vec<u8> {
+    fn read(&mut self, offset: usize) -> Option<u8> {
+        self.get(offset).copied()
+    }
+
+    fn write(&mut self, offset: usize, byte: u8) {
+        if offset >= self.len() {
+            self.resize(offset + 1, BLANK_BYTE);
+        }
+        self[offset] = byte;
     }
 }
 
@@ -346,7 +367,32 @@ impl Card for Dcdd {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
     use super::*;
+
+    /// A disk in memory that the test keeps a second handle to, because the
+    /// controller owns the disk.
+    struct SharedDisk(Rc<RefCell<Vec<u8>>>);
+
+    impl Disk for SharedDisk {
+        fn read(&mut self, offset: usize) -> Option<u8> {
+            self.0.borrow_mut().read(offset)
+        }
+
+        fn write(&mut self, offset: usize, byte: u8) {
+            self.0.borrow_mut().write(offset, byte);
+        }
+    }
+
+    /// A controller with a blank disk in drive 0, ready as [`ready_dcdd`]
+    /// leaves it, and a handle to the disk.
+    fn ready_dcdd_with_shared_disk() -> (Dcdd, Rc<RefCell<Vec<u8>>>) {
+        let disk = Rc::new(RefCell::new(vec![0; DISK_BYTES]));
+        let dcdd = ready_dcdd(SharedDisk(Rc::clone(&disk)));
+        (dcdd, disk)
+    }
 
     /// A disk whose every byte holds the low byte of its position, so a test
     /// can tell which track, sector and byte it read.
@@ -355,7 +401,7 @@ mod tests {
     }
 
     /// A controller with `disk` in drive 0, selected, with the head loaded.
-    fn ready_dcdd(disk: Vec<u8>) -> Dcdd {
+    fn ready_dcdd(disk: impl Disk + 'static) -> Dcdd {
         let mut dcdd = Dcdd::new();
         dcdd.insert(0, disk).unwrap();
         dcdd.output(SELECT_PORT, 0x00);
@@ -487,7 +533,7 @@ mod tests {
 
     #[test]
     fn write_stores_bytes_in_sector_under_head() {
-        let mut dcdd = ready_dcdd(vec![0; DISK_BYTES]);
+        let (mut dcdd, disk) = ready_dcdd_with_shared_disk();
         wait_for_sector(&mut dcdd, 3);
         dcdd.output(COMMAND_PORT, WRITE_ENABLE_COMMAND);
 
@@ -495,17 +541,34 @@ mod tests {
         dcdd.output(DATA_PORT, 0x22);
 
         let offset = 3 * SECTOR_BYTES;
-        let disk = dcdd.disk(0).unwrap();
-        assert_eq!(disk[offset..offset + 3], [0x11, 0x22, 0x00]);
+        assert_eq!(disk.borrow()[offset..offset + 3], [0x11, 0x22, 0x00]);
     }
 
     #[test]
     fn write_without_write_enable_changes_nothing() {
-        let mut dcdd = ready_dcdd(vec![0; DISK_BYTES]);
+        let (mut dcdd, disk) = ready_dcdd_with_shared_disk();
         wait_for_sector(&mut dcdd, 0);
 
         dcdd.output(DATA_PORT, 0x11);
 
-        assert!(dcdd.disk(0).unwrap().iter().all(|&byte| byte == 0));
+        assert!(disk.borrow().iter().all(|&byte| byte == 0));
+    }
+
+    #[test]
+    fn vec_disk_grows_on_write_past_end() {
+        let mut disk = vec![0x11];
+
+        disk.write(2, 0x33);
+
+        assert_eq!(disk, [0x11, 0x00, 0x33]);
+    }
+
+    #[test]
+    fn vec_disk_reads_none_past_end() {
+        let mut disk = vec![0x11];
+
+        let byte = disk.read(1);
+
+        assert_eq!(byte, None);
     }
 }

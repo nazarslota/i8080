@@ -29,7 +29,8 @@ folder on deramp.com. `DBL.ASM` there holds its source.
 
 **CP/M.** Download `cpm22b23-56k.dsk` from the
 [CP/M 2.2B](https://deramp.com/downloads/altair/software/8_inch_floppy/CPM/CPM%202.2/CPM%202.2B/)
-folder on deramp.com: Mike Douglas's CP/M 2.2b for 56 KB of memory.
+folder on deramp.com: Mike Douglas's CP/M 2.2b for 56 KB of memory. Keep a
+copy: the emulator writes what CP/M saves into the image.
 
 **hello.bin.** Write the 32 bytes yourself:
 

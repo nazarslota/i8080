@@ -13,6 +13,7 @@ mod args;
 mod boot;
 mod clock;
 mod console;
+mod disk_file;
 mod machine;
 
 use std::error::Error;

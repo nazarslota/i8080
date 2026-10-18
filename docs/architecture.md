@@ -54,7 +54,7 @@ flowchart TB
     subgraph app["app"]
         console["Console"]
         hex["DBL.HEX"]
-        dsk["disk image"]
+        dsk["DiskFile"]
     end
 
     subgraph altair["altair"]
@@ -80,8 +80,8 @@ flowchart TB
     end
 
     sio -- "Terminal: receive(), send()" --> console
+    dcdd -- "Disk: read(), write()" --> dsk
     hex -. "Rom::new" .-> rom
-    dsk -. "Dcdd::insert" .-> dcdd
 ```
 
 The code follows the box:
@@ -126,13 +126,20 @@ and adds the clock, `Cpu::CLOCK_HZ`. The machine keeps it apart from the
 backplane and lends it the backplane as its bus on each `step`. `build()`
 returns an error if you plug in no CPU card or two.
 
-A PROM can't change, so `Rom` ignores writes. `Dcdd` holds up to 16 disk
-images in memory: `app` reads the file and inserts it before the machine
-starts. The disk turns one sector each time a program reads port `09H`.
+A PROM can't change, so `Rom` ignores writes. The disk turns one sector
+each time a program reads port `09H`.
 
-`Sio2` is the one card that reaches outside the Altair. It calls the
-`Terminal` trait: `receive` returns the next key or `None`, `send` shows a
-byte. `app` implements `Terminal` with its `Console`.
+Two cards reach outside the Altair, each through a trait that `app`
+implements:
+
+| Card   | Trait      | Methods                                         | `app` implements it with |
+|--------|------------|-------------------------------------------------|--------------------------|
+| `Sio2` | `Terminal` | `receive` returns the next key, `send` shows a byte | `Console`            |
+| `Dcdd` | `Disk`     | `read` and `write` a byte at an offset in the image | `DiskFile`           |
+
+`DiskFile` reads from a copy in memory and writes each byte to the file at
+once, as a floppy keeps what the head writes. You lose nothing when the
+emulator stops. A `Vec<u8>` implements `Disk` too, for a disk in memory.
 
 To add hardware, you write a card and plug it into the backplane. The CPU and
 the other cards stay as they are.
@@ -195,6 +202,7 @@ starts if a tape holds another BASIC or the loader sits below FF00H.
 | `machine`      | the cards for each boot and the front panel steps that start it |
 | `clock`        | the 2 MHz clock and `Exit`                                     |
 | `console`      | `RawMode` and `Console`, your side of the serial line          |
+| `disk_file`    | `DiskFile`, the disk image file in the boot drive              |
 
 - **`RawMode`** switches your terminal to raw mode with `crossterm` and back
   when dropped. Each key then reaches the emulator at once, without an echo:
