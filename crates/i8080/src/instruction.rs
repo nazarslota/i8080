@@ -205,7 +205,7 @@ impl Instruction {
                 condition: ccc,
                 address: next_word(&mut next_byte),
             },
-            // CBH is an undocumented copy of JMP.
+            // CBH copies JMP; Intel doesn't document it.
             0xC3 | 0xCB => Self::Jmp {
                 address: next_word(&mut next_byte),
             },
@@ -222,9 +222,9 @@ impl Instruction {
             0xC7 | 0xCF | 0xD7 | 0xDF | 0xE7 | 0xEF | 0xF7 | 0xFF => Self::Rst {
                 address: u16::from(opcode & 0b0011_1000),
             },
-            // D9H is an undocumented copy of RET.
+            // D9H copies RET; Intel doesn't document it.
             0xC9 | 0xD9 => Self::Ret,
-            // DDH, EDH and FDH are undocumented copies of CALL.
+            // DDH, EDH and FDH copy CALL; Intel doesn't document them.
             0xCD | 0xDD | 0xED | 0xFD => Self::Call {
                 address: next_word(&mut next_byte),
             },

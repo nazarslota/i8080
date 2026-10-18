@@ -18,7 +18,7 @@
 //!
 //! # Printing a character
 //!
-//! A program waits until bit 1 is set and then writes the character. This
+//! A program waits for bit 1 and then writes the character. This
 //! loop prints the character in register `B`:
 //!
 //! ```text
@@ -31,7 +31,7 @@
 //!
 //! # Reading a key
 //!
-//! A program waits until bit 0 is set and then reads the character. This
+//! A program waits for bit 0 and then reads the character. This
 //! loop leaves the key in register `A`:
 //!
 //! ```text

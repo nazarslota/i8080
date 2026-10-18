@@ -39,7 +39,7 @@ octal to match: you set `076` as three groups, `000 111 110`.
 ### The command switches
 
 Each command switch springs back after you press it. Most of them work only
-while the CPU is stopped.
+after you press STOP.
 
 | Switch       | What it does                                                       |
 |--------------|--------------------------------------------------------------------|
@@ -62,8 +62,8 @@ while the CPU is stopped.
 | A15 to A0                                | The address on the bus: during EXAMINE, the current address   |
 | D7 to D0                                 | The byte on the bus: during EXAMINE, the byte at that address |
 | INTE                                     | Interrupts are on (`EI`)                                      |
-| PROT                                     | The memory at this address is protected                       |
-| WAIT                                     | The CPU is stopped                                            |
+| PROT                                     | You protected the memory at this address                      |
+| WAIT                                     | The CPU waits                                                 |
 | HLDA                                     | A device has taken over the bus                               |
 | MEMR, INP, M1, OUT, HLTA, STACK, WO, INT | The 8080 status byte of the current bus cycle                 |
 

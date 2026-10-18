@@ -6,10 +6,10 @@ groups it. The catalog shows what each instruction does and whether the
 emulator supports it yet. Details follow for the instructions the emulator
 runs.
 
-When you change an instruction, update its status in the catalog, its
+After you change an instruction, update its status in the catalog, its
 section under [Details](#details) and its link in [Contents](#contents).
 
-**Status:** ✅ supported · 🟡 partly supported · ⬜ not yet
+**Status:** ✅ supported · ⬜ not yet
 
 ## Contents
 

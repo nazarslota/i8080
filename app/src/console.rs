@@ -90,7 +90,7 @@ impl Terminal for Console {
     }
 
     fn send(&mut self, byte: u8) {
-        // A program can't react to a broken screen, so the byte is lost.
+        // A program can't react to a broken screen, so we drop the byte.
         let _ = self.stdout.write_all(&[byte]);
         let _ = self.stdout.flush();
     }
