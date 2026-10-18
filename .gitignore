@@ -7,8 +7,8 @@
 # The working CP/M disks (see README.md)
 /*.dsk
 
-# Programs compiled from examples/c (see docs/guide/cpm.md)
-/examples/c/*.COM
+# Programs compiled in examples (see docs/guide/cpm.md)
+/examples/*/*.COM
 
 # Editor and OS files
 /.idea/
