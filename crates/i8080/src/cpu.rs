@@ -42,6 +42,15 @@ impl Cpu {
         Self::default()
     }
 
+    /// Resets the CPU, like a pulse on the 8080's RESET pin: `PC` goes to 0,
+    /// interrupts go off and a halted CPU runs again. The other registers
+    /// keep their values.
+    pub fn reset(&mut self) {
+        self.registers.pc = 0x0000;
+        self.interrupts_enabled = false;
+        self.halted = false;
+    }
+
     /// Returns `true` after a `HLT` instruction stopped the CPU.
     pub const fn is_halted(&self) -> bool {
         self.halted
@@ -1648,6 +1657,27 @@ mod tests {
         assert!(cpu.is_halted());
         assert_eq!(cpu.registers, before);
         assert_eq!(cycles, HALTED_STEP_CYCLES);
+    }
+
+    #[test]
+    fn reset_clears_pc_interrupts_and_halt() {
+        let mut cpu = Cpu::new();
+        cpu.registers = distinct_registers();
+        cpu.interrupts_enabled = true;
+        cpu.halted = true;
+        let before = cpu.registers;
+
+        cpu.reset();
+
+        assert_eq!(
+            cpu.registers,
+            Registers {
+                pc: 0x0000,
+                ..before
+            }
+        );
+        assert!(!cpu.interrupts_enabled());
+        assert!(!cpu.is_halted());
     }
 
     #[test]
