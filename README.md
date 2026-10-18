@@ -13,8 +13,10 @@ from Altair BASIC in your terminal to a real CP/M booted from a floppy image.
   diagnostic programs (TST8080, 8080PRE, CPUTEST, 8080EXM).
 - [x] **Altair BASIC.** An Altair with memory and an 88-2SIO serial board,
   wired to your terminal.
-- [ ] **Floppy disks.** The 88-DCDD controller, enough to boot Altair Disk
-  BASIC, Altair DOS and CP/M 2.2.
+- [x] **CP/M 2.2.** The 88-DCDD floppy controller and a PROM card with the
+  MITS disk boot loader. CP/M boots and saves files to the disk image.
+- [ ] **More disks.** Run the CPU diagnostics under CP/M, then try Altair
+  Disk BASIC and Altair DOS.
 - [ ] **CPU extras.** Interrupts, which Space Invaders needs, and a
   disassembler for execution traces.
 - [ ] Later: a window with a retro monitor, the front panel, Space Invaders.
@@ -95,6 +97,17 @@ CP/M from the disk, and CP/M greets you with `A>`. Type `DIR` to list the
 disk. The files you create in CP/M stay in `cpm.dsk`. Git ignores it, and
 you start over with a fresh `cp`.
 
+| Command           | What it does                                     |
+|-------------------|--------------------------------------------------|
+| `DIR`             | lists the files on the disk                      |
+| `TYPE IOBYTE.TXT` | shows a text file                                |
+| `STAT`            | shows the free space                             |
+| `MBASIC`          | starts Microsoft BASIC; `SYSTEM` returns to `A>` |
+| `ERA X.COM`       | erases a file                                    |
+
+Ctrl+C at `A>` reloads CP/M from the disk. Backspace erases a character:
+the emulator sends Ctrl+H for it, as CP/M and MBASIC expect.
+
 You can also load a memory image at 0000H with
 `cargo run --release -- image roms/hello.bin`. Run `altair --help` for every
 option.
@@ -115,12 +128,37 @@ cargo test --release -p i8080 --test diagnostics -- --ignored
 
 ## References
 
+The 8080:
+
 - [Intel 8080 Microcomputer Systems User's Manual](https://bitsavers.org/components/intel/MCS80/98-153B_Intel_8080_Microcomputer_Systems_Users_Manual_197509.pdf)
   (September 1975): the instruction set with cycle counts, plus the pinout
   and bus timing.
 - [8080 opcode table](https://pastraiser.com/cpu/i8080/i8080_opcodes.html):
   all 256 opcodes, including the undocumented copies of `NOP`, `JMP`,
   `CALL` and `RET` that the Intel manual leaves out.
+- [CPU diagnostics](https://github.com/superzazu/8080/tree/master/cpu_tests):
+  TST8080, 8080PRE, CPUTEST and 8080EXM, from the superzazu/8080 emulator.
+- [Intel HEX](https://archive.org/details/IntelHEXStandard): the file format
+  of `DBL.HEX`.
+
+The Altair:
+
+- [Altair 8800 Theory of Operation](https://altairclone.com/downloads/manuals/Altair%208800%20Theory%20of%20Operation.pdf):
+  the front panel and what its switches do to the CPU.
+- [Loading Basic with the 88-2SIO Board](https://deramp.com/downloads/mfe_archive/010-S100%20Computers%20and%20Boards/00-MITS/10-MITS%20S100%20Boards/88-2SIO%20Dual%20Serial%20Board/Loading%20Basic%20with%20the%2088-2SIO%20Board.pdf):
+  the serial card's ports and the bootstrap loaders for the BASIC tapes.
+- [Altair Software Development using CP/M](https://deramp.com/downloads/altair/software/papertape_cassette/Checksum%20Loader/Altair%20Paper%20Tape%20Format.pdf):
+  the format of an Altair paper tape.
+- [MITS tapes](https://www.icl1900.co.uk/unix4fun/z80pack/ftp/altair/mits-tapes/):
+  the Altair BASIC tapes, on the z80pack mirror.
+
+CP/M:
+
+- [DBL.ASM](https://deramp.com/downloads/altair/software/roms/orginal_roms/DBL.ASM):
+  the source of the MITS disk boot loader in the PROM.
+- [CP/M 2.2B for the Altair](https://deramp.com/downloads/altair/software/8_inch_floppy/CPM/CPM%202.2/CPM%202.2B/):
+  Mike Douglas's disk image, with `BOOT.ASM` and `BIOS.ASM`, the sources of
+  its cold boot loader and BIOS.
 
 ## License
 
