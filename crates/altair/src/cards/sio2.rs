@@ -108,7 +108,7 @@ const EMPTY_DATA: u8 = 0x00;
 /// }
 ///
 /// let mut backplane = Backplane::new();
-/// backplane.plug(Ram::new(0x0000..=0xFFFF));
+/// backplane.plug(Ram::new(0x0000..=0xFFFF)?);
 /// backplane.plug(Sio2::new(Screen));
 ///
 /// // 0000H  3EH 41H  MVI A,41H
@@ -122,6 +122,7 @@ const EMPTY_DATA: u8 = 0x00;
 /// while !cpu.is_halted() {
 ///     cpu.step(&mut backplane);
 /// }
+/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub struct Sio2<T> {
     terminal: T,

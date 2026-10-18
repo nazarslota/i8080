@@ -1,3 +1,5 @@
+use core::error::Error;
+use core::fmt;
 use core::ops::RangeInclusive;
 
 use super::Card;
@@ -13,11 +15,12 @@ use super::Card;
 /// use i8080::MemoryBus;
 ///
 /// let mut backplane = Backplane::new();
-/// backplane.plug(Ram::new(0x0000..=0xFFFF)); // the full 64 KB
+/// backplane.plug(Ram::new(0x0000..=0xFFFF)?); // the full 64 KB
 ///
 /// backplane.write(0x2000, 0x99);
 ///
 /// assert_eq!(backplane.read(0x2000), 0x99);
+/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub struct Ram {
     start: u16,
@@ -30,17 +33,20 @@ impl Ram {
     /// Real RAM powers up with random bytes. Zeros make every run of a
     /// program start from the same state.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if `addresses` is empty, such as `0x2000..=0x1000`.
-    pub fn new(addresses: RangeInclusive<u16>) -> Self {
+    /// Returns [`EmptyRangeError`] if `addresses` is empty, such as
+    /// `0x2000..=0x1000`.
+    pub fn new(addresses: RangeInclusive<u16>) -> Result<Self, EmptyRangeError> {
         let (start, end) = addresses.into_inner();
-        assert!(start <= end, "a memory card needs at least one address");
+        if start > end {
+            return Err(EmptyRangeError);
+        }
         let size = usize::from(end - start) + 1;
-        Self {
+        Ok(Self {
             start,
             bytes: vec![0; size],
-        }
+        })
     }
 
     /// Returns the index in `bytes` for `addr`, or `None` if the card doesn't
@@ -63,13 +69,25 @@ impl Card for Ram {
     }
 }
 
+/// The range you gave [`Ram::new`] holds no address.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EmptyRangeError;
+
+impl fmt::Display for EmptyRangeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("a memory card needs at least one address")
+    }
+}
+
+impl Error for EmptyRangeError {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn new_fills_memory_with_zeros() {
-        let mut ram = Ram::new(0x1000..=0x1FFF);
+        let mut ram = Ram::new(0x1000..=0x1FFF).unwrap();
 
         let value = ram.read(0x1234);
 
@@ -77,18 +95,19 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "at least one address")]
     #[allow(
         clippy::reversed_empty_ranges,
         reason = "the test needs an empty range"
     )]
     fn new_rejects_empty_range() {
-        Ram::new(0x2000..=0x1000);
+        let ram = Ram::new(0x2000..=0x1000);
+
+        assert_eq!(ram.err(), Some(EmptyRangeError));
     }
 
     #[test]
     fn reads_back_written_byte() {
-        let mut ram = Ram::new(0x1000..=0x1FFF);
+        let mut ram = Ram::new(0x1000..=0x1FFF).unwrap();
 
         ram.write(0x1234, 0x99);
 
@@ -97,7 +116,7 @@ mod tests {
 
     #[test]
     fn claims_first_and_last_address() {
-        let mut ram = Ram::new(0x1000..=0x1FFF);
+        let mut ram = Ram::new(0x1000..=0x1FFF).unwrap();
 
         ram.write(0x1000, 0x11);
         ram.write(0x1FFF, 0x22);
@@ -108,7 +127,7 @@ mod tests {
 
     #[test]
     fn ignores_addresses_outside_range() {
-        let mut ram = Ram::new(0x1000..=0x1FFF);
+        let mut ram = Ram::new(0x1000..=0x1FFF).unwrap();
 
         ram.write(0x0FFF, 0x99);
         ram.write(0x2000, 0x99);
@@ -119,7 +138,7 @@ mod tests {
 
     #[test]
     fn covers_whole_address_space() {
-        let mut ram = Ram::new(0x0000..=0xFFFF);
+        let mut ram = Ram::new(0x0000..=0xFFFF).unwrap();
 
         ram.write(0x0000, 0x11);
         ram.write(0xFFFF, 0x22);

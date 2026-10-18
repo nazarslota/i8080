@@ -39,7 +39,7 @@ const SENSE_SWITCHES_PORT: u8 = 0xFF;
 ///
 /// let mut altair = Altair::builder()
 ///     .plug(Cpu::new())
-///     .plug(Ram::new(0x0000..=0xFFFF))
+///     .plug(Ram::new(0x0000..=0xFFFF)?)
 ///     .plug(Sio2::new(Screen))
 ///     .build()?;
 ///
@@ -55,7 +55,7 @@ const SENSE_SWITCHES_PORT: u8 = 0xFF;
 /// while !altair.is_halted() {
 ///     altair.step();
 /// }
-/// # Ok::<(), altair::BuildError>(())
+/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub struct Altair {
     cpu: Cpu,
@@ -248,8 +248,8 @@ mod tests {
         let screen = Rc::new(RefCell::new(Vec::new()));
         let altair = Altair::builder()
             .plug(Cpu::new())
-            .plug(Ram::new(0x0000..=0x7FFF))
-            .plug(Ram::new(0x8000..=0xFFFF))
+            .plug(Ram::new(0x0000..=0x7FFF).unwrap())
+            .plug(Ram::new(0x8000..=0xFFFF).unwrap())
             .plug(Sio2::new(SharedScreen(Rc::clone(&screen))))
             .build()
             .unwrap();
@@ -328,7 +328,7 @@ mod tests {
     fn empty_slot_reads_ffh() {
         let mut altair = Altair::builder()
             .plug(Cpu::new())
-            .plug(Ram::new(0x0000..=0x00FF))
+            .plug(Ram::new(0x0000..=0x00FF).unwrap())
             .build()
             .unwrap();
         // 0000H: LDA 8000H; HLT
@@ -341,7 +341,7 @@ mod tests {
 
     #[test]
     fn build_without_cpu_card_fails() {
-        let builder = Altair::builder().plug(Ram::new(0x0000..=0xFFFF));
+        let builder = Altair::builder().plug(Ram::new(0x0000..=0xFFFF).unwrap());
 
         let altair = builder.build();
 

@@ -35,6 +35,9 @@
 //! [Altair CP/M 2.2b]: https://deramp.com/downloads/altair/software/8_inch_floppy/CPM/CPM%202.2/CPM%202.2B/BIOS.ASM
 //! [Altair Disk Boot Loader]: https://deramp.com/downloads/altair/software/roms/orginal_roms/DBL.ASM
 
+use core::error::Error;
+use core::fmt;
+
 use super::Card;
 
 /// The port that selects a drive on `OUT` and returns the status on `IN`.
@@ -85,11 +88,11 @@ const DRIVES: usize = 16;
 /// The tracks on a disk, 0 to 76.
 const TRACKS: usize = 77;
 /// The sectors on a track, 0 to 31.
-const SECTORS: usize = 32;
+const SECTORS: u8 = 32;
 /// The bytes in a sector.
 const SECTOR_BYTES: usize = 137;
 /// The bytes on a disk: 77 tracks of 32 sectors of 137 bytes.
-pub const DISK_BYTES: usize = TRACKS * SECTORS * SECTOR_BYTES;
+pub const DISK_BYTES: usize = TRACKS * SECTORS as usize * SECTOR_BYTES;
 
 /// What a read returns past the end of a short disk image.
 const BLANK_BYTE: u8 = 0x00;
@@ -106,7 +109,7 @@ const BLANK_BYTE: u8 = 0x00;
 /// let mut disk = vec![0; altair::cards::DISK_BYTES];
 /// disk[0] = 0x42; // track 0, sector 0, byte 0
 /// let mut dcdd = Dcdd::new();
-/// dcdd.insert(0, disk);
+/// dcdd.insert(0, disk)?;
 ///
 /// dcdd.output(0x08, 0x00); // select drive 0
 /// dcdd.output(0x09, 0x04); // load the head
@@ -114,6 +117,7 @@ const BLANK_BYTE: u8 = 0x00;
 ///
 /// assert_eq!(sector, Some(0b1100_0000)); // sector 0, bit 0 at 0: sector true
 /// assert_eq!(dcdd.input(0x0A), Some(0x42));
+/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub struct Dcdd {
     drives: Vec<Drive>,
@@ -127,7 +131,7 @@ struct Drive {
     head_loaded: bool,
     /// The sector under the head. A new drive starts at the last sector, so
     /// the first read of the sector position brings sector 0.
-    sector: usize,
+    sector: u8,
     /// The next byte to read or write within the sector.
     byte: usize,
     writing: bool,
@@ -144,11 +148,16 @@ impl Dcdd {
 
     /// Inserts `disk` into drive `drive`, 0 to 15.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if `drive` is 16 or more.
-    pub fn insert(&mut self, drive: usize, disk: Vec<u8>) {
-        self.drives[drive].disk = Some(disk);
+    /// Returns [`NoSuchDriveError`] if `drive` is 16 or more.
+    pub fn insert(&mut self, drive: usize, disk: Vec<u8>) -> Result<(), NoSuchDriveError> {
+        let slot = self
+            .drives
+            .get_mut(drive)
+            .ok_or(NoSuchDriveError { drive })?;
+        slot.disk = Some(disk);
+        Ok(())
     }
 
     /// Returns the disk in drive `drive`, with every write the program made,
@@ -227,8 +236,7 @@ impl Dcdd {
         drive.sector = (drive.sector + 1) % SECTORS;
         drive.byte = 0;
         drive.writing = false;
-        let sector = u8::try_from(drive.sector).expect("a sector number fits in 5 bits");
-        SECTOR_UNUSED_BITS | sector << 1
+        SECTOR_UNUSED_BITS | drive.sector << 1
     }
 
     /// Returns the next byte of the sector under the head.
@@ -241,8 +249,12 @@ impl Dcdd {
         };
 
         drive.byte += 1;
-        let disk = drive.disk.as_ref().expect("drive() checked the disk");
-        disk.get(offset).copied().unwrap_or(BLANK_BYTE)
+        drive
+            .disk
+            .as_ref()
+            .and_then(|disk| disk.get(offset))
+            .copied()
+            .unwrap_or(BLANK_BYTE)
     }
 
     /// Writes `value` as the next byte of the sector under the head.
@@ -257,13 +269,31 @@ impl Dcdd {
         };
 
         drive.byte += 1;
-        let disk = drive.disk.as_mut().expect("drive() checked the disk");
+        let Some(disk) = drive.disk.as_mut() else {
+            return;
+        };
         if offset >= disk.len() {
             disk.resize(offset + 1, BLANK_BYTE);
         }
         disk[offset] = value;
     }
 }
+
+/// The drive you gave [`Dcdd::insert`] doesn't exist: the controller selects
+/// drives 0 to 15.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NoSuchDriveError {
+    /// The drive number you gave.
+    pub drive: usize,
+}
+
+impl fmt::Display for NoSuchDriveError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "the 88-DCDD has no drive {}, only 0 to 15", self.drive)
+    }
+}
+
+impl Error for NoSuchDriveError {}
 
 impl Default for Dcdd {
     fn default() -> Self {
@@ -287,8 +317,10 @@ impl Drive {
     /// Returns the position of the next byte in the disk image, or `None`
     /// past the end of the sector.
     fn offset(&self) -> Option<usize> {
-        (self.byte < SECTOR_BYTES)
-            .then(|| (self.track * SECTORS + self.sector) * SECTOR_BYTES + self.byte)
+        (self.byte < SECTOR_BYTES).then(|| {
+            (self.track * usize::from(SECTORS) + usize::from(self.sector)) * SECTOR_BYTES
+                + self.byte
+        })
     }
 }
 
@@ -325,7 +357,7 @@ mod tests {
     /// A controller with `disk` in drive 0, selected, with the head loaded.
     fn ready_dcdd(disk: Vec<u8>) -> Dcdd {
         let mut dcdd = Dcdd::new();
-        dcdd.insert(0, disk);
+        dcdd.insert(0, disk).unwrap();
         dcdd.output(SELECT_PORT, 0x00);
         dcdd.output(COMMAND_PORT, HEAD_LOAD_COMMAND);
         dcdd
@@ -346,9 +378,18 @@ mod tests {
     }
 
     #[test]
+    fn insert_rejects_drive_16() {
+        let mut dcdd = Dcdd::new();
+
+        let inserted = dcdd.insert(16, numbered_disk());
+
+        assert_eq!(inserted, Err(NoSuchDriveError { drive: 16 }));
+    }
+
+    #[test]
     fn selecting_empty_drive_leaves_controller_disabled() {
         let mut dcdd = Dcdd::new();
-        dcdd.insert(0, numbered_disk());
+        dcdd.insert(0, numbered_disk()).unwrap();
 
         dcdd.output(SELECT_PORT, 0x01);
 
@@ -358,7 +399,7 @@ mod tests {
     #[test]
     fn selecting_drive_with_disk_enables_it_on_track_0() {
         let mut dcdd = Dcdd::new();
-        dcdd.insert(0, numbered_disk());
+        dcdd.insert(0, numbered_disk()).unwrap();
 
         dcdd.output(SELECT_PORT, 0x00);
 
@@ -412,7 +453,7 @@ mod tests {
     fn sector_position_counts_up_and_wraps() {
         let mut dcdd = ready_dcdd(numbered_disk());
 
-        let positions: Vec<u8> = (0..SECTORS + 1)
+        let positions: Vec<u8> = (0..=SECTORS)
             .map(|_| dcdd.input(COMMAND_PORT).unwrap() >> 1 & 0x1F)
             .collect();
 
@@ -424,7 +465,7 @@ mod tests {
     #[test]
     fn sector_position_without_loaded_head_has_every_bit_set() {
         let mut dcdd = Dcdd::new();
-        dcdd.insert(0, numbered_disk());
+        dcdd.insert(0, numbered_disk()).unwrap();
         dcdd.output(SELECT_PORT, 0x00);
 
         let position = dcdd.input(COMMAND_PORT);
@@ -440,7 +481,7 @@ mod tests {
 
         let bytes = [dcdd.input(DATA_PORT), dcdd.input(DATA_PORT)];
 
-        let offset = (SECTORS + 2) * SECTOR_BYTES;
+        let offset = (usize::from(SECTORS) + 2) * SECTOR_BYTES;
         assert_eq!(bytes, [Some(offset as u8), Some((offset + 1) as u8)]);
     }
 

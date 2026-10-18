@@ -11,8 +11,8 @@ mod ram;
 mod sio2;
 
 pub use cpu::Cpu;
-pub use dcdd::{DISK_BYTES, Dcdd};
-pub use ram::Ram;
+pub use dcdd::{DISK_BYTES, Dcdd, NoSuchDriveError};
+pub use ram::{EmptyRangeError, Ram};
 pub use sio2::{Sio2, Terminal};
 
 /// A card that plugs into the [`Backplane`](crate::Backplane).

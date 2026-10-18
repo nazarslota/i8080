@@ -81,8 +81,8 @@ You plug in the cards with the builder, as an Altair owner did:
 ```rust
 let mut altair = Altair::builder()
     .plug(cards::Cpu::new())
-    .plug(cards::Ram::new(0x0000..=0x7FFF))
-    .plug(cards::Ram::new(0x8000..=0xFFFF))
+    .plug(cards::Ram::new(0x0000..=0x7FFF)?)
+    .plug(cards::Ram::new(0x8000..=0xFFFF)?)
     .plug(cards::Sio2::new(console))
     .build()?;
 ```

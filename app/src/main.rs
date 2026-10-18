@@ -122,8 +122,8 @@ fn run(setup: Setup) -> Result<Exit, String> {
     let (console, quit) = Console::start(setup.tape);
     let mut altair = Altair::builder()
         .plug(Cpu::new()) // The 88-CPU card
-        .plug(Ram::new(0x0000..=0x7FFF)) // First 32 KB card
-        .plug(Ram::new(0x8000..=0xFFFF)) // Second 32 KB card
+        .plug(Ram::new(0x0000..=0x7FFF).map_err(|error| error.to_string())?) // First 32 KB card
+        .plug(Ram::new(0x8000..=0xFFFF).map_err(|error| error.to_string())?) // Second 32 KB card
         .plug(Sio2::new(console)) // The 88-2SIO card at ports 10H and 11H
         .build()
         .map_err(|error| error.to_string())?;
