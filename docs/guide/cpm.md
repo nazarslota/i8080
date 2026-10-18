@@ -100,6 +100,47 @@ stays the same size. The library turns `\n` into the CR LF that a
 terminal expects. `put` replaces the old file on `b.dsk`, so `make run`
 always boots the latest build.
 
+## Assembly programs
+
+CP/M brings its own 8080 assembler, `ASM.COM`, and the loader `LOAD.COM`
+on drive A:. Assembly programs live in [`examples/asm`](../../examples/asm),
+each in a folder of its own: `examples/asm/main/main.asm`. In
+`examples/asm`, `make run` puts `main.asm` on drive B: and boots CP/M.
+Then assemble, load and run it at `A>`:
+
+```sh
+cd examples/asm
+make run
+```
+
+```text
+A>B:
+B>A:ASM MAIN
+CP/M ASSEMBLER - VER 2.0
+011A
+000H USE FACTOR
+END OF ASSEMBLY
+
+B>A:LOAD MAIN
+
+FIRST ADDRESS 0100
+LAST  ADDRESS 0119
+BYTES READ    001A
+RECORDS WRITTEN 01
+
+B>MAIN
+HELLO FROM ASM
+```
+
+`ASM` writes `MAIN.HEX`, the program in Intel HEX, and `MAIN.PRN`, a
+listing with the address and the bytes of each line: `TYPE MAIN.PRN`
+shows it. `LOAD` turns the HEX file into `MAIN.COM`, 26 bytes here.
+`make run PROGRAM=name` does the same for `name/name.asm`.
+
+CP/M ends each line of text with CR LF, and `ASM` reads a file with bare
+LF as empty. So the Makefile copies the source to `build/` with CR LF
+before it puts it on the disk, and you edit it as any text file.
+
 ## Speed
 
 The emulator runs the CPU at the 2 MHz of the real Altair, so CPUTEST
