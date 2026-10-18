@@ -39,7 +39,10 @@ impl Drop for RawMode {
 /// reader.
 ///
 /// A background thread reads the keyboard and sends each key over a channel,
-/// so [`receive`](Terminal::receive) never waits. The tape reader sits on
+/// so [`receive`](Terminal::receive) never waits. The thread drops bytes
+/// above 7FH: a Teletype sends 7-bit ASCII, and a letter from another
+/// keyboard layout arrives as such bytes, which BASIC would read as junk.
+/// The tape reader sits on
 /// the same serial line, as on the Teletype that Altair owners used: the
 /// console sends the whole tape first and your keys after it.
 pub struct Console {
@@ -62,6 +65,9 @@ impl Console {
                 if key == QUIT_KEY {
                     quit_pressed.store(true, Ordering::Relaxed);
                     break;
+                }
+                if !key.is_ascii() {
+                    continue;
                 }
                 if sender.send(key).is_err() {
                     break;
