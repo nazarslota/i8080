@@ -12,6 +12,7 @@
 //! | `basic` | the bootstrap loader      |             |          | the tape | 0000H   | RUBOUT      |
 //! | `cpm`   |                           | DBL, FF00H  | A: to D: |          | FF00H   | Ctrl+H      |
 //! | `disk-basic` |                      | DBL, FF00H  | 0 to 15  |          | FF00H   | Ctrl+H      |
+//! | `dos`   |                           | DBL, FF00H  | 0 to 5   |          | FF00H   | RUBOUT      |
 //!
 //! ```
 //! let image = std::env::temp_dir().join(format!("app-doc-{}-boot.bin", std::process::id()));
@@ -28,6 +29,7 @@
 pub mod basic;
 pub mod cpm;
 pub mod disk_basic;
+pub mod dos;
 mod floppy;
 mod hex;
 pub mod image;

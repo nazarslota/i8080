@@ -114,7 +114,7 @@ documentation.
 
 ```mermaid
 flowchart LR
-    args["cli::Args<br/>the command line"] --> setup["boot::image, basic, cpm, disk_basic<br/>read and check the files"]
+    args["cli::Args<br/>the command line"] --> setup["boot::image, basic, cpm, disk_basic, dos<br/>read and check the files"]
     setup --> s["Setup"]
     s --> start["machine::start<br/>plug in the cards,<br/>toggle in, EXAMINE, RUN"]
     start --> clock["host::clock::run<br/>2 MHz until you quit"]
@@ -147,7 +147,8 @@ pub struct Setup {
 | `boot::basic`      | `setup` for a tape, `Basic` and the MITS bootstrap loaders |
 | `boot::cpm`        | `setup` for CP/M disks                                     |
 | `boot::disk_basic` | `setup` for Disk BASIC, including its sense switches       |
-| `boot::floppy`     | the shared PROM and disk file setup for both disk boots    |
+| `boot::dos`        | `setup` for Altair DOS, with RUBOUT and its sense switches |
+| `boot::floppy`     | the shared PROM and disk file setup for the disk boots     |
 | `boot::hex`        | the Intel HEX reader for DBL                               |
 | `machine`          | `start`: the cards and the front panel steps               |
 | `disk`             | `altair disk`: `format`, `put` and `ls`                    |

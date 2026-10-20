@@ -1,11 +1,10 @@
-//! The PROM and disk files shared by the CP/M and Disk BASIC boot setups.
+//! The PROM and disk files shared by the CP/M, Disk BASIC and DOS boot setups.
 
 use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::{Setup, hex};
-use crate::host::console::BACKSPACE_KEY;
 use crate::host::disk_file::DiskFile;
 use crate::host::in_file;
 use crate::machine::PROM_ADDRESS;
@@ -19,6 +18,7 @@ pub(super) fn setup(
     disks: &[PathBuf],
     drive_count: usize,
     sense_switches: u8,
+    erase_key: u8,
 ) -> Result<Setup, Box<dyn Error>> {
     if disks.is_empty() || disks.len() > drive_count {
         return Err(format!("expected 1 to {drive_count} disks, got {}", disks.len()).into());
@@ -46,7 +46,7 @@ pub(super) fn setup(
         disks,
         tape: Vec::new(),
         sense_switches,
-        erase_key: BACKSPACE_KEY,
+        erase_key,
     })
 }
 
@@ -55,7 +55,7 @@ mod tests {
     use altair::cards::{DISK_BYTES, Disk};
 
     use super::*;
-    use crate::boot::{Program, cpm, disk_basic};
+    use crate::boot::{Program, cpm, disk_basic, dos};
 
     /// Test files that the fixture removes after their disk handles close.
     struct BootFiles {
@@ -124,6 +124,21 @@ mod tests {
     }
 
     #[test]
+    fn dos_setup_uses_rubout_and_serial_switches() -> Result<(), Box<dyn Error>> {
+        let files = BootFiles::new("dos")?;
+
+        let setup = dos::setup(&files.prom, std::slice::from_ref(&files.disk))?;
+
+        assert_eq!(setup.start, 0xFF00);
+        assert_eq!(setup.sense_switches, 0x10);
+        assert_eq!(setup.erase_key, 0x7F);
+        assert!(setup.toggle_in.is_none());
+        assert!(setup.tape.is_empty());
+        assert_eq!(setup.disks.len(), 1);
+        Ok(())
+    }
+
+    #[test]
     fn opens_disks_in_argument_order() -> Result<(), Box<dyn Error>> {
         let first = BootFiles::new("order-first")?;
         let second = BootFiles::new("order-second")?;
@@ -142,9 +157,11 @@ mod tests {
     fn rejects_no_disks() -> Result<(), Box<dyn Error>> {
         let files = BootFiles::new("no-disks")?;
 
-        let result = disk_basic::setup(&files.prom, &[]);
+        let basic = disk_basic::setup(&files.prom, &[]);
+        let dos = dos::setup(&files.prom, &[]);
 
-        assert!(result.is_err());
+        assert!(basic.is_err());
+        assert!(dos.is_err());
         Ok(())
     }
 
@@ -154,9 +171,11 @@ mod tests {
 
         let cpm = cpm::setup(&files.prom, &vec![files.disk.clone(); 5]);
         let basic = disk_basic::setup(&files.prom, &vec![files.disk.clone(); 17]);
+        let dos = dos::setup(&files.prom, &vec![files.disk.clone(); 7]);
 
         assert!(cpm.is_err());
         assert!(basic.is_err());
+        assert!(dos.is_err());
         Ok(())
     }
 
@@ -167,6 +186,16 @@ mod tests {
         let setup = disk_basic::setup(&files.prom, &vec![files.disk.clone(); 16])?;
 
         assert_eq!(setup.disks.len(), 16);
+        Ok(())
+    }
+
+    #[test]
+    fn dos_opens_six_drives() -> Result<(), Box<dyn Error>> {
+        let files = BootFiles::new("dos-six")?;
+
+        let setup = dos::setup(&files.prom, &vec![files.disk.clone(); 6])?;
+
+        assert_eq!(setup.disks.len(), 6);
         Ok(())
     }
 

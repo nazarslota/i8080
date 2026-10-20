@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 
 use crate::boot::basic::Basic;
-use crate::boot::{cpm, disk_basic};
+use crate::boot::{cpm, disk_basic, dos};
 
 /// The examples at the end of `--help`.
 const EXAMPLES: &str = r#"Examples:
@@ -38,6 +38,10 @@ const EXAMPLES: &str = r#"Examples:
     cp "roms/Disk BASIC 300-5-F.dsk" basic.dsk
     altair disk-basic basic.dsk
 
+  Altair DOS:
+    cp roms/AltairDOS.dsk dos.dsk
+    altair dos dos.dsk
+
   Add a CP/M data disk:
     altair disk format b.dsk
     altair disk put b.dsk roms/TST8080.COM roms/CPUTEST.COM
@@ -47,6 +51,7 @@ const EXAMPLES: &str = r#"Examples:
   Run without the 2 MHz limit:
     altair --fast cpm a.dsk b.dsk
     altair --fast disk-basic basic.dsk
+    altair --fast dos dos.dsk
 
   Set the boot PROM and sense switches:
     altair --switches 10 disk-basic --prom roms/DBL.HEX basic.dsk
@@ -61,7 +66,7 @@ pub struct Args {
     pub command: Command,
 
     /// Overrides the sense switches A8 to A15 in hex. The boot command sets
-    /// the default: 10H for Disk BASIC, 00H for the other commands.
+    /// the default: 10H for Disk BASIC and DOS, 00H for the other commands.
     ///
     /// Example: --switches 0C
     #[arg(long, global = true, value_parser = parse_switches)]
@@ -128,6 +133,21 @@ pub enum Command {
         ///
         /// Example: basic.dsk
         #[arg(required = true, num_args = 1..=disk_basic::DRIVE_COUNT)]
+        disks: Vec<PathBuf>,
+    },
+
+    /// Boots Altair DOS from floppy disks, with sense switches 10H for the
+    /// 88-2SIO terminal. Uses the DBL PROM at FF00H.
+    Dos {
+        /// The disk boot loader in Intel HEX, for FF00H to FFFFH.
+        #[arg(long, default_value = "roms/DBL.HEX")]
+        prom: PathBuf,
+
+        /// The images for drives 0 to 5, the DOS boot disk first.
+        /// The emulator writes to them, so boot copies.
+        ///
+        /// Example: dos.dsk
+        #[arg(required = true, num_args = 1..=dos::DRIVE_COUNT)]
         disks: Vec<PathBuf>,
     },
 
@@ -229,8 +249,44 @@ mod tests {
     }
 
     #[test]
+    fn dos_uses_default_prom_and_keeps_disk_order() -> Result<(), clap::Error> {
+        let args = Args::try_parse_from(["altair", "dos", "dos.dsk", "data.dsk"])?;
+
+        let Command::Dos { prom, disks } = args.command else {
+            panic!("expected dos");
+        };
+
+        assert_eq!(prom, PathBuf::from("roms/DBL.HEX"));
+        assert_eq!(disks, [PathBuf::from("dos.dsk"), PathBuf::from("data.dsk")]);
+        assert!(args.switches.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn dos_accepts_custom_prom_and_switch_override() -> Result<(), clap::Error> {
+        let args = Args::try_parse_from([
+            "altair",
+            "--switches",
+            "00",
+            "dos",
+            "--prom",
+            "loader.hex",
+            "dos.dsk",
+        ])?;
+
+        let Command::Dos { prom, disks } = args.command else {
+            panic!("expected dos");
+        };
+
+        assert_eq!(prom, PathBuf::from("loader.hex"));
+        assert_eq!(disks, [PathBuf::from("dos.dsk")]);
+        assert_eq!(args.switches, Some(0x00));
+        Ok(())
+    }
+
+    #[test]
     fn disk_boot_commands_enforce_their_drive_counts() {
-        for (command, maximum) in [("cpm", 4), ("disk-basic", 16)] {
+        for (command, maximum) in [("cpm", 4), ("disk-basic", 16), ("dos", 6)] {
             let empty = Args::try_parse_from(["altair", command]);
             let mut args = vec!["altair", command];
             args.extend(std::iter::repeat_n("disk.dsk", maximum));

@@ -9,9 +9,10 @@ ships no copyrighted software, so you supply these files yourself:
 | `hello.bin`                                                | A memory image that prints a greeting: `altair image roms/hello.bin`                            |
 | `4K BASIC Ver 4-0.tap`, `8K BASIC Ver 4-0.tap`             | Altair BASIC on paper tape: `altair basic 8k-4.0 …`                                             |
 | `Extended BASIC Ver 4-0.tap`, `Extended BASIC Ver 4-1.tap` | Extended BASIC on paper tape: `altair basic extended-4.1 …`                                     |
-| `DBL.HEX`                                                  | The MITS disk boot loader for `altair cpm` and `altair disk-basic`                              |
+| `DBL.HEX`                                                  | The MITS disk boot loader for CP/M, Disk BASIC and Altair DOS                                   |
 | `cpm22b23-56k.dsk`                                         | CP/M 2.2b on an 8-inch floppy: copy it to `a.dsk` and boot that                                 |
 | `Disk BASIC 300-5-F.dsk`                                   | Disk BASIC on an 8-inch floppy: copy it to `basic.dsk` and boot that                            |
+| `AltairDOS.dsk`                                            | Altair DOS 1.0: copy it to `dos.dsk` and boot that                                              |
 
 ## Where to get them
 
@@ -49,6 +50,18 @@ cargo run --release -- disk-basic basic.dsk
 
 [guide/disk-basic.md](../docs/guide/disk-basic.md) lists the answers at
 start and the commands to save and load a program.
+
+**Altair DOS.** Download `AltairDOS.dsk` from the
+[Altair DOS images](https://deramp.com/downloads/altair/software/8_inch_floppy/Altair%20DOS/)
+folder on deramp.com. Boot a copy, since DOS writes to the disk:
+
+```sh
+cp roms/AltairDOS.dsk dos.dsk
+cargo run --release -- dos dos.dsk
+```
+
+[guide/dos.md](../docs/guide/dos.md) lists the startup answers and shows
+how to save text with the DOS editor.
 
 **hello.bin.** Write the 32 bytes yourself:
 

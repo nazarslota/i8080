@@ -24,6 +24,7 @@ use std::error::Error;
 use std::path::{Path, PathBuf};
 
 use super::{SWITCHES_DOWN, Setup, floppy};
+use crate::host::console::BACKSPACE_KEY;
 
 /// The drives that the CP/M BIOS knows, A: to D:.
 pub(crate) const DRIVE_COUNT: usize = 4;
@@ -33,5 +34,5 @@ pub(crate) const DRIVE_COUNT: usize = 4;
 /// The first disk must hold CP/M. The emulator opens the images for writing,
 /// so use copies. Backspace sends Ctrl+H. See the module example.
 pub fn setup(prom: &Path, disks: &[PathBuf]) -> Result<Setup, Box<dyn Error>> {
-    floppy::setup(prom, disks, DRIVE_COUNT, SWITCHES_DOWN)
+    floppy::setup(prom, disks, DRIVE_COUNT, SWITCHES_DOWN, BACKSPACE_KEY)
 }

@@ -33,7 +33,7 @@ use altair::cards::Terminal;
 /// programs don't use it, so every other key reaches the machine.
 const QUIT_KEY: u8 = 0x1D;
 /// The byte that your Backspace key sends: DEL, which the Teletype called
-/// RUBOUT. Altair BASIC erases a character on it.
+/// RUBOUT. Altair BASIC and DOS erase a character on it.
 pub const RUBOUT_KEY: u8 = 0x7F;
 /// Ctrl+H, the byte that CP/M and MBASIC erase a character on. They take
 /// [`RUBOUT_KEY`] as an erase too, but echo the erased character instead

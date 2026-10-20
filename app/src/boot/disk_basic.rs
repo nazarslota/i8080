@@ -27,6 +27,7 @@ use std::error::Error;
 use std::path::{Path, PathBuf};
 
 use super::{Setup, floppy};
+use crate::host::console::BACKSPACE_KEY;
 
 /// The physical drives that Disk BASIC can address, 0 through 15.
 pub(crate) const DRIVE_COUNT: usize = 16;
@@ -38,5 +39,5 @@ const SENSE_SWITCHES_BYTE: u8 = 0x10;
 /// The first disk must hold Disk BASIC. The emulator opens the images for
 /// writing, so use copies. Backspace sends Ctrl+H. See the module example.
 pub fn setup(prom: &Path, disks: &[PathBuf]) -> Result<Setup, Box<dyn Error>> {
-    floppy::setup(prom, disks, DRIVE_COUNT, SENSE_SWITCHES_BYTE)
+    floppy::setup(prom, disks, DRIVE_COUNT, SENSE_SWITCHES_BYTE, BACKSPACE_KEY)
 }

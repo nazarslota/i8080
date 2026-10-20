@@ -11,6 +11,7 @@ starts with EXAMINE and RUN at a different address:
 | `altair basic`      | a paper tape, and a 28-byte loader     | 0000H  | the bootstrap loader |
 | `altair cpm`        | a PROM card with DBL, and floppy disks | FF00H  | the disk boot loader |
 | `altair disk-basic` | a PROM card with DBL, and floppy disks | FF00H  | the disk boot loader |
+| `altair dos`        | a PROM card with DBL, and floppy disks | FF00H  | the disk boot loader |
 
 A memory image needs no loader: it runs as soon as RUN lets the CPU go.
 The tape and disk loaders each load the next stage from their media.
@@ -163,3 +164,12 @@ with one stop bit; the command sets them before RUN.
 
 [guide/disk-basic.md](guide/disk-basic.md) gives the startup answers and
 shows how to save a program on the disk.
+
+## Altair DOS boots from a floppy
+
+`altair dos` uses the same DBL PROM, disk controller and `10H` sense
+switches as Disk BASIC. The image supplies the DOS monitor and its system
+programs. DOS can enable the 88-2SIO input interrupts during initialization.
+Its Backspace key uses RUBOUT rather than Ctrl+H.
+
+[guide/dos.md](guide/dos.md) gives the startup answers and editor commands.
