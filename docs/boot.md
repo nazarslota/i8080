@@ -5,14 +5,15 @@ first program in by hand with the front panel switches, and that program
 loaded the next one. `app` does the same steps for you. Each way to boot
 starts with EXAMINE and RUN at a different address:
 
-| Command        | What the owner brought                 | RUN at | What runs first      |
-|----------------|----------------------------------------|--------|----------------------|
-| `altair image` | a program, toggled in byte by byte     | 0000H  | the program          |
-| `altair basic` | a paper tape, and a 28-byte loader     | 0000H  | the bootstrap loader |
-| `altair cpm`   | a PROM card with DBL, and floppy disks | FF00H  | the disk boot loader |
+| Command             | What the owner brought                 | RUN at | What runs first      |
+|---------------------|----------------------------------------|--------|----------------------|
+| `altair image`      | a program, toggled in byte by byte     | 0000H  | the program          |
+| `altair basic`      | a paper tape, and a 28-byte loader     | 0000H  | the bootstrap loader |
+| `altair cpm`        | a PROM card with DBL, and floppy disks | FF00H  | the disk boot loader |
+| `altair disk-basic` | a PROM card with DBL, and floppy disks | FF00H  | the disk boot loader |
 
 A memory image needs no loader: it runs as soon as RUN lets the CPU go.
-The other two load in three programs, each loading the next.
+The tape and disk loaders each load the next stage from their media.
 
 ## BASIC loads from a paper tape
 
@@ -152,3 +153,13 @@ and the memory layout come from
 and
 [BIOS.ASM](https://deramp.com/downloads/altair/software/8_inch_floppy/CPM/CPM%202.2/CPM%202.2B/BIOS.ASM)
 by Mike Douglas.
+
+## Disk BASIC boots from a floppy
+
+`altair disk-basic` uses the same DBL PROM and 88-DCDD controller. The
+disk supplies Disk BASIC's loader and interpreter instead of CP/M.
+Disk BASIC 300-5-F expects sense switches `10H` for the 88-2SIO terminal
+with one stop bit; the command sets them before RUN.
+
+[guide/disk-basic.md](guide/disk-basic.md) gives the startup answers and
+shows how to save a program on the disk.

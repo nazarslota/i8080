@@ -1,8 +1,8 @@
 # i8080
 
 An Intel 8080 emulator in Rust that runs the MITS Altair 8800 in your
-terminal: Altair BASIC from its original paper tape, and CP/M 2.2 from its
-original floppy image.
+terminal: Altair BASIC from its original paper tape, Disk BASIC and CP/M
+from their original floppy images.
 
 ## Roadmap
 
@@ -13,7 +13,9 @@ original floppy image.
 - [x] **CP/M 2.2.** The 88-DCDD floppy controller and a PROM card with the
   MITS disk boot loader. CP/M boots, saves files to the disk image and runs
   the four CPU diagnostics.
-- [ ] **More disks.** Altair Disk BASIC and Altair DOS.
+- [x] **Disk BASIC.** Version 300-5-F boots, saves programs to its disk
+  image and loads them after a restart.
+- [ ] **More disks.** Altair DOS.
 - [x] **CPU interrupts.** Device-supplied instructions, the delay after
   `EI` and wake-up from `HLT`.
 - [x] **Altair interrupts.** Receive and transmit requests from the 88-2SIO
@@ -29,6 +31,8 @@ image in [`roms/`](roms). This repository ships no copyrighted software;
 
 ```sh
 cargo run --release -- basic 8k-4.0 "roms/8K BASIC Ver 4-0.tap"   # Altair BASIC
+cp "roms/Disk BASIC 300-5-F.dsk" basic.dsk
+cargo run --release -- disk-basic basic.dsk                       # Disk BASIC
 cp roms/cpm22b23-56k.dsk a.dsk
 cargo run --release -- cpm a.dsk                                   # CP/M
 cargo run --release -- image roms/hello.bin                        # a memory image
@@ -48,6 +52,7 @@ cargo test --release -p i8080 --test diagnostics -- --ignored
 | Read                                                          | To learn                                                  |
 |---------------------------------------------------------------|-----------------------------------------------------------|
 | [guide/basic.md](docs/guide/basic.md)                         | how to run Altair BASIC                                   |
+| [guide/disk-basic.md](docs/guide/disk-basic.md)               | how to boot Disk BASIC and save programs                  |
 | [guide/cpm.md](docs/guide/cpm.md)                             | how to run CP/M, add disks, build C and assembly programs |
 | [architecture.md](docs/architecture.md)                       | how the code splits into layers, and why                  |
 | [boot.md](docs/boot.md)                                       | what happens between RUN and `OK` or `A>`                 |
@@ -98,6 +103,10 @@ The Altair:
   the serial card's ports and the bootstrap loaders for the BASIC tapes.
 - [Altair Software Development using CP/M](https://deramp.com/downloads/altair/software/papertape_cassette/Checksum%20Loader/Altair%20Paper%20Tape%20Format.pdf):
   the format of an Altair paper tape.
+- [Altair BASIC Reference Manual](https://altairclone.com/downloads/manuals/BASIC%20Manual%2077.pdf):
+  section 5-6 describes Disk BASIC files and commands.
+- [Disk BASIC images](https://deramp.com/downloads/altair/software/8_inch_floppy/BASIC/):
+  the original 8-inch images, including version 300-5-F.
 - [MITS tapes](https://www.icl1900.co.uk/unix4fun/z80pack/ftp/altair/mits-tapes/):
   the Altair BASIC tapes, on the z80pack mirror.
 

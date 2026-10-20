@@ -3,6 +3,7 @@
 | Page                                                     | What it covers                                      |
 |----------------------------------------------------------|-----------------------------------------------------|
 | [guide/basic.md](guide/basic.md)                         | running Altair BASIC from its tape                  |
+| [guide/disk-basic.md](guide/disk-basic.md)               | booting Disk BASIC and saving programs              |
 | [guide/cpm.md](guide/cpm.md)                             | running CP/M, extra disks, programs, C and assembly |
 | [architecture.md](architecture.md)                       | the layers, their rules and where each part lives   |
 | [boot.md](boot.md)                                       | the loaders, from RUN to `OK` or `A>`               |

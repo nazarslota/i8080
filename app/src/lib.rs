@@ -36,7 +36,7 @@ pub mod machine;
 
 use std::error::Error;
 
-use crate::boot::{Setup, basic, cpm, image};
+use crate::boot::{Setup, basic, cpm, disk_basic, image};
 use crate::cli::{Args, Command};
 use crate::host::clock::{self, Exit, Speed};
 use crate::host::console::{Console, RawMode};
@@ -63,6 +63,7 @@ pub fn run(args: &Args) -> Result<(), Box<dyn Error>> {
         Command::Image { image } => boot(image::setup(image)?, args),
         Command::Basic { basic, tape } => boot(basic::setup(*basic, tape)?, args),
         Command::Cpm { prom, disks } => boot(cpm::setup(prom, disks)?, args),
+        Command::DiskBasic { prom, disks } => boot(disk_basic::setup(prom, disks)?, args),
         Command::Disk(command) => disk::run(command),
     }
 }

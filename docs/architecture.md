@@ -114,7 +114,7 @@ documentation.
 
 ```mermaid
 flowchart LR
-    args["cli::Args<br/>the command line"] --> setup["boot::image, basic, cpm<br/>read and check the files"]
+    args["cli::Args<br/>the command line"] --> setup["boot::image, basic, cpm, disk_basic<br/>read and check the files"]
     setup --> s["Setup"]
     s --> start["machine::start<br/>plug in the cards,<br/>toggle in, EXAMINE, RUN"]
     start --> clock["host::clock::run<br/>2 MHz until you quit"]
@@ -130,7 +130,7 @@ it top to bottom, with no match on the way you boot:
 pub struct Setup {
     pub toggle_in: Option<Program>, // the image or the bootstrap loader
     pub prom: Option<Program>,      // DBL at FF00H
-    pub disks: Vec<DiskFile>,       // drives A: to D:
+    pub disks: Vec<DiskFile>,       // physical drives 0 and up
     pub tape: Vec<u8>,              // the paper tape in the reader
     pub start: u16,                 // where RUN starts the CPU
     pub sense_switches: u8,
@@ -138,21 +138,23 @@ pub struct Setup {
 }
 ```
 
-| Module            | What it holds                                              |
-|-------------------|------------------------------------------------------------|
-| `lib`             | `run`, the flow above                                      |
-| `cli`             | the command line: `Args`, `Command`, `DiskCommand`         |
-| `boot`            | `Setup` and `Program`                                      |
-| `boot::image`     | `setup` for a memory image                                 |
-| `boot::basic`     | `setup` for a tape, `Basic` and the MITS bootstrap loaders |
-| `boot::cpm`       | `setup` for CP/M disks                                     |
-| `boot::hex`       | the Intel HEX reader for DBL                               |
-| `machine`         | `start`: the cards and the front panel steps               |
-| `disk`            | `altair disk`: `format`, `put` and `ls`                    |
-| `disk::cpm`       | `CpmDisk`, the CP/M file system on a disk image            |
-| `host::console`   | `RawMode` and `Console`, your side of the serial line      |
-| `host::clock`     | the 2 MHz clock, `Speed` and `Exit`                        |
-| `host::disk_file` | `DiskFile`, a disk image file in a drive                   |
+| Module             | What it holds                                              |
+|--------------------|------------------------------------------------------------|
+| `lib`              | `run`, the flow above                                      |
+| `cli`              | the command line: `Args`, `Command`, `DiskCommand`         |
+| `boot`             | `Setup` and `Program`                                      |
+| `boot::image`      | `setup` for a memory image                                 |
+| `boot::basic`      | `setup` for a tape, `Basic` and the MITS bootstrap loaders |
+| `boot::cpm`        | `setup` for CP/M disks                                     |
+| `boot::disk_basic` | `setup` for Disk BASIC, including its sense switches       |
+| `boot::floppy`     | the shared PROM and disk file setup for both disk boots    |
+| `boot::hex`        | the Intel HEX reader for DBL                               |
+| `machine`          | `start`: the cards and the front panel steps               |
+| `disk`             | `altair disk`: `format`, `put` and `ls`                    |
+| `disk::cpm`        | `CpmDisk`, the CP/M file system on a disk image            |
+| `host::console`    | `RawMode` and `Console`, your side of the serial line      |
+| `host::clock`      | the 2 MHz clock, `Speed` and `Exit`                        |
+| `host::disk_file`  | `DiskFile`, a disk image file in a drive                   |
 
 ## A key press, through every layer
 

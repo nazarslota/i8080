@@ -7,7 +7,7 @@
 //! drives 0 and up:
 //!
 //! ```text
-//!              image, basic         cpm
+//!              image, basic         cpm, disk-basic
 //! 0000H-7FFFH  RAM, 32 KB           RAM, 32 KB
 //! 8000H-FEFFH  RAM, 32 KB           RAM, 32 KB less a page
 //! FF00H-FFFFH                       PROM, 256 bytes

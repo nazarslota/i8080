@@ -24,11 +24,11 @@
 //!      └──────────────────────────────────────────┘
 //! ```
 //!
-//! The emulator changes the image you pass to `altair disk`: when CP/M
-//! saves a file, the bytes land in the image before the next instruction.
+//! The emulator changes the image you boot: when the guest saves a file,
+//! the bytes land in the image before the next instruction.
 //! Keep a copy of the original. [`DiskFile::open`] fails on a read-only
 //! image and on one too short for a disk, so you learn about it at start,
-//! before CP/M tries to read or write.
+//! before the guest tries to read or write.
 //!
 //! ```
 //! use altair::cards::{DISK_BYTES, Disk};

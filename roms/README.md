@@ -9,8 +9,9 @@ ships no copyrighted software, so you supply these files yourself:
 | `hello.bin`                                                | A memory image that prints a greeting: `altair image roms/hello.bin`                            |
 | `4K BASIC Ver 4-0.tap`, `8K BASIC Ver 4-0.tap`             | Altair BASIC on paper tape: `altair basic 8k-4.0 …`                                             |
 | `Extended BASIC Ver 4-0.tap`, `Extended BASIC Ver 4-1.tap` | Extended BASIC on paper tape: `altair basic extended-4.1 …`                                     |
-| `DBL.HEX`                                                  | The MITS disk boot loader for the PROM, which `altair cpm` reads                                |
+| `DBL.HEX`                                                  | The MITS disk boot loader for `altair cpm` and `altair disk-basic`                              |
 | `cpm22b23-56k.dsk`                                         | CP/M 2.2b on an 8-inch floppy: copy it to `a.dsk` and boot that                                 |
+| `Disk BASIC 300-5-F.dsk`                                   | Disk BASIC on an 8-inch floppy: copy it to `basic.dsk` and boot that                            |
 
 ## Where to get them
 
@@ -36,6 +37,18 @@ emulator writes what CP/M saves into the image, so boot a copy:
 cp roms/cpm22b23-56k.dsk a.dsk
 cargo run --release -- cpm a.dsk
 ```
+
+**Disk BASIC.** Download `Disk BASIC 300-5-F.dsk` from the
+[BASIC images](https://deramp.com/downloads/altair/software/8_inch_floppy/BASIC/)
+folder on deramp.com. Boot a copy, since BASIC writes to the disk:
+
+```sh
+cp "roms/Disk BASIC 300-5-F.dsk" basic.dsk
+cargo run --release -- disk-basic basic.dsk
+```
+
+[guide/disk-basic.md](../docs/guide/disk-basic.md) lists the answers at
+start and the commands to save and load a program.
 
 **hello.bin.** Write the 32 bytes yourself:
 

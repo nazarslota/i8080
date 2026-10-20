@@ -1,5 +1,5 @@
 //! Intel HEX files: how Altair owners stored programs for PROMs. The disk
-//! boot loader comes as `DBL.HEX`, so only [`cpm`](super::cpm) reads them.
+//! boot loader comes as `DBL.HEX`; the floppy boot setup reads it.
 //!
 //! A HEX file is text, one record per line:
 //!
