@@ -50,8 +50,14 @@
 //!
 //! The CPU runs all 256 opcodes and passes the classic diagnostic programs
 //! (TST8080, 8080PRE, CPUTEST, 8080EXM). The [instruction catalog]
-//! describes each instruction. Interrupts are missing: `EI` and `DI` switch
-//! the interrupt enable, but nothing delivers an interrupt yet.
+//! describes each instruction. [`Cpu::interrupt`] accepts a device-supplied
+//! instruction, observes the delay after `EI` and wakes a halted CPU. The
+//! machine must deliver interrupt requests between CPU steps.
+//!
+//! The [Intel 8080 Assembly Language Programming Manual], chapter 5,
+//! describes the interrupt sequence and the device-supplied instruction.
+//!
+//! [Intel 8080 Assembly Language Programming Manual]: https://altairclone.com/downloads/manuals/8080%20Programmers%20Manual.pdf
 //!
 //! [instruction catalog]: https://github.com/nazarslota/i8080/blob/main/docs/i8080/instructions.md
 

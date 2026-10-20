@@ -14,8 +14,10 @@ original floppy image.
   MITS disk boot loader. CP/M boots, saves files to the disk image and runs
   the four CPU diagnostics.
 - [ ] **More disks.** Altair Disk BASIC and Altair DOS.
-- [ ] **CPU extras.** Interrupts, which Space Invaders needs, and a
-  disassembler for execution traces.
+- [x] **CPU interrupts.** Device-supplied instructions, the delay after
+  `EI` and wake-up from `HLT`.
+- [ ] **Altair interrupts.** Interrupt requests from the 88-2SIO serial board.
+- [ ] **CPU extras.** A disassembler for execution traces.
 - [ ] Later: a window with a retro monitor, the front panel, Space Invaders.
 
 ## Quick start

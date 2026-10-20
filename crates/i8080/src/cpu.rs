@@ -32,6 +32,7 @@ pub struct Cpu {
     pub registers: Registers,
     halted: bool,
     interrupts_enabled: bool,
+    interrupt_deferred: bool,
 }
 
 impl Cpu {
@@ -68,6 +69,7 @@ impl Cpu {
     pub fn reset(&mut self) {
         self.registers.pc = 0x0000;
         self.interrupts_enabled = false;
+        self.interrupt_deferred = false;
         self.halted = false;
     }
 
@@ -87,8 +89,11 @@ impl Cpu {
         self.halted
     }
 
-    /// Returns `true` after `EI` and `false` after `DI`. The 8080 starts
-    /// with interrupts disabled.
+    /// Returns the interrupt enable (INTE): `EI` sets it, `DI`, RESET and
+    /// an accepted interrupt clear it. The 8080 starts with INTE clear.
+    ///
+    /// After `EI`, INTE is set but [`interrupt`](Cpu::interrupt) waits until
+    /// the CPU finishes the next instruction before it accepts a request.
     ///
     /// ```
     /// use i8080::{Bus, Cpu, Unconnected};
@@ -129,6 +134,60 @@ impl Cpu {
 
         // Fetch and decode: read the instruction's bytes starting at PC.
         let instruction = Instruction::decode(|| self.fetch_byte(bus));
+        self.execute(bus, instruction)
+    }
+
+    /// Accepts an interrupt between instructions and returns its cycle count.
+    ///
+    /// The device supplies an instruction through `next_byte`, opcode first,
+    /// as on the 8080's data bus during interrupt acknowledge. The decoder
+    /// asks for one byte per instruction byte, up to three. Fetching these
+    /// bytes leaves `PC` unchanged: a device-supplied `RST` pushes the address
+    /// where the interrupted program should resume.
+    ///
+    /// The CPU clears INTE and leaves `HLT` before it executes the supplied
+    /// instruction. If INTE is clear or the instruction after `EI` has not
+    /// finished, this returns `None` without touching `bus` or calling
+    /// `next_byte`. The CPU keeps no pending request; the device must keep
+    /// requesting service while its interrupt line stays high.
+    ///
+    /// ```
+    /// use i8080::{Bus, Cpu, Unconnected};
+    ///
+    /// let mut bus = Bus { memory: [0u8; 0x10000], io: Unconnected };
+    /// bus.memory[..2].copy_from_slice(&[0xFB, 0x76]); // EI; HLT
+    /// bus.memory[0x0008] = 0xC9; // RET, the handler for RST 1
+    /// let mut cpu = Cpu::new();
+    /// cpu.registers.sp = 0xF000;
+    /// cpu.step(&mut bus); // EI
+    /// assert_eq!(cpu.interrupt(&mut bus, || 0xCF), None); // EI delay
+    /// cpu.step(&mut bus); // HLT
+    ///
+    /// assert_eq!(cpu.interrupt(&mut bus, || 0xCF), Some(11)); // RST 1
+    /// assert!(!cpu.is_halted());
+    /// assert!(!cpu.interrupts_enabled());
+    /// assert_eq!(cpu.registers.pc, 0x0008);
+    /// cpu.step(&mut bus); // RET
+    /// assert_eq!(cpu.registers.pc, 0x0002); // resume after HLT
+    /// ```
+    pub fn interrupt(
+        &mut self,
+        bus: &mut (impl MemoryBus + IoBus),
+        next_byte: impl FnMut() -> u8,
+    ) -> Option<u32> {
+        if !self.interrupts_enabled || self.interrupt_deferred {
+            return None;
+        }
+
+        self.interrupts_enabled = false;
+        self.halted = false;
+        let instruction = Instruction::decode(next_byte);
+        Some(self.execute(bus, instruction))
+    }
+
+    /// Executes a decoded instruction from memory or an interrupting device.
+    fn execute(&mut self, bus: &mut (impl MemoryBus + IoBus), instruction: Instruction) -> u32 {
+        self.interrupt_deferred = false;
 
         // Execute: one line per instruction. Instructions with logic get their
         // own method, which returns the cycle count from the `cycles` module.
@@ -629,6 +688,7 @@ impl Cpu {
     /// `DI`: disables interrupts.
     fn di(&mut self) -> u32 {
         self.interrupts_enabled = false;
+        self.interrupt_deferred = false;
         cycles::DI
     }
 
@@ -644,9 +704,10 @@ impl Cpu {
         cycles::SPHL
     }
 
-    /// `EI`: enables interrupts.
+    /// `EI`: sets INTE and defers interrupts until the next instruction ends.
     fn ei(&mut self) -> u32 {
         self.interrupts_enabled = true;
+        self.interrupt_deferred = true;
         cycles::EI
     }
 
@@ -955,6 +1016,31 @@ mod tests {
             }
         );
         assert_eq!(cycles, cycles::NOP);
+    }
+
+    #[test]
+    fn interrupt_nop_keeps_pc_and_reads_no_memory() {
+        let mut bus = Bus {
+            memory: [0x76u8; 0x10000], // HLT everywhere: the device supplies NOP
+            io: Unconnected,
+        };
+        let mut cpu = Cpu::new();
+        cpu.registers = distinct_registers();
+        cpu.interrupts_enabled = true;
+        let before = cpu.registers;
+        let mut reads = 0;
+
+        let cycles = cpu.interrupt(&mut bus, || {
+            reads += 1;
+            0x00 // NOP
+        });
+
+        assert_eq!(cycles, Some(4));
+        assert_eq!(reads, 1);
+        assert_eq!(cpu.registers, before);
+        assert!(!cpu.is_halted());
+        assert!(!cpu.interrupts_enabled());
+        assert_eq!(bus.memory, [0x76; 0x10000]);
     }
 
     #[test]
@@ -1712,10 +1798,43 @@ mod tests {
     }
 
     #[test]
+    fn interrupt_wakes_halted_cpu_and_ret_resumes_after_hlt() {
+        let mut bus = Bus {
+            memory: [0u8; 0x10000],
+            io: Unconnected,
+        };
+        bus.memory[0x0100..0x0104].copy_from_slice(&[0xFB, 0x76, 0x06, 0x42]); // EI; HLT; MVI B,42H
+        bus.memory[0x0008] = 0xC9; // RET
+        let mut cpu = Cpu::new();
+        cpu.registers = distinct_registers();
+        cpu.step(&mut bus); // EI
+        cpu.step(&mut bus); // HLT
+
+        let cycles = cpu.interrupt(&mut bus, || 0xCF); // RST 1
+        let halted = cpu.is_halted();
+        let handler = cpu.registers.pc;
+        let return_address = [bus.memory[0xEFFE], bus.memory[0xEFFF]];
+        cpu.step(&mut bus); // RET
+        let resumed = cpu.registers.pc;
+        cpu.step(&mut bus); // MVI B,42H
+
+        assert_eq!(cycles, Some(11));
+        assert!(!halted);
+        assert_eq!(handler, 0x0008);
+        assert_eq!(return_address, [0x02, 0x01]);
+        assert_eq!(resumed, 0x0102);
+        assert_eq!(cpu.registers.b, 0x42);
+        assert_eq!(cpu.registers.pc, 0x0104);
+        assert_eq!(cpu.registers.sp, 0xF000);
+        assert!(!cpu.interrupts_enabled());
+    }
+
+    #[test]
     fn reset_clears_pc_interrupts_and_halt() {
         let mut cpu = Cpu::new();
         cpu.registers = distinct_registers();
         cpu.interrupts_enabled = true;
+        cpu.interrupt_deferred = true;
         cpu.halted = true;
         let before = cpu.registers;
 
@@ -1729,6 +1848,7 @@ mod tests {
             }
         );
         assert!(!cpu.interrupts_enabled());
+        assert!(!cpu.interrupt_deferred);
         assert!(!cpu.is_halted());
     }
 
@@ -2717,6 +2837,72 @@ mod tests {
     }
 
     #[test]
+    fn interrupt_rst_pushes_current_pc_and_disables_interrupts() {
+        let cases = [
+            (0xC7, 0x0000), // RST 0
+            (0xCF, 0x0008), // RST 1
+            (0xD7, 0x0010), // RST 2
+            (0xDF, 0x0018), // RST 3
+            (0xE7, 0x0020), // RST 4
+            (0xEF, 0x0028), // RST 5
+            (0xF7, 0x0030), // RST 6
+            (0xFF, 0x0038), // RST 7
+        ];
+
+        for (opcode, address) in cases {
+            let mut bus = Bus {
+                memory: [0u8; 0x10000],
+                io: Unconnected,
+            };
+            let mut cpu = Cpu::new();
+            cpu.registers = Registers {
+                flags: ALL_FLAGS,
+                ..distinct_registers()
+            };
+            cpu.interrupts_enabled = true;
+            let before = cpu.registers;
+
+            let cycles = cpu.interrupt(&mut bus, || opcode);
+            let nested = cpu.interrupt(&mut bus, || 0xFF);
+
+            assert_eq!(cycles, Some(11), "opcode {opcode:#04X}");
+            assert_eq!(nested, None);
+            assert_eq!(
+                cpu.registers,
+                Registers {
+                    pc: address,
+                    sp: 0xEFFE,
+                    ..before
+                }
+            );
+            assert_eq!(&bus.memory[0xEFFE..0xF000], &[0x00, 0x01]);
+            assert!(!cpu.interrupts_enabled());
+        }
+    }
+
+    #[test]
+    fn interrupt_rst_wraps_stack_and_preserves_ffff_return_address() {
+        let mut bus = Bus {
+            memory: [0u8; 0x10000],
+            io: Unconnected,
+        };
+        let mut cpu = Cpu::new();
+        cpu.registers.pc = 0xFFFF;
+        cpu.registers.sp = 0x0001;
+        cpu.interrupts_enabled = true;
+
+        let cycles = cpu.interrupt(&mut bus, || 0xCF); // RST 1
+        let stack = [bus.memory[0xFFFF], bus.memory[0x0000]];
+        bus.memory[0x0008] = 0xC9; // RET
+        cpu.step(&mut bus);
+
+        assert_eq!(cycles, Some(11));
+        assert_eq!(stack, [0xFF, 0xFF]);
+        assert_eq!(cpu.registers.pc, 0xFFFF);
+        assert_eq!(cpu.registers.sp, 0x0001);
+    }
+
+    #[test]
     fn ret_pops_return_address() {
         // C9H is RET, and D9H is its undocumented copy. The stack at F000H
         // holds the return address 1234H.
@@ -2754,6 +2940,38 @@ mod tests {
             assert_eq!(pushed, [0x03, 0x01], "opcode {opcode:#04X}");
             assert_eq!(cycles, cycles::CALL, "opcode {opcode:#04X}");
         }
+    }
+
+    #[test]
+    fn interrupt_call_reads_address_from_device() {
+        let mut bus = Bus {
+            memory: [0x76u8; 0x10000],
+            io: Unconnected,
+        };
+        let mut cpu = Cpu::new();
+        cpu.registers = distinct_registers();
+        cpu.interrupts_enabled = true;
+        let before = cpu.registers;
+        let mut bytes = [0xCD, 0x34, 0x12].into_iter(); // CALL 1234H
+        let mut reads = 0;
+
+        let cycles = cpu.interrupt(&mut bus, || {
+            reads += 1;
+            bytes.next().unwrap_or_default()
+        });
+
+        assert_eq!(cycles, Some(17));
+        assert_eq!(reads, 3);
+        assert_eq!(bytes.next(), None);
+        assert_eq!(
+            cpu.registers,
+            Registers {
+                pc: 0x1234,
+                sp: 0xEFFE,
+                ..before
+            }
+        );
+        assert_eq!(&bus.memory[0xEFFE..0xF000], &[0x00, 0x01]);
     }
 
     #[test]
@@ -2796,6 +3014,35 @@ mod tests {
             }
         );
         assert_eq!(cycles, cycles::IN);
+    }
+
+    #[test]
+    fn interrupt_in_reads_port_from_device_and_keeps_pc() {
+        let mut bus = Bus {
+            memory: [0x76u8; 0x10000],
+            io: RecordingIo {
+                input: 0x42,
+                ..RecordingIo::default()
+            },
+        };
+        let mut cpu = Cpu::new();
+        cpu.registers = distinct_registers();
+        cpu.interrupts_enabled = true;
+        let before = cpu.registers;
+        let mut bytes = [0xDB, 0x11].into_iter(); // IN 11H
+        let mut reads = 0;
+
+        let cycles = cpu.interrupt(&mut bus, || {
+            reads += 1;
+            bytes.next().unwrap_or_default()
+        });
+
+        assert_eq!(cycles, Some(10));
+        assert_eq!(reads, 2);
+        assert_eq!(bytes.next(), None);
+        assert_eq!(bus.io.read_port, Some(0x11));
+        assert_eq!(cpu.registers, Registers { a: 0x42, ..before });
+        assert!(!cpu.interrupts_enabled());
     }
 
     #[test]
@@ -2886,6 +3133,55 @@ mod tests {
     }
 
     #[test]
+    fn disabled_interrupt_leaves_cpu_memory_and_device_untouched() {
+        for halted in [false, true] {
+            let mut bus = Bus {
+                memory: [0xA5u8; 0x10000],
+                io: Unconnected,
+            };
+            let mut cpu = Cpu::new();
+            cpu.registers = distinct_registers();
+            cpu.halted = halted;
+            let before = cpu.registers;
+            let mut reads = 0;
+
+            let cycles = cpu.interrupt(&mut bus, || {
+                reads += 1;
+                0xCF // RST 1
+            });
+
+            assert_eq!(cycles, None);
+            assert_eq!(reads, 0);
+            assert_eq!(cpu.registers, before);
+            assert_eq!(cpu.is_halted(), halted);
+            assert!(!cpu.interrupts_enabled());
+            assert_eq!(bus.memory, [0xA5; 0x10000]);
+        }
+    }
+
+    #[test]
+    fn di_cancels_ei_and_its_delay() {
+        let mut bus = Bus {
+            memory: [0u8; 0x10000],
+            io: Unconnected,
+        };
+        bus.memory[..2].copy_from_slice(&[0xFB, 0xF3]); // EI; DI; NOP
+        let mut cpu = Cpu::new();
+        cpu.step(&mut bus); // EI
+
+        cpu.step(&mut bus); // DI
+        let after_di = cpu.interrupt(&mut bus, || 0xCF);
+        cpu.step(&mut bus); // NOP
+        let after_nop = cpu.interrupt(&mut bus, || 0xCF);
+
+        assert_eq!(after_di, None);
+        assert_eq!(after_nop, None);
+        assert!(!cpu.interrupts_enabled());
+        assert!(!cpu.interrupt_deferred);
+        assert_eq!(cpu.registers.pc, 3);
+    }
+
+    #[test]
     fn sphl_copies_hl_to_sp() {
         // The SPHL example from the Intel manual: HL = 506CH.
         let mut before = distinct_registers();
@@ -2897,6 +3193,63 @@ mod tests {
         };
 
         assert_registers(&[0xF9], before, after, cycles::SPHL); // SPHL
+    }
+
+    #[test]
+    fn ei_defers_interrupt_until_next_instruction_finishes() {
+        let mut bus = Bus {
+            memory: [0u8; 0x10000],
+            io: Unconnected,
+        };
+        bus.memory[0x0100..0x0103].copy_from_slice(&[0xFB, 0x3E, 0x42]); // EI; MVI A,42H
+        let mut cpu = Cpu::new();
+        cpu.registers = distinct_registers();
+        cpu.step(&mut bus); // EI
+        let mut reads = 0;
+
+        let deferred = cpu.interrupt(&mut bus, || {
+            reads += 1;
+            0xCF
+        });
+        cpu.step(&mut bus); // MVI A,42H
+        let accepted = cpu.interrupt(&mut bus, || {
+            reads += 1;
+            0xCF // RST 1
+        });
+
+        assert_eq!(deferred, None);
+        assert_eq!(accepted, Some(11));
+        assert_eq!(reads, 1);
+        assert_eq!(cpu.registers.a, 0x42);
+        assert_eq!(cpu.registers.pc, 0x0008);
+        assert_eq!(&bus.memory[0xEFFE..0xF000], &[0x03, 0x01]);
+    }
+
+    #[test]
+    fn ei_ret_returns_before_next_interrupt() {
+        let mut bus = Bus {
+            memory: [0u8; 0x10000],
+            io: Unconnected,
+        };
+        bus.memory[0x0008..0x000A].copy_from_slice(&[0xFB, 0xC9]); // EI; RET
+        let mut cpu = Cpu::new();
+        cpu.registers = distinct_registers();
+        cpu.interrupts_enabled = true;
+        cpu.interrupt(&mut bus, || 0xCF); // RST 1
+        cpu.step(&mut bus); // EI
+
+        let deferred = cpu.interrupt(&mut bus, || 0xD7); // RST 2
+        cpu.step(&mut bus); // RET
+        let resumed = cpu.registers.pc;
+        let restored_sp = cpu.registers.sp;
+        let accepted = cpu.interrupt(&mut bus, || 0xD7); // RST 2
+
+        assert_eq!(deferred, None);
+        assert_eq!(resumed, 0x0100);
+        assert_eq!(restored_sp, 0xF000);
+        assert_eq!(accepted, Some(11));
+        assert_eq!(cpu.registers.pc, 0x0010);
+        assert_eq!(&bus.memory[0xEFFE..0xF000], &[0x00, 0x01]);
     }
 
     #[test]

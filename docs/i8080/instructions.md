@@ -1294,10 +1294,15 @@ works like a one-byte `CALL` to one of eight fixed addresses.
 | `RST 2`     | `D7H`  | `0010H` | `RST 6`     | `F7H`  | `0030H` |
 | `RST 3`     | `DFH`  | `0018H` | `RST 7`     | `FFH`  | `0038H` |
 
-Interrupts use `RST`: a device that wants the CPU's attention puts an `RST`
-opcode on the data bus, and the CPU runs it in place of the next
-instruction. Each device gets its own handler at one of the eight
-addresses. `RST 0` jumps to `0000H`, where the CPU starts after a reset.
+An interrupting device can supply any 8080 instruction. Most supply an
+`RST` opcode on the data bus, which calls a handler at one of the eight
+addresses. The CPU leaves `PC` at the interrupted program's next
+instruction, so `RET` resumes there. `RST 0` jumps to `0000H`, where the CPU
+starts after a reset.
+
+The [Intel 8080 Assembly Language Programming Manual](https://altairclone.com/downloads/manuals/8080%20Programmers%20Manual.pdf),
+chapter 5, describes this sequence. `i8080::Cpu::interrupt` takes the
+instruction bytes from a callback; the machine calls it between CPU steps.
 
 ```asm
 0100H   LXI  SP,0F000H ; SP = F000H                   bytes: 31 00 F0
@@ -1523,8 +1528,9 @@ The 8080 starts with interrupts disabled.
 | `EI`  | `0101H` | enabled    |
 | `DI`  | `0102H` | disabled   |
 
-**Emulator status:** nothing delivers interrupts yet, so the
-one-instruction wait after `EI` makes no difference yet.
+**Emulator status:** `Cpu::interrupt` observes the one-instruction wait
+after `EI` and clears INTE when it accepts an interrupt. The Altair cards
+do not request interrupts yet.
 
 ### DI: disable interrupts
 
@@ -1559,7 +1565,8 @@ Intel placed `HLT` in the slot where `MOV M,M` would sit, `01 110 110`.
 | `HLT`       | `0103H` | `07H` | yes    |
 | next step   | `0103H` | `07H` | yes    |
 
-**Emulator status:** nothing wakes the CPU yet. Interrupts come later.
+**Emulator status:** an interrupt that `Cpu::interrupt` accepts wakes the
+CPU. With INTE clear, the CPU stays halted until RESET.
 
 ### NOP: do nothing
 
