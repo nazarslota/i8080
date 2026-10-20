@@ -16,7 +16,8 @@ original floppy image.
 - [ ] **More disks.** Altair Disk BASIC and Altair DOS.
 - [x] **CPU interrupts.** Device-supplied instructions, the delay after
   `EI` and wake-up from `HLT`.
-- [ ] **Altair interrupts.** Interrupt requests from the 88-2SIO serial board.
+- [x] **Altair interrupts.** Receive and transmit requests from the 88-2SIO
+  serial board through PINT (`RST 7`).
 - [ ] **CPU extras.** A disassembler for execution traces.
 - [ ] Later: a window with a retro monitor, the front panel, Space Invaders.
 
@@ -73,6 +74,8 @@ The 8080:
 - [Intel 8080 Microcomputer Systems User's Manual](https://bitsavers.org/components/intel/MCS80/98-153B_Intel_8080_Microcomputer_Systems_Users_Manual_197509.pdf)
   (September 1975): the instruction set with cycle counts, plus the pinout
   and bus timing.
+- [Intel 8080 Assembly Language Programming Manual](https://altairclone.com/downloads/manuals/8080%20Programmers%20Manual.pdf):
+  chapter 5 explains interrupt handling and the instruction a device supplies.
 - [8080 opcode table](https://pastraiser.com/cpu/i8080/i8080_opcodes.html):
   all 256 opcodes, including the undocumented copies of `NOP`, `JMP`,
   `CALL` and `RET` that the Intel manual leaves out.
@@ -85,6 +88,12 @@ The Altair:
 
 - [Altair 8800 Theory of Operation](https://altairclone.com/downloads/manuals/Altair%208800%20Theory%20of%20Operation.pdf):
   the front panel and what its switches do to the CPU.
+- [MITS 88-2SIO manual](https://deramp.com/downloads/mfe_archive/010-S100%20Computers%20and%20Boards/00-MITS/10-MITS%20S100%20Boards/88-2SIO%20Dual%20Serial%20Board/Altair%202SIO%20Serial%20I-O%20searchable.pdf):
+  the serial board's control and status registers, interrupt enables and wiring.
+- [Altair Clone Operator's Manual](https://altairclone.com/downloads/manuals/Altair%20Clone%20Operator%27s%20Manual.pdf):
+  section F explains PINT and the open-bus `RST 7` without an 88-VI/RTC board.
+- [Altair 8800 Monitor](https://k1.spdns.de/Develop/Projects/zxsp/zxsp.alt10/zasm/Test/8080/original/Altair8800_Monitor.z80):
+  an assembly listing that defines the 88-2SIO ports and status bits.
 - [Loading Basic with the 88-2SIO Board](https://deramp.com/downloads/mfe_archive/010-S100%20Computers%20and%20Boards/00-MITS/10-MITS%20S100%20Boards/88-2SIO%20Dual%20Serial%20Board/Loading%20Basic%20with%20the%2088-2SIO%20Board.pdf):
   the serial card's ports and the bootstrap loaders for the BASIC tapes.
 - [Altair Software Development using CP/M](https://deramp.com/downloads/altair/software/papertape_cassette/Checksum%20Loader/Altair%20Paper%20Tape%20Format.pdf):

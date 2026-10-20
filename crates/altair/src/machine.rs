@@ -13,6 +13,8 @@ use crate::cards::Card;
 /// The port where a program reads the sense switches, the upper eight front
 /// panel switches.
 const SENSE_SWITCHES_PORT: u8 = 0xFF;
+/// With no vectored interrupt controller, the open data bus supplies RST 7.
+const INTERRUPT_OPCODE: u8 = 0xFF;
 
 /// An Altair 8800: the CPU, the front panel and the cards you plug in.
 ///
@@ -99,6 +101,10 @@ impl Altair {
 
     /// Executes one instruction and returns how many clock cycles it took.
     ///
+    /// Before fetching from memory, it samples the cards' PINT requests.
+    /// The CPU accepts a request as `RST 7` when INTE and the `EI` delay
+    /// allow it, including during `HLT`. The handler starts at `0038H`.
+    ///
     /// `step` executes whether the front panel says RUN or STOP: you decide
     /// when to call it. Check [`is_running`](Altair::is_running) first to
     /// follow the panel.
@@ -112,12 +118,36 @@ impl Altair {
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn step(&mut self) -> u32 {
+        let interrupt_pending = self.backplane.interrupt_pending();
         let [sense_switches, _] = self.switches.to_be_bytes();
         let mut bus = MachineBus {
             backplane: &mut self.backplane,
             sense_switches,
         };
+        if interrupt_pending && let Some(cycles) = self.cpu.interrupt(&mut bus, || INTERRUPT_OPCODE)
+        {
+            return cycles;
+        }
         self.cpu.step(&mut bus)
+    }
+
+    /// Returns the CPU's interrupt enable (INTE).
+    ///
+    /// A halted CPU with INTE set can wake on a card's request. After `EI`,
+    /// the CPU must finish one more instruction before it accepts a request.
+    ///
+    /// ```
+    /// # let mut altair = altair::Altair::builder().plug(altair::cards::Ram::new(0x0000..=0xFFFF)?).build();
+    /// altair.front_panel().toggle_in(0x0000, &[0xFB]); // EI
+    /// altair.front_panel().reset();
+    ///
+    /// altair.step();
+    ///
+    /// assert!(altair.interrupts_enabled());
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn interrupts_enabled(&self) -> bool {
+        self.cpu.interrupts_enabled()
     }
 
     /// Returns `true` after RUN on the front panel, `false` after STOP.
@@ -214,6 +244,7 @@ impl IoBus for MachineBus<'_> {
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
+    use std::collections::VecDeque;
     use std::rc::Rc;
 
     use super::*;
@@ -231,6 +262,42 @@ mod tests {
         fn send(&mut self, byte: u8) {
             self.0.borrow_mut().push(byte);
         }
+    }
+
+    /// A keyboard the test can feed after the CPU halts.
+    struct SharedKeyboard(Rc<RefCell<VecDeque<u8>>>);
+
+    impl Terminal for SharedKeyboard {
+        fn receive(&mut self) -> Option<u8> {
+            self.0.borrow_mut().pop_front()
+        }
+
+        fn send(&mut self, _byte: u8) {}
+    }
+
+    /// Builds an Altair with a keyboard and an interrupt-driven input program.
+    fn altair_with_keyboard() -> (Altair, Rc<RefCell<VecDeque<u8>>>) {
+        let keys = Rc::new(RefCell::new(VecDeque::new()));
+        let mut altair = Altair::builder()
+            .plug(Ram::new(0x0000..=0xFFFF).expect("the full address range is valid"))
+            .plug(Sio2::new(SharedKeyboard(Rc::clone(&keys))))
+            .build();
+        // 0100H: LXI SP,F000H; MVI A,95H; OUT 10H; EI; HLT; MVI B,42H; DI; HLT
+        toggle_in(
+            &mut altair,
+            0x0100,
+            &[
+                0x31, 0x00, 0xF0, 0x3E, 0x95, 0xD3, 0x10, 0xFB, 0x76, 0x06, 0x42, 0xF3, 0x76,
+            ],
+        );
+        // 0038H: IN 11H; STA 2000H; EI; RET
+        toggle_in(
+            &mut altair,
+            0x0038,
+            &[0xDB, 0x11, 0x32, 0x00, 0x20, 0xFB, 0xC9],
+        );
+        altair.cpu.registers.pc = 0x0100;
+        (altair, keys)
     }
 
     /// Builds an Altair with two 32 KB memory cards and an 88-2SIO wired to
@@ -281,6 +348,77 @@ mod tests {
         run_until_halted(&mut altair);
 
         assert_eq!(*screen.borrow(), b"AB");
+    }
+
+    #[test]
+    fn serial_interrupt_wakes_hlt_and_returns_to_program() {
+        let (mut altair, keys) = altair_with_keyboard();
+        for _ in 0..5 {
+            altair.step(); // initialize the serial card, EI, HLT
+        }
+        let was_halted = altair.is_halted();
+        keys.borrow_mut().push_back(b'A');
+
+        let cycles = altair.step(); // PINT, open-bus RST 7
+        let handler = altair.cpu.registers.pc;
+        let awake = !altair.is_halted();
+        let in_handler = altair.interrupts_enabled();
+        for _ in 0..4 {
+            altair.step(); // IN 11H; STA 2000H; EI; RET
+        }
+        let resumed = altair.cpu.registers.pc;
+        for _ in 0..3 {
+            altair.step(); // MVI B,42H; DI; HLT
+        }
+
+        assert!(was_halted);
+        assert_eq!(cycles, 11);
+        assert_eq!(handler, 0x0038);
+        assert!(awake);
+        assert!(!in_handler);
+        assert_eq!(altair.backplane.read(0x2000), b'A');
+        assert_eq!(resumed, 0x0109);
+        assert_eq!(altair.cpu.registers.b, 0x42);
+        assert_eq!(altair.cpu.registers.sp, 0xF000);
+        assert!(altair.is_halted());
+        assert!(!altair.interrupts_enabled());
+    }
+
+    #[test]
+    fn pending_serial_interrupt_waits_for_ei_and_hlt() {
+        let (mut altair, keys) = altair_with_keyboard();
+        keys.borrow_mut().push_back(b'A');
+
+        for _ in 0..5 {
+            altair.step(); // the pending request must not skip EI or HLT
+        }
+        let halted = altair.is_halted();
+        let before = altair.cpu.registers.pc;
+        let cycles = altair.step();
+
+        assert!(halted);
+        assert_eq!(before, 0x0109);
+        assert_eq!(cycles, 11);
+        assert_eq!(altair.cpu.registers.pc, 0x0038);
+    }
+
+    #[test]
+    fn di_keeps_halted_cpu_asleep_despite_serial_interrupt() {
+        let (mut altair, keys) = altair_with_keyboard();
+        altair.backplane.write(0x0107, 0xF3); // DI instead of EI
+        keys.borrow_mut().push_back(b'A');
+        for _ in 0..5 {
+            altair.step();
+        }
+        let before = altair.cpu.registers;
+
+        let cycles = altair.step();
+        let pending = altair.backplane.interrupt_pending();
+
+        assert_eq!(cycles, i8080::HALTED_STEP_CYCLES);
+        assert!(pending);
+        assert!(altair.is_halted());
+        assert_eq!(altair.cpu.registers, before);
     }
 
     #[test]

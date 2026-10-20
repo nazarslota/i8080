@@ -54,6 +54,32 @@ impl Backplane {
     pub fn plug(&mut self, card: impl Card + 'static) {
         self.cards.push(Box::new(card));
     }
+
+    /// Samples every card and returns whether any card requests an interrupt.
+    ///
+    /// The PINT line combines the requests. Sampling neither picks a winner
+    /// nor clears a request: the handler must service the cards.
+    ///
+    /// ```
+    /// use altair::{Backplane, cards::Card};
+    ///
+    /// struct Request;
+    /// impl Card for Request {
+    ///     fn interrupt_pending(&mut self) -> bool { true }
+    /// }
+    ///
+    /// let mut backplane = Backplane::new();
+    /// backplane.plug(Request);
+    ///
+    /// assert!(backplane.interrupt_pending());
+    /// ```
+    pub fn interrupt_pending(&mut self) -> bool {
+        let mut pending = false;
+        for card in &mut self.cards {
+            pending |= card.interrupt_pending();
+        }
+        pending
+    }
 }
 
 impl MemoryBus for Backplane {
@@ -135,6 +161,52 @@ mod tests {
 
         assert_eq!(memory, 0xFF);
         assert_eq!(port, 0xFF);
+    }
+
+    #[test]
+    fn cards_without_interrupts_leave_pint_inactive() {
+        let mut backplane = Backplane::new();
+        let empty = backplane.interrupt_pending();
+        backplane.plug(Latch::new(0x1000, 0x10, 0x11));
+
+        let pending = backplane.interrupt_pending();
+
+        assert!(!empty);
+        assert!(!pending);
+    }
+
+    #[test]
+    fn interrupt_samples_every_card_and_keeps_request_active() {
+        use std::cell::Cell;
+        use std::rc::Rc;
+
+        struct Request {
+            active: bool,
+            samples: Rc<Cell<usize>>,
+        }
+
+        impl Card for Request {
+            fn interrupt_pending(&mut self) -> bool {
+                self.samples.set(self.samples.get() + 1);
+                self.active
+            }
+        }
+
+        let samples = Rc::new(Cell::new(0));
+        let mut backplane = Backplane::new();
+        for active in [true, false, true] {
+            backplane.plug(Request {
+                active,
+                samples: Rc::clone(&samples),
+            });
+        }
+
+        let first = backplane.interrupt_pending();
+        let second = backplane.interrupt_pending();
+
+        assert!(first);
+        assert!(second);
+        assert_eq!(samples.get(), 6);
     }
 
     #[test]

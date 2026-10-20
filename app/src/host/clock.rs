@@ -58,11 +58,14 @@ pub enum Speed {
 pub enum Exit {
     /// You pressed Ctrl+].
     Quit,
-    /// The program executed `HLT`.
+    /// The program executed `HLT` with CPU interrupts disabled.
     Halted,
 }
 
-/// Runs `altair` at `speed` until `quit` turns `true` or the CPU halts.
+/// Runs `altair` at `speed` until you quit or the CPU halts with INTE clear.
+///
+/// With INTE set, `HLT` waits for a card's interrupt instead of ending the
+/// run. The clock keeps stepping the machine so the cards can receive input.
 ///
 /// ```
 /// use std::sync::atomic::AtomicBool;
@@ -88,7 +91,7 @@ pub fn run(altair: &mut Altair, quit: &AtomicBool, speed: Speed) -> Exit {
 
         let mut cycles = 0;
         while cycles < SLICE_CYCLES {
-            if altair.is_halted() {
+            if altair.is_halted() && !altair.interrupts_enabled() {
                 return Exit::Halted;
             }
             cycles += u64::from(altair.step());
@@ -103,5 +106,100 @@ pub fn run(altair: &mut Altair, quit: &AtomicBool, speed: Speed) -> Exit {
             Some(wait) => thread::sleep(wait),
             None => next_slice = Instant::now(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use altair::cards::{Ram, Sio2, Terminal};
+
+    use super::*;
+
+    /// A terminal that delivers A on its third interrupt sample, after HLT.
+    struct DelayedKey {
+        samples: usize,
+    }
+
+    impl Terminal for DelayedKey {
+        fn receive(&mut self) -> Option<u8> {
+            self.samples += 1;
+            (self.samples == 3).then_some(b'A')
+        }
+
+        fn send(&mut self, _byte: u8) {}
+    }
+
+    /// A terminal that asks the clock to quit after the CPU reaches HLT.
+    struct QuitWhileHalted {
+        samples: usize,
+        quit: Arc<AtomicBool>,
+    }
+
+    impl Terminal for QuitWhileHalted {
+        fn receive(&mut self) -> Option<u8> {
+            self.samples += 1;
+            if self.samples == 3 {
+                self.quit.store(true, Ordering::Relaxed);
+            }
+            None
+        }
+
+        fn send(&mut self, _byte: u8) {}
+    }
+
+    /// Builds a program that enables RX IRQ, waits in HLT, then disables
+    /// CPU interrupts and halts after the handler returns.
+    fn waiting_machine(terminal: impl Terminal + 'static) -> Altair {
+        let mut altair = Altair::builder()
+            .plug(Ram::new(0x0000..=0xFFFF).expect("the full address range is valid"))
+            .plug(Sio2::new(terminal))
+            .build();
+        let mut panel = altair.front_panel();
+        // LXI SP,F000H; MVI A,95H; OUT 10H; EI; HLT; DI; HLT
+        panel.toggle_in(
+            0x0100,
+            &[
+                0x31, 0x00, 0xF0, 0x3E, 0x95, 0xD3, 0x10, 0xFB, 0x76, 0xF3, 0x76,
+            ],
+        );
+        // RST 7 handler: IN 11H; STA 2000H; EI; RET
+        panel.toggle_in(0x0038, &[0xDB, 0x11, 0x32, 0x00, 0x20, 0xFB, 0xC9]);
+        panel.set_switches(0x0100);
+        panel.examine();
+        panel.run();
+        altair
+    }
+
+    #[test]
+    fn clock_runs_interrupt_handler_after_hlt() {
+        let mut altair = waiting_machine(DelayedKey { samples: 0 });
+
+        let exit = run(&mut altair, &AtomicBool::new(false), Speed::Unlimited);
+        let interrupts_enabled = altair.interrupts_enabled();
+        let mut panel = altair.front_panel();
+        panel.reset(); // release HLT before the panel feeds its EXAMINE instruction
+        panel.set_switches(0x2000);
+        let received = panel.examine();
+
+        assert!(matches!(exit, Exit::Halted));
+        assert_eq!(received, b'A');
+        assert!(!interrupts_enabled);
+    }
+
+    #[test]
+    fn clock_can_quit_while_hlt_waits_for_interrupt() {
+        let quit = Arc::new(AtomicBool::new(false));
+        let mut altair = waiting_machine(QuitWhileHalted {
+            samples: 0,
+            quit: Arc::clone(&quit),
+        });
+
+        let exit = run(&mut altair, &quit, Speed::Unlimited);
+
+        assert!(matches!(exit, Exit::Quit));
+        assert!(altair.is_halted());
+        assert!(altair.interrupts_enabled());
     }
 }

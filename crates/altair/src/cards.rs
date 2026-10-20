@@ -18,6 +18,7 @@
 //! assert_eq!(ram.read(0x0010), Some(0x00)); // the card claims 0010H
 //! assert_eq!(ram.read(0x0100), None); // and stays silent at 0100H
 //! assert_eq!(ram.input(0x10), None); // a memory card claims no port
+//! assert!(!ram.interrupt_pending()); // a memory card raises no interrupt
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
@@ -59,4 +60,13 @@ pub trait Card {
 
     /// Writes `value` to `port` if the card claims the port.
     fn output(&mut self, _port: u8, _value: u8) {}
+
+    /// Samples the card's interrupt request line between CPU instructions.
+    ///
+    /// A card can check for input here without waiting for an `IN`.
+    /// Sampling keeps the request active until the program services its
+    /// cause. The module example shows the default for a memory card.
+    fn interrupt_pending(&mut self) -> bool {
+        false
+    }
 }

@@ -101,6 +101,46 @@ A port can return a new byte on each read. `IN 0AH` gives the next byte of
 the sector each time, as reading a file does, while a memory address
 returns the same byte until a program writes it.
 
+## Serial interrupts
+
+The 88-2SIO connects its interrupt request to the backplane's PINT line.
+Without an 88-VI/RTC controller, the data bus stays at `FFH` during
+interrupt acknowledge. The CPU reads that as `RST 7` and calls `0038H`:
+
+```mermaid
+flowchart LR
+    key["Terminal byte"] --> sio["88-2SIO receive register"]
+    sio -- " PINT via backplane " --> cpu["8080, after EI delay"]
+    cpu -- " RST 7 " --> handler["Handler at 0038H"]
+    handler -- " IN 11H reads the byte " --> sio
+```
+
+A program writes the interrupt enables to control port `10H`, then uses
+`EI` to let the CPU accept requests. For 8 data bits, no parity, one stop
+bit and a clock divide of 16:
+
+| Control byte | Requests enabled                            |
+|--------------|---------------------------------------------|
+| `15H`        | none, polling                               |
+| `95H`        | receive                                     |
+| `35H`        | transmit                                    |
+| `B5H`        | both                                        |
+| `03H`        | master reset; write a setup byte before use |
+
+Control bit 7 enables receive IRQ; bits 6 and 5 equal to `01` enable
+transmit IRQ. Status bit 7 reports an enabled request even with CPU
+interrupts disabled. Reading `11H` clears the receive request. Reading
+status or accepting an interrupt does not clear it.
+
+The emulator transmits bytes at once, so transmit IRQ stays active until
+the program disables it. It does not model baud timing, modem signals or
+receive errors. `HLT` with CPU interrupts enabled waits for a request;
+with interrupts disabled, the command-line program exits as before.
+
+The [88-2SIO manual](https://deramp.com/downloads/mfe_archive/010-S100%20Computers%20and%20Boards/00-MITS/10-MITS%20S100%20Boards/88-2SIO%20Dual%20Serial%20Board/Altair%202SIO%20Serial%20I-O%20searchable.pdf)
+defines the register bits. The [Altair Clone manual](https://altairclone.com/downloads/manuals/Altair%20Clone%20Operator%27s%20Manual.pdf),
+section F, describes PINT and `RST 7` without a vectored controller.
+
 ## How a card tells memory from a port
 
 On the real S-100 bus, the CPU puts the address or the port number on the

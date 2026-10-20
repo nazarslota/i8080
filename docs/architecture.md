@@ -183,6 +183,13 @@ the `Console` for a key. Once a key arrives, the card holds it and sets bit 0.
 BASIC reads the key from port `11H` and writes it back, so you see what you
 typed.
 
+With receive IRQ enabled, `Altair::step` checks the terminal between CPU
+instructions through `Card::interrupt_pending`. The backplane samples all
+cards and combines their requests on PINT. `Altair` delivers the open-bus
+`RST 7` to `Cpu::interrupt`. A handler reads the byte with `IN 11H`.
+[memory-and-ports.md](altair/memory-and-ports.md#serial-interrupts) lists
+the control bytes and the limits of the serial emulation.
+
 ## Decisions in the CPU core
 
 - **One bus for both address spaces.** `step` borrows a bus that implements
@@ -192,7 +199,8 @@ typed.
 - **Decode, then execute.** `step` turns the bytes at `PC` into an
   `Instruction` value and then executes it. Decoding reads bytes and nothing
   else, so a disassembler can reuse it.
-- **One line per instruction.** The `match` in `step` dispatches each
+- **One line per instruction.** The `match` in `execute`, shared by `step`
+  and `interrupt`, dispatches each
   instruction to a method named after it (`mvi`, `mov`), which does the work
   and returns the cycle count.
 - **Decoding can't fail.** The 8080 runs all 256 opcodes. The 12

@@ -44,7 +44,7 @@ use crate::host::console::{Console, RawMode};
 /// Carries out the command in `args`.
 ///
 /// A boot command switches your terminal to raw mode and returns when you
-/// quit or the CPU halts, with the terminal restored.
+/// quit or the CPU halts with interrupts disabled, then restores the terminal.
 ///
 /// ```
 /// use clap::Parser;
@@ -68,7 +68,7 @@ pub fn run(args: &Args) -> Result<(), Box<dyn Error>> {
 }
 
 /// Starts the Altair as `setup` says, with the options in `args`, and runs
-/// it until you quit or the CPU halts.
+/// it until you quit or the CPU halts with interrupts disabled.
 fn boot(mut setup: Setup, args: &Args) -> Result<(), Box<dyn Error>> {
     if let Some(switches) = args.switches {
         setup.sense_switches = switches;
