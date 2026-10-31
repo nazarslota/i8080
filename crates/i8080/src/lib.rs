@@ -33,6 +33,9 @@
 //! assert_eq!(cpu.registers.a, 0x41);
 //! ```
 //!
+//! [`disassemble`] turns the same bytes into text for a debugger or a trace,
+//! with the decoder the CPU runs.
+//!
 //! The crate is `no_std` and has no dependencies, so it builds for embedded
 //! targets and WebAssembly.
 //!
@@ -68,6 +71,7 @@ mod bus;
 mod condition;
 mod cpu;
 mod cycles;
+mod disassembler;
 mod flags;
 mod instruction;
 mod registers;
@@ -75,5 +79,6 @@ mod registers;
 pub use bus::{Bus, IoBus, MemoryBus, Unconnected};
 pub use cpu::Cpu;
 pub use cycles::HALTED_STEP_CYCLES;
+pub use disassembler::{Disassembled, disassemble};
 pub use flags::Flags;
 pub use registers::Registers;

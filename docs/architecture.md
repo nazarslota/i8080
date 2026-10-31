@@ -201,7 +201,7 @@ the control bytes and the limits of the serial emulation.
   Tests that keep memory and ports apart join them with `Bus { memory, io }`.
 - **Decode, then execute.** `step` turns the bytes at `PC` into an
   `Instruction` value and then executes it. Decoding reads bytes and nothing
-  else, so a disassembler can reuse it.
+  else, so `disassemble` reuses it and prints what the CPU runs.
 - **One line per instruction.** The `match` in `execute`, shared by `step`
   and `interrupt`, dispatches each
   instruction to a method named after it (`mvi`, `mov`), which does the work
