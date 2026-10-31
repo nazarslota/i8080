@@ -1,0 +1,7 @@
+{
+  // Tables and diagrams can't wrap, so the 80-column limit covers prose only.
+  "MD013": {
+    "tables": false,
+    "code_blocks": false
+  }
+}

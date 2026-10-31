@@ -53,8 +53,8 @@ sequenceDiagram
 
 1. **The bootstrap loader.** The owner toggled these 28 bytes in with the
    front panel switches, and `app` does the same through `FrontPanel`. The
-   loader skips the tape's leader, bytes of `C2H`, and stores the next 194 bytes downward
-   from 1FC1H. Then it jumps to them.
+   loader skips the tape's leader, bytes of `C2H`, and stores the next 194
+   bytes downward from 1FC1H. Then it jumps to them.
 2. **The checksum loader.** It reads the sense switches to learn which card
    carries the tape, then reads BASIC in records. Each record holds `3CH`, a
    byte count, a load address, the data and a checksum. A bad checksum stops

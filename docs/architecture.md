@@ -9,7 +9,7 @@ details: run `cargo doc --open`.
 The emulator splits the way the real computer does: a processor, the machine
 around it, and you at the terminal.
 
-```
+```text
                 ┌──────────────────────────┐
                 │ app                      │  your terminal, files,
                 └────────────┬─────────────┘  command line
@@ -197,8 +197,9 @@ the control bytes and the limits of the serial emulation.
 
 - **One bus for both address spaces.** `step` borrows a bus that implements
   `MemoryBus` and `IoBus` for one instruction and keeps nothing, like the
-  shared pins of the real chip. We need no shared ownership (`Rc<RefCell<…>>`), and Rust resolves each bus call at compile time.
-  Tests that keep memory and ports apart join them with `Bus { memory, io }`.
+  shared pins of the real chip. We need no shared ownership
+  (`Rc<RefCell<…>>`), and Rust resolves each bus call at compile time. Tests
+  that keep memory and ports apart join them with `Bus { memory, io }`.
 - **Decode, then execute.** `step` turns the bytes at `PC` into an
   `Instruction` value and then executes it. Decoding reads bytes and nothing
   else, so `disassemble` reuses it and prints what the CPU runs.
