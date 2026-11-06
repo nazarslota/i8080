@@ -7,7 +7,7 @@
 #   make run PROGRAM=name      the same for name/name.asm
 #   make clean                 remove the .COM files
 
-ROOT     := ../..
+ROOT     := ../../..
 ALTAIR   := cargo run --release --
 Z80ASM   := docker run --rm -v "$(CURDIR)":/src -w /src z88dk/z88dk z88dk-z80asm -m8080 -b
 PROGRAM  := main

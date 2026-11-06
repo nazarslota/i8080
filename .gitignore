@@ -7,9 +7,9 @@
 # The working floppy disks (see README.md)
 /*.dsk
 
-# Programs compiled in examples/c (see docs/guide/cpm.md)
-/examples/c/*/*.COM
-/examples/asm/*/*.COM
+# Programs compiled in examples/cpm (see docs/guide/cpm.md)
+/examples/cpm/c/*/*.COM
+/examples/cpm/asm/*/*.COM
 
 # Editor and OS files
 /.idea/

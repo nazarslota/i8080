@@ -73,14 +73,14 @@ so you run its Docker image. Start Docker Desktop and fetch the image once:
 docker pull z88dk/z88dk
 ```
 
-C programs live in [`examples/c`](../../examples/c), each in a folder of
-its own: `examples/c/main/main.c`. In `examples/c`, `make run` compiles
+C programs live in [`examples/cpm/c`](../../examples/cpm/c), each in a folder of
+its own: `examples/cpm/c/main/main.c`. In `examples/cpm/c`, `make run` compiles
 `main.c`, copies it to drive B: and boots CP/M with `a.dsk` and `b.dsk`
 from the root of the repository. It makes either disk first if it is
 missing. At `A>`, run the program from drive B: with `B:MAIN`.
 
 ```sh
-cd examples/c
+cd examples/cpm/c
 make run
 ```
 
@@ -91,7 +91,7 @@ make run
 | `make run PROGRAM=name` | the same for `name/name.c`                 |
 | `make clean`            | removes the built `.COM` files             |
 
-The [Makefile](../../examples/c/Makefile) calls z88dk as
+The [Makefile](../../examples/cpm/c/Makefile) calls z88dk as
 `zcc +cpm -clib=8080 -lm main.c -o main.COM`. `+cpm` builds a `.COM` file
 for CP/M, and `-clib=8080` keeps the code to 8080 instructions: without it
 z88dk writes Z80 code, which the 8080 can't run. `-lm` links the math
@@ -104,12 +104,12 @@ always boots the latest build.
 
 The z88dk image also holds an assembler, z80asm, which builds 8080 code
 with `-m8080`. Assembly programs live in
-[`examples/asm`](../../examples/asm), each in a folder of its own:
-`examples/asm/main/main.asm`. In `examples/asm`, `make run` assembles
+[`examples/cpm/asm`](../../examples/cpm/asm), each in a folder of its own:
+`examples/cpm/asm/main/main.asm`. In `examples/cpm/asm`, `make run` assembles
 `main.asm` into `main.COM`, copies it to drive B: and boots CP/M:
 
 ```sh
-cd examples/asm
+cd examples/cpm/asm
 make run
 ```
 

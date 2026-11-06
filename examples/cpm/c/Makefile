@@ -7,7 +7,7 @@
 #   make run PROGRAM=name      the same for name/name.c
 #   make clean                 remove the .COM files
 
-ROOT     := ../..
+ROOT     := ../../..
 ALTAIR   := cargo run --release --
 ZCC      := docker run --rm -v "$(CURDIR)":/src -w /src z88dk/z88dk zcc +cpm -clib=8080 -lm
 PROGRAM  := main

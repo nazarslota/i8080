@@ -4,7 +4,7 @@
 program lives in a folder of its own, with a source file of the same name:
 `main/main.asm`. In this folder, `make run PROGRAM=name` assembles
 `name/name.asm` with z80asm and runs it;
-[docs/guide/cpm.md](../../docs/guide/cpm.md#assembly-programs) explains
+[docs/guide/cpm.md](../../../docs/guide/cpm.md#assembly-programs) explains
 the steps.
 
 | Program | What it does                            |
