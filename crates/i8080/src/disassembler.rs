@@ -6,7 +6,7 @@ use crate::condition::Condition;
 use crate::instruction::{Instruction, Operand8, Operand16, StackOperand};
 
 /// The most bytes one instruction takes: an opcode and a 16-bit constant.
-const MAX_INSTRUCTION_BYTES: usize = 3;
+pub(crate) const MAX_INSTRUCTION_BYTES: usize = 3;
 
 /// One instruction, ready to print. [`disassemble`] makes it.
 ///

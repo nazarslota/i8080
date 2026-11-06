@@ -1,6 +1,6 @@
 //! The machine: [`Altair`] and the builder that assembles it.
 
-use i8080::{Cpu, IoBus, MemoryBus};
+use i8080::{Cpu, IoBus, MemoryBus, Registers, TraceLine};
 
 mod backplane;
 mod front_panel;
@@ -118,7 +118,40 @@ impl Altair {
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn step(&mut self) -> u32 {
+        let (cycles, _) = self.step_and_trace(false);
+        cycles
+    }
+
+    /// Executes one instruction as [`step`](Altair::step) does, and returns
+    /// its cycles and its line for an execution trace.
+    ///
+    /// The line shows the registers before the instruction. For an accepted
+    /// interrupt it shows `RST 7`, the instruction the open bus supplies. A
+    /// CPU that waits in `HLT` executes nothing and returns no line.
+    ///
+    /// ```
+    /// # let mut altair = altair::Altair::builder().plug(altair::cards::Ram::new(0x0000..=0xFFFF)?).build();
+    /// altair.front_panel().toggle_in(0x0000, &[0x3E, 0x41, 0x76]); // MVI A,41H; HLT
+    /// altair.front_panel().reset();
+    ///
+    /// let (cycles, line) = altair.trace_step();
+    /// altair.trace_step(); // HLT
+    /// let (_, waiting) = altair.trace_step();
+    ///
+    /// assert_eq!(cycles, 7);
+    /// assert!(line.unwrap().to_string().starts_with("0000  3E 41     MVI A,41H"));
+    /// assert_eq!(waiting, None);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn trace_step(&mut self) -> (u32, Option<TraceLine>) {
+        self.step_and_trace(true)
+    }
+
+    /// Executes one instruction, and with `trace` set, decodes it for a
+    /// trace line before the CPU runs it.
+    fn step_and_trace(&mut self, trace: bool) -> (u32, Option<TraceLine>) {
         let interrupt_pending = self.backplane.interrupt_pending();
+        let registers = self.cpu.registers;
         let [sense_switches, _] = self.switches.to_be_bytes();
         let mut bus = MachineBus {
             backplane: &mut self.backplane,
@@ -126,9 +159,12 @@ impl Altair {
         };
         if interrupt_pending && let Some(cycles) = self.cpu.interrupt(&mut bus, || INTERRUPT_OPCODE)
         {
-            return cycles;
+            let line = trace.then(|| TraceLine::new(registers, |_| INTERRUPT_OPCODE));
+            return (cycles, line);
         }
-        self.cpu.step(&mut bus)
+        let line = (trace && !self.cpu.is_halted())
+            .then(|| TraceLine::new(registers, |address| bus.read(address)));
+        (self.cpu.step(&mut bus), line)
     }
 
     /// Returns the CPU's interrupt enable (INTE).
@@ -170,6 +206,44 @@ impl Altair {
     /// ```
     pub fn is_halted(&self) -> bool {
         self.cpu.is_halted()
+    }
+
+    /// Returns the CPU's registers, for a debugger or a trace. The front
+    /// panel lights show only `PC` and the byte there.
+    ///
+    /// ```
+    /// # let mut altair = altair::Altair::builder().plug(altair::cards::Ram::new(0x0000..=0xFFFF)?).build();
+    /// altair.front_panel().toggle_in(0x0000, &[0x3E, 0x41]); // MVI A,41H
+    /// altair.front_panel().reset();
+    ///
+    /// altair.step();
+    ///
+    /// assert_eq!(altair.registers().a, 0x41);
+    /// assert_eq!(altair.registers().pc, 0x0002);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub const fn registers(&self) -> &Registers {
+        &self.cpu.registers
+    }
+
+    /// Reads the byte at `address` and leaves `PC` where it is.
+    ///
+    /// EXAMINE on the front panel moves `PC`, so a debugger or a trace reads
+    /// memory here instead. Memory cards answer reads with no side effects,
+    /// and an address no card claims reads `FFH`.
+    ///
+    /// ```
+    /// # let mut altair = altair::Altair::builder().plug(altair::cards::Ram::new(0x0000..=0x0FFF)?).build();
+    /// altair.front_panel().toggle_in(0x0100, &[0x76]); // HLT
+    /// altair.front_panel().reset();
+    ///
+    /// assert_eq!(altair.peek(0x0100), 0x76);
+    /// assert_eq!(altair.peek(0x2000), 0xFF); // no card claims 2000H
+    /// assert_eq!(altair.registers().pc, 0x0000);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn peek(&mut self, address: u16) -> u8 {
+        self.backplane.read(address)
     }
 }
 
@@ -462,5 +536,53 @@ mod tests {
         run_until_halted(&mut altair);
 
         assert_eq!(altair.cpu.registers.a, 0xFF);
+    }
+
+    #[test]
+    fn registers_show_cpu_state() {
+        let (mut altair, _) = altair_with_screen();
+        // 0000H: LXI H,1234H; HLT
+        toggle_in(&mut altair, 0x0000, &[0x21, 0x34, 0x12, 0x76]);
+
+        run_until_halted(&mut altair);
+
+        assert_eq!(altair.registers().hl(), 0x1234);
+        assert_eq!(*altair.registers(), altair.cpu.registers);
+    }
+
+    #[test]
+    fn peek_reads_memory_and_keeps_pc() {
+        let (mut altair, _) = altair_with_screen();
+        // 0000H: MVI A,42H; STA 8000H; HLT
+        toggle_in(&mut altair, 0x0000, &[0x3E, 0x42, 0x32, 0x00, 0x80, 0x76]);
+        run_until_halted(&mut altair);
+        let pc = altair.cpu.registers.pc;
+
+        let stored = altair.peek(0x8000);
+        let opcode = altair.peek(pc - 1);
+
+        assert_eq!(stored, 0x42);
+        assert_eq!(opcode, 0x76); // HLT
+        assert_eq!(altair.cpu.registers.pc, pc);
+    }
+
+    #[test]
+    fn trace_step_shows_accepted_interrupt_as_rst_7() {
+        let (mut altair, keys) = altair_with_keyboard();
+        for _ in 0..5 {
+            altair.step(); // initialize the serial card, EI, HLT
+        }
+        let (_, waiting) = altair.trace_step();
+        keys.borrow_mut().push_back(b'A');
+
+        let (cycles, line) = altair.trace_step(); // PINT, open-bus RST 7
+
+        assert_eq!(waiting, None);
+        assert_eq!(cycles, 11);
+        assert!(
+            line.unwrap()
+                .to_string()
+                .starts_with("0109  FF        RST 7")
+        );
     }
 }

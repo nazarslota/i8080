@@ -66,6 +66,7 @@ dependencies = [
  "altair",
  "clap",
  "crossterm",
+ "i8080",
 ]
 
 [[package]]

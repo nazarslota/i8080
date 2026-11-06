@@ -22,6 +22,7 @@ doc = false
 altair.workspace = true
 clap.workspace = true
 crossterm.workspace = true
+i8080.workspace = true
 
 [lints]
 workspace = true

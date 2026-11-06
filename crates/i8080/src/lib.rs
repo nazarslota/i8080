@@ -34,7 +34,13 @@
 //! ```
 //!
 //! [`disassemble`] turns the same bytes into text for a debugger or a trace,
-//! with the decoder the CPU runs.
+//! with the decoder the CPU runs. [`TraceLine`] adds the registers and
+//! prints one line of an execution trace:
+//!
+//! ```text
+//! PC    BYTES     INSTRUCTION    A  BC   DE   HL   SP   SZAPC
+//! FF00  21 13 FF  LXI H,0FF13H   00 0000 0000 0000 0000 .....
+//! ```
 //!
 //! The crate is `no_std` and has no dependencies, so it builds for embedded
 //! targets and WebAssembly.
@@ -75,6 +81,7 @@ mod disassembler;
 mod flags;
 mod instruction;
 mod registers;
+mod trace;
 
 pub use bus::{Bus, IoBus, MemoryBus, Unconnected};
 pub use cpu::Cpu;
@@ -82,3 +89,4 @@ pub use cycles::HALTED_STEP_CYCLES;
 pub use disassembler::{Disassembled, disassemble};
 pub use flags::Flags;
 pub use registers::Registers;
+pub use trace::TraceLine;

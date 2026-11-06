@@ -9,7 +9,7 @@
 //!              │
 //!   machine::start    cards, toggle in, EXAMINE, RUN
 //!              │
-//!   host::clock::run  2 MHz until Ctrl+] or HLT
+//!   host::clock::run  2 MHz until Ctrl+] or HLT, into a Trace with --trace
 //! ```
 //!
 //! `main.rs` only calls [`run`], so the examples in this library run under
@@ -33,18 +33,23 @@ pub mod cli;
 pub mod disk;
 pub mod host;
 pub mod machine;
+pub mod trace;
 
 use std::error::Error;
+use std::fs::File;
+use std::io::BufWriter;
 
 use crate::boot::{Setup, basic, cpm, disk_basic, dos, image};
 use crate::cli::{Args, Command};
 use crate::host::clock::{self, Exit, Speed};
 use crate::host::console::{Console, RawMode};
+use crate::trace::{TRACE_LINES, Trace};
 
 /// Carries out the command in `args`.
 ///
 /// A boot command switches your terminal to raw mode and returns when you
 /// quit or the CPU halts with interrupts disabled, then restores the terminal.
+/// With `--trace`, it then writes the last instructions to the trace file.
 ///
 /// ```
 /// use clap::Parser;
@@ -71,6 +76,9 @@ pub fn run(args: &Args) -> Result<(), Box<dyn Error>> {
 
 /// Starts the Altair as `setup` says, with the options in `args`, and runs
 /// it until you quit or the CPU halts with interrupts disabled.
+///
+/// It creates the trace file before the run, so you see a bad path before
+/// the Altair starts.
 fn boot(mut setup: Setup, args: &Args) -> Result<(), Box<dyn Error>> {
     if let Some(switches) = args.switches {
         setup.sense_switches = switches;
@@ -81,15 +89,33 @@ fn boot(mut setup: Setup, args: &Args) -> Result<(), Box<dyn Error>> {
         Speed::Altair
     };
 
+    let mut trace = match &args.trace {
+        Some(path) => {
+            let file = File::create(path).map_err(|error| host::in_file(path, error))?;
+            Some((path, file, Trace::new(TRACE_LINES)))
+        }
+        None => None,
+    };
+
     let raw_mode = RawMode::enable()
         .map_err(|error| format!("can't switch the terminal to raw mode: {error}"))?;
     let (console, quit) = Console::start(&setup.tape, setup.erase_key);
     let mut altair = machine::start(setup, console)?;
-    let exit = clock::run(&mut altair, &quit, speed);
+    let exit = clock::run(
+        &mut altair,
+        &quit,
+        speed,
+        trace.as_mut().map(|(_, _, trace)| trace),
+    );
     drop(raw_mode);
 
     if let Exit::Halted = exit {
         eprintln!("\naltair: the CPU halted");
+    }
+    if let Some((path, file, trace)) = trace {
+        trace
+            .write_to(BufWriter::new(file))
+            .map_err(|error| host::in_file(path, error))?;
     }
     Ok(())
 }

@@ -55,6 +55,9 @@ const EXAMPLES: &str = r#"Examples:
 
   Set the boot PROM and sense switches:
     altair --switches 10 disk-basic --prom roms/DBL.HEX basic.dsk
+
+  Write the last 10,000 instructions to a file when the run ends:
+    altair --trace cpm.trace cpm a.dsk
 "#;
 
 /// Runs the emulated Altair 8800 in your terminal. Press Ctrl+] to quit.
@@ -76,6 +79,13 @@ pub struct Args {
     /// programs that compute for hours on the real Altair.
     #[arg(long, global = true)]
     pub fast: bool,
+
+    /// Keeps the last 10,000 instructions the CPU ran, with the registers
+    /// before each one, and writes them to FILE when the run ends.
+    ///
+    /// Example: --trace cpm.trace
+    #[arg(long, global = true, value_name = "FILE")]
+    pub trace: Option<PathBuf>,
 }
 
 /// What to do: boot the Altair, or work on a CP/M disk.

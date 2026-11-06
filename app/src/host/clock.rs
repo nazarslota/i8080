@@ -9,7 +9,8 @@
 //! ```
 //!
 //! With [`Speed::Unlimited`] the clock skips the sleep, and a diagnostic
-//! that takes hours on the real Altair ends in seconds.
+//! that takes hours on the real Altair ends in seconds. With a [`Trace`],
+//! the clock records each instruction before the CPU runs it.
 //!
 //! ```
 //! use std::sync::atomic::AtomicBool;
@@ -17,6 +18,7 @@
 //! use altair::Altair;
 //! use altair::cards::Ram;
 //! use app::host::clock::{self, Exit, Speed};
+//! use app::trace::Trace;
 //!
 //! let mut altair = Altair::builder().plug(Ram::new(0x0000..=0xFFFF)?).build();
 //! let mut panel = altair.front_panel();
@@ -25,9 +27,14 @@
 //! panel.examine();
 //! panel.run();
 //!
-//! let exit = clock::run(&mut altair, &AtomicBool::new(false), Speed::Unlimited);
+//! let mut trace = Trace::new(10);
+//!
+//! let exit = clock::run(&mut altair, &AtomicBool::new(false), Speed::Unlimited, Some(&mut trace));
 //!
 //! assert!(matches!(exit, Exit::Halted));
+//! let mut file = Vec::new();
+//! trace.write_to(&mut file)?;
+//! assert!(String::from_utf8(file)?.contains("0000  76        HLT"));
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
@@ -36,6 +43,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use altair::Altair;
+
+use crate::trace::Trace;
 
 /// How many times per second the clock checks the time. Between two checks
 /// it runs the CPU for one [`SLICE`].
@@ -62,7 +71,8 @@ pub enum Exit {
     Halted,
 }
 
-/// Runs `altair` at `speed` until you quit or the CPU halts with INTE clear.
+/// Runs `altair` at `speed` until you quit or the CPU halts with INTE clear,
+/// and adds each instruction to `trace` when you pass one.
 ///
 /// With INTE set, `HLT` waits for a card's interrupt instead of ending the
 /// run. The clock keeps stepping the machine so the cards can receive input.
@@ -77,12 +87,17 @@ pub enum Exit {
 /// let mut altair = Altair::builder().plug(Ram::new(0x0000..=0xFFFF)?).build();
 /// altair.front_panel().run(); // NOP after NOP from 0000H
 ///
-/// let exit = clock::run(&mut altair, &AtomicBool::new(true), Speed::Altair);
+/// let exit = clock::run(&mut altair, &AtomicBool::new(true), Speed::Altair, None);
 ///
 /// assert!(matches!(exit, Exit::Quit)); // the flag says you pressed Ctrl+]
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
-pub fn run(altair: &mut Altair, quit: &AtomicBool, speed: Speed) -> Exit {
+pub fn run(
+    altair: &mut Altair,
+    quit: &AtomicBool,
+    speed: Speed,
+    mut trace: Option<&mut Trace>,
+) -> Exit {
     let mut next_slice = Instant::now();
     loop {
         if quit.load(Ordering::Relaxed) {
@@ -94,7 +109,16 @@ pub fn run(altair: &mut Altair, quit: &AtomicBool, speed: Speed) -> Exit {
             if altair.is_halted() && !altair.interrupts_enabled() {
                 return Exit::Halted;
             }
-            cycles += u64::from(altair.step());
+            cycles += u64::from(match trace.as_deref_mut() {
+                Some(trace) => {
+                    let (cycles, line) = altair.trace_step();
+                    if let Some(line) = line {
+                        trace.push(line);
+                    }
+                    cycles
+                }
+                None => altair.step(),
+            });
         }
 
         if let Speed::Unlimited = speed {
@@ -176,7 +200,7 @@ mod tests {
     fn clock_runs_interrupt_handler_after_hlt() {
         let mut altair = waiting_machine(DelayedKey { samples: 0 });
 
-        let exit = run(&mut altair, &AtomicBool::new(false), Speed::Unlimited);
+        let exit = run(&mut altair, &AtomicBool::new(false), Speed::Unlimited, None);
         let interrupts_enabled = altair.interrupts_enabled();
         let mut panel = altair.front_panel();
         panel.reset(); // release HLT before the panel feeds its EXAMINE instruction
@@ -189,6 +213,45 @@ mod tests {
     }
 
     #[test]
+    fn clock_traces_interrupt_but_not_hlt_wait() {
+        let mut altair = waiting_machine(DelayedKey { samples: 0 });
+        let mut trace = Trace::new(100);
+
+        run(
+            &mut altair,
+            &AtomicBool::new(false),
+            Speed::Unlimited,
+            Some(&mut trace),
+        );
+
+        let mut file = Vec::new();
+        trace.write_to(&mut file).unwrap();
+        let text = String::from_utf8(file).unwrap();
+        let instructions: Vec<&str> = text
+            .lines()
+            .skip(1)
+            .map(|line| line[16..31].trim())
+            .collect();
+        assert_eq!(
+            instructions,
+            [
+                "LXI SP,0F000H",
+                "MVI A,95H",
+                "OUT 10H",
+                "EI",
+                "HLT",
+                "RST 7",
+                "IN 11H",
+                "STA 2000H",
+                "EI",
+                "RET",
+                "DI",
+                "HLT",
+            ],
+        );
+    }
+
+    #[test]
     fn clock_can_quit_while_hlt_waits_for_interrupt() {
         let quit = Arc::new(AtomicBool::new(false));
         let mut altair = waiting_machine(QuitWhileHalted {
@@ -196,7 +259,7 @@ mod tests {
             quit: Arc::clone(&quit),
         });
 
-        let exit = run(&mut altair, &quit, Speed::Unlimited);
+        let exit = run(&mut altair, &quit, Speed::Unlimited, None);
 
         assert!(matches!(exit, Exit::Quit));
         assert!(altair.is_halted());

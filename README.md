@@ -21,7 +21,8 @@ and CP/M from their original floppy images.
   `EI` and wake-up from `HLT`.
 - [x] **Altair interrupts.** Receive and transmit requests from the 88-2SIO
   serial board through PINT (`RST 7`).
-- [ ] **CPU extras.** A disassembler for execution traces.
+- [x] **Execution trace.** `--trace FILE` keeps the last 10,000
+  instructions with their registers, and writes them when the run ends.
 - [ ] Later: a window with a retro monitor, the front panel, Space Invaders.
 
 ## Quick start
@@ -42,6 +43,15 @@ cargo run --release -- image roms/hello.bin                        # a memory im
 ```
 
 Press Ctrl+] to quit. `altair --help` lists every command and option.
+
+Add `--trace FILE` to see the instructions that led to a hang or a crash.
+When the run ends, the emulator writes the last 10,000 to the file:
+
+```text
+PC    BYTES     INSTRUCTION    A  BC   DE   HL   SP   SZAPC
+FF00  21 13 FF  LXI H,0FF13H   00 0000 0000 0000 0000 .....
+FF03  11 00 2C  LXI D,2C00H    00 0000 0000 FF13 0000 .....
+```
 
 `cargo test` runs the tests and three CPU diagnostics. The fourth, 8080EXM,
 takes minutes in a debug build, so it runs on its own:

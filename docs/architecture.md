@@ -23,13 +23,14 @@ around it, and you at the terminal.
                 └──────────────────────────┘
 ```
 
-| Crate    | Plays the role of             | Depends on                    | Touches the host |
-|----------|-------------------------------|-------------------------------|------------------|
-| `i8080`  | the Intel 8080 processor      | nothing                       | no               |
-| `altair` | the MITS Altair 8800 computer | `i8080`                       | no               |
-| `app`    | you, sitting at the terminal  | `altair`, `clap`, `crossterm` | yes              |
+| Crate    | Plays the role of             | Depends on                             | Touches the host |
+|----------|-------------------------------|----------------------------------------|------------------|
+| `i8080`  | the Intel 8080 processor      | nothing                                | no               |
+| `altair` | the MITS Altair 8800 computer | `i8080`                                | no               |
+| `app`    | you, sitting at the terminal  | `altair`, `i8080`, `clap`, `crossterm` | yes              |
 
-A crate depends on the crates below it and never on one above. The compiler
+A crate depends on the crates below it and never on one above. `app` uses
+`i8080` for the registers and the lines of `--trace`. The compiler
 enforces this: `i8080/Cargo.toml` lists no dependencies, so `i8080` can't
 reach `altair`. The libraries live in `crates/`, and `app` sits at the root
 of the repository.
